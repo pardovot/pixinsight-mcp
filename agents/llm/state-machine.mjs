@@ -104,11 +104,13 @@ const STATE_TOOLS = {
   finalize: new Set([
     'finish',
     'run_pixelmath', 'run_curves', 'continuous_clamp',
+    'star_protected_blend', 'stretch_stars', 'check_star_layer_integrity', // safety net: allow star blend in finalize
+    'clone_image', 'restore_from_clone',
     'save_variant', 'save_and_show_preview', 'save_memory',
     'get_image_stats', 'measure_subject_detail', 'measure_uniformity',
     'check_saturation', 'check_star_quality', 'check_ringing',
     'scan_burnt_regions', 'check_constraints', 'check_sharpness',
-    'check_tonal_presence', 'check_star_layer_integrity', 'check_bright_chroma',
+    'check_tonal_presence', 'check_bright_chroma',
     'check_highlight_texture',
     'compute_scores',
     'list_open_images', 'close_image',

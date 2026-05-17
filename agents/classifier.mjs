@@ -44,7 +44,7 @@ const KNOWN_OBJECTS = {
   'M64': 'galaxy_spiral', 'M66': 'galaxy_spiral', 'M65': 'galaxy_spiral',
   'NGC891': 'galaxy_edge_on', 'NGC4565': 'galaxy_edge_on', 'NGC5907': 'galaxy_edge_on',
   'NGC3628': 'galaxy_spiral', 'NGC2403': 'galaxy_spiral', 'NGC4631': 'galaxy_edge_on',
-  'NGC253': 'galaxy_spiral', 'NGC4244': 'galaxy_edge_on',
+  'NGC253': 'galaxy_spiral', 'NGC4244': 'galaxy_edge_on', 'NGC4490': 'galaxy_spiral',
   'M87': 'galaxy_elliptical', 'M49': 'galaxy_elliptical',
   // Emission nebulae
   'M42': 'emission_nebula', 'M43': 'emission_nebula',

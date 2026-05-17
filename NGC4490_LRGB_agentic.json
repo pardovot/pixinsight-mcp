@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "NGC 4490 Cocoon Galaxy LRGB — LLM Agentic Pipeline",
+  "files": {
+    "sourceFolder": "/Users/aescaffre/agentic ngc4490",
+    "L": "/Users/aescaffre/agentic ngc4490/masterLight_BIN-1_6224x4168_EXPOSURE-180.00s_FILTER-L_mono_(1)_autocrop.xisf",
+    "R": "/Users/aescaffre/agentic ngc4490/masterLight_BIN-1_6224x4168_EXPOSURE-180.00s_FILTER-R_mono_(1)_autocrop.xisf",
+    "G": "/Users/aescaffre/agentic ngc4490/masterLight_BIN-1_6224x4168_EXPOSURE-180.00s_FILTER-V_mono_(1)_autocrop.xisf",
+    "B": "/Users/aescaffre/agentic ngc4490/masterLight_BIN-1_6224x4168_EXPOSURE-180.00s_FILTER-B_mono_(1)_autocrop.xisf",
+    "Ha": "",
+    "outputDir": "/Users/aescaffre/agentic ngc4490/agentic",
+    "targetName": "NGC4490"
+  }
+}
