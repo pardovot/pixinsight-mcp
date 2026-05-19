@@ -105,6 +105,7 @@ const STATE_TOOLS = {
     'finish',
     'run_pixelmath', 'run_curves', 'continuous_clamp',
     'star_protected_blend', 'stretch_stars', 'check_star_layer_integrity', // safety net: allow star blend in finalize
+    'lrgb_combine', // safety net: allow LRGB if finish rejected for missing it
     'clone_image', 'restore_from_clone',
     'save_variant', 'save_and_show_preview', 'save_memory',
     'get_image_stats', 'measure_subject_detail', 'measure_uniformity',

@@ -1883,9 +1883,24 @@ const TOOL_CATALOG = {
             failures.push(msg);
           }
         }
-        // FWHM, color, count remain non-blocking warnings
+        // FWHM > 12px is blocking — but NOT for galaxies (galaxy knots/HII regions
+        // are detected as "stars" with inflated FWHM, causing false positives)
+        const isGalaxyTarget = (brief?.target?.classification || '').startsWith('galaxy');
+        if ((starResult.medianFWHM || 0) > 12.0 && !isGalaxyTarget) {
+          const fwhmMsg = `STARS SEVERELY BLOATED: FWHM=${(starResult.medianFWHM || 0).toFixed(1)}px (hard limit: 12px). ` +
+            `Stars are unacceptably large. Re-stretch stars with higher setiMidtone (0.25+) or fewer iterations, ` +
+            `apply stronger rolloff, or reduce star_protected_blend strength.`;
+          if (isEmergency) {
+            warnings.push(`[RELAXED] ${fwhmMsg}`);
+          } else {
+            failures.push(fwhmMsg);
+          }
+        }
+        // For galaxies, FWHM is advisory (galaxy knots inflate the measurement)
+        // For non-galaxies with moderate FWHM, also advisory
         if (!starResult.pass && brightnessOk) {
-          warnings.push(`STAR QUALITY WARNING: ${starResult.details}`);
+          const fwhmNote = isGalaxyTarget ? ' (advisory for galaxies — HII knots inflate FWHM)' : '';
+          warnings.push(`STAR QUALITY WARNING: ${starResult.details}${fwhmNote}`);
         }
       } catch (e) {
         // If star check errors out (e.g. no stars in starless image), skip gracefully
@@ -2110,6 +2125,34 @@ const TOOL_CATALOG = {
         } catch (e) {
           // Non-blocking on error
           warnings.push(`Highlight texture check error: ${e.message}`);
+        }
+      }
+
+      // Gate 10: L data must be incorporated — via lrgb_combine OR PixelMath L injection
+      const hasL = !!(brief?.dataDescription?.channels?.L);
+      const lrgbAvoided = brief?.processingProfile?.tools?.LRGB?.use === 'avoid';
+      if (hasL && !lrgbAvoided) {
+        // Check trace for L incorporation (lrgb_combine OR PixelMath referencing FILTER_L)
+        let lUsed = false;
+        if (store) {
+          try {
+            const tracePath = path.join(store.baseDir, 'trace.jsonl');
+            if (fs.existsSync(tracePath)) {
+              const traceContent = fs.readFileSync(tracePath, 'utf-8');
+              lUsed = traceContent.includes('"tool":"lrgb_combine"') ||
+                      (traceContent.includes('FILTER_L') && traceContent.includes('"tool":"run_pixelmath"'));
+            }
+          } catch {}
+        }
+        if (!lUsed) {
+          const msg = `L DATA NOT USED: L channel is available but was never incorporated into the composition. ` +
+            `The L channel represents the majority of integration time. Use lrgb_combine OR PixelMath L injection ` +
+            `(e.g., CIE Y luminance replacement with FILTER_L).`;
+          if (isEmergency) {
+            warnings.push(`[RELAXED] ${msg}`);
+          } else {
+            failures.push(msg);
+          }
         }
       }
 
