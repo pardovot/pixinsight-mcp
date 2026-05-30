@@ -109,9 +109,30 @@ You must behave like a disciplined director:
 ${isGalaxy ? `## GALAXY PROCESSING RULES
 - IFN (Integrated Flux Nebula): if present in field, revealing it is a primary goal. Make it DRAMATIC.
 - Seti stretch target for L: bright enough for faint structure. Push higher if IFN invisible.
-- Headroom 0.10+ for L stretch (leaves room for HDRMT).
-- HDRMT inverted: push layers to find the synthetic boundary.
+- Headroom 0.12 for galaxies (leaves room for HDRMT and L injection without core clipping).
+- HDRMT inverted through donut mask: push layers to find the synthetic boundary.
 - LHE: L channel can take strong amounts. Push until synthetic, step back one.
+
+**CORE PROTECTION (mandatory for galaxies — the #1 failure mode):**
+Galaxy cores become featureless white blobs when cumulative brightness operations destroy local contrast.
+This happens even when no pixel exceeds 0.95. The fix is TEXTURE MONITORING after EVERY step.
+
+1. After HDRMT on L: \`check_highlight_texture\` against pre-HDRMT clone.
+   If core texture retention < 60%: reduce HDRMT layers or iterations.
+2. After clamp on L: \`check_highlight_texture\` again. If retention < 60%: raise knee.
+3. **L injection weight MUST be ≤ 0.25 for galaxies.** The tool caps lightness at 0.50.
+   Do NOT use weight > 0.25 in PixelMath L injection formulas.
+   The L channel adds structure, not brightness. High weight (0.40+) floods the core.
+4. After LRGB combine: \`check_highlight_texture\` on the composition.
+5. **Tonal curves through INVERTED core mask:**
+   Do NOT apply global S-curves to force the tonal presence gate on small galaxies.
+   Create a luminance mask (clipLow=0.15, blur=5), INVERT it, then apply tonal boost curves.
+   This lifts outer body and arms while PROTECTING the already-bright core.
+   The core gets its detail from HDRMT + controlled LRGB, NOT from tonal S-curves.
+6. After star blend: \`scan_burnt_regions\` + \`check_highlight_texture\`.
+
+**Small galaxy rule:** For compact galaxies (< 3% of field), the tonal presence gate is relaxed to 2.5×.
+Do NOT apply destructive global curves to force 3× separation on a tiny subject.
 ` : ''}
 ## QUALITY RULES — HARD GATES (target-agnostic)
 
@@ -494,39 +515,36 @@ ${hasHa ? `
 
 ## BRANCH D — STAR POLICY
 
-Work on star layer. Goal: LUMINOUS, colorful stars that bring LIFE to the field.
-
-**CRITICAL: Stars that are tiny pinpoints or barely visible = FAILURE.**
-**Previous runs (v4, v5, v6) ALL had stars too small/dim. This is a recurring problem.**
-Stars should be clearly visible, luminous, and colorful. Slightly bigger is BETTER than too small.
-The \`check_star_quality\` gate requires >= 50 detected stars.
-
-Required candidates: stars_bright, stars_target, stars_reduced, stars_overreduced
-
-Tools: stretch_stars, run_curves, run_pixelmath, check_star_layer_integrity, save_variant
+Work on star layer. Stars should be NATURAL, COLORFUL, and appropriately sized for the target.
 
 **CRITICAL: Stars are delivered LINEAR from prep. You MUST call \`stretch_stars\` FIRST.**
-The star layer from SXT extraction is LINEAR (median near zero, max near 1.0).
-If you skip stretch_stars and go straight to curves/rolloff, stars will be INVISIBLE in the final image.
 \`star_protected_blend\` will REFUSE an unstretched star layer.
 
-**Step 1: stretch_stars** (MANDATORY)
-- Default: midtone=0.20, iterations=5. This is correct for most data.
-- If stars look too faint after stretch, try midtone=0.15 or iterations=7.
+**Star parameters depend on the processing profile's star prominence setting:**
+${isGalaxy ? `
+**THIS IS A GALAXY — STARS MUST BE CONTROLLED, NOT BLOATED.**
+- stretch_stars: midtone=0.22, iterations=5 (controlled — the tool enforces minimum 0.22 for galaxies)
+- Saturation: S channel curve applied ONCE only (not twice): [[0,0],[0.30,0.55],[0.60,0.85],[1,1]]
+- Rolloff knee: 0.65
+- Blend strength: 0.85 max (tool enforces this cap for galaxies)
+- Do NOT use midtone < 0.20 or iterations > 5 — this BLOATS stars on galaxy fields
+- Stars should be clearly visible and colorful, but not dominate the galaxy
+` : `
+**Stars should be clearly visible, luminous, and colorful.**
+- stretch_stars: midtone=0.20, iterations=5 (standard)
+- If stars look too faint, try midtone=0.15 or iterations=7
+- Saturation: S channel [[0,0],[0.30,0.55],[0.60,0.85],[1,1]] (apply twice for emission/PNe)
+- Rolloff knee: 0.65 (standard)
+- Blend strength: 0.95
+`}
+Required candidates: stars_bright, stars_target, stars_reduced, stars_overreduced
+Tools: stretch_stars, run_curves, run_pixelmath, check_star_layer_integrity, save_variant
 
-**Step 2: Color saturation**
-- STRONG saturation: S channel [[0,0],[0.30,0.55],[0.60,0.85],[1,1]] (apply twice)
-- Brighten stars if needed: \`max($T * 1.3, $T)\` or gentle curves lift
+**Soft rolloff** (always):
+- Star max must be < 0.98 — apply: \`iif($T > knee, knee + ($T - knee) * 0.46, $T)\`
 
-**Step 3: Soft rolloff** (if needed)
-- Star max must be < 0.98 — if clipped, apply soft rolloff:
-  \`iif($T > 0.65, 0.65 + ($T - 0.65) * 0.46, $T)\` (compresses 0.65-1.0 → 0.65-0.81)
-
-**Step 4: check_star_layer_integrity** (MANDATORY before blend)
+**check_star_layer_integrity** (MANDATORY before blend)
 - Will detect unstretched layers and REFUSE blend
-
-- Do NOT reduce stars unless genuinely bloated (FWHM > 6px). Default: NO reduction.
-- Never go below factor 0.90. Stars that are barely visible = FAILURE.
 - The "overdone" candidate should be OVER-REDUCED (too faint) to mark the boundary.
 - \`star_protected_blend\` auto-attenuates in bright cores — replaces star_screen_blend
 - Blend strength: **0.95-1.00** — do NOT go below 0.90. Previous runs killed stars with low blend strength.

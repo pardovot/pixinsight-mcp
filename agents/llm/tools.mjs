@@ -478,9 +478,30 @@ const TOOL_CATALOG = {
         required: ['view_id']
       }
     },
-    handler: async (ctx, _store, _brief, input) => {
-      const midtone = input.midtone ?? 0.20;
-      const iterations = input.iterations ?? 5;
+    handler: async (ctx, _store, brief, input) => {
+      // PROFILE ENFORCEMENT: galaxy targets get conservative star stretch params
+      // to prevent bloated stars (NGC4490: agent used 0.15/6, producing 15-18px FWHM)
+      const classification = brief?.target?.classification || '';
+      const starProfile = brief?.processingProfile?.stars || {};
+      const isGalaxy = classification.startsWith('galaxy');
+
+      let midtone = input.midtone ?? 0.20;
+      let iterations = input.iterations ?? 5;
+
+      if (isGalaxy) {
+        const profileMidtone = starProfile.stretch_midtone ?? 0.25;
+        const profileIter = starProfile.stretch_iterations ?? 4;
+        if (midtone < profileMidtone) {
+          const oldMid = midtone;
+          midtone = profileMidtone;
+          process.stderr.write(`[stretch_stars] GALAXY OVERRIDE: midtone ${oldMid} → ${midtone} (profile minimum for ${classification})\n`);
+        }
+        if (iterations > profileIter) {
+          const oldIter = iterations;
+          iterations = profileIter;
+          process.stderr.write(`[stretch_stars] GALAXY OVERRIDE: iterations ${oldIter} → ${iterations} (profile maximum for ${classification})\n`);
+        }
+      }
 
       // Seti star stretch method (proven in scripted pipeline):
       // 1. Check linearity — refuse if already non-linear
@@ -1089,7 +1110,17 @@ const TOOL_CATALOG = {
         // Warn but don't refuse — stale check
       }
 
-      const str = input.strength ?? 0.95;
+      // PROFILE ENFORCEMENT: cap blend strength for galaxies
+      const classif = brief?.target?.classification || '';
+      const starProf = brief?.processingProfile?.stars || {};
+      let str = input.strength ?? 0.95;
+      if (classif.startsWith('galaxy') && starProf.screen_blend_strength) {
+        const maxStr = starProf.screen_blend_strength;
+        if (str > maxStr) {
+          process.stderr.write(`[star_protected_blend] GALAXY CAP: strength ${str} → ${maxStr} (profile limit for ${classif})\n`);
+          str = maxStr;
+        }
+      }
       const low = input.core_threshold_low ?? 0.60;
       const high = input.core_threshold_high ?? 0.82;
       const minFrac = input.min_strength_fraction ?? 0.10;
@@ -1364,9 +1395,20 @@ const TOOL_CATALOG = {
         required: ['rgb_id', 'l_id']
       }
     },
-    handler: async (ctx, _store, _brief, input) => {
-      const lightness = input.lightness ?? 0.55;
+    handler: async (ctx, _store, brief, input) => {
+      let lightness = input.lightness ?? 0.55;
       const saturation = input.saturation ?? 0.80;
+
+      // PROFILE ENFORCEMENT: cap lightness for galaxies to prevent core burn
+      const classifLrgb = brief?.target?.classification || '';
+      if (classifLrgb.startsWith('galaxy')) {
+        const profileLightness = brief?.processingProfile?.tools?.LRGB?.lightness ?? 0.55;
+        const maxLightness = Math.min(profileLightness, 0.50); // never exceed 0.50 for galaxies
+        if (lightness > maxLightness) {
+          process.stderr.write(`[lrgb_combine] GALAXY CAP: lightness ${lightness} → ${maxLightness} (profile limit for ${classifLrgb})\n`);
+          lightness = maxLightness;
+        }
+      }
 
       // Step 1: LinearFit L to RGB luminance (prevents veil effect)
       await ctx.pjsr(`
@@ -2049,15 +2091,21 @@ const TOOL_CATALOG = {
       }
 
       // Gate 8: Tonal presence — subject must be impactful, not merely safe
+      // Adaptive threshold: small subjects (< 3% coverage) get relaxed gate (2.5×)
+      // because global tonal curves to force 3× on tiny subjects destroy the core
       try {
         const category = brief?.target?.classification || 'unknown';
         const tonalResult = await checkTonalPresence(ctx, viewId, category);
-        if (tonalResult.tonal_verdict === 'subdued') {
+        const subjectCoverage = (tonalResult.subjectPixelCount || 0) / ((tonalResult.subjectPixelCount || 1) + 1000);
+        const isSmallSubject = category.startsWith('galaxy') && subjectCoverage < 0.03;
+        const tonalThreshold = isSmallSubject ? 2.5 : 3.0;
+        const effectivelySubdued = tonalResult.separation < tonalThreshold;
+        if (effectivelySubdued) {
           if (tonalResult.roi_confidence === 'low') {
             warnings.push(`TONAL PRESENCE advisory: subject appears subdued (separation=${tonalResult.separation.toFixed(2)}×) but ROI confidence is low — manual inspection recommended.`);
           } else {
-            const msg = `TONAL PRESENCE SUBDUED: subject/background separation=${tonalResult.separation.toFixed(2)}× (need >3×). ` +
-              `Subject is too dim to be impactful. Restore pre-star checkpoint, apply subject-masked midtone lift, re-blend stars.`;
+            const msg = `TONAL PRESENCE SUBDUED: subject/background separation=${tonalResult.separation.toFixed(2)}× (need >${tonalThreshold}×${isSmallSubject ? ' — relaxed for small galaxy' : ''}). ` +
+              `Subject is too dim to be impactful. Apply subject-masked midtone lift through INVERTED core mask — protect the bright core, boost only the outer body and arms.`;
             if (isEmergency) {
               warnings.push(`[RELAXED] ${msg}`);
             } else {
@@ -2071,10 +2119,13 @@ const TOOL_CATALOG = {
         // Non-blocking
       }
 
-      // Gate 9: Highlight texture — emission nebulae only
-      // Detects perceptual burn (bright shell zones with collapsed tonal variation)
+      // Gate 9: Highlight texture — any target with bright structure
+      // Detects perceptual burn (bright zones with collapsed tonal variation)
+      // Originally emission-only, extended to galaxies after NGC4490 core burn
       const category = brief?.target?.classification || 'unknown';
-      if (category.includes('emission') || brief?.target?.fieldCharacteristics?.structuralZones === 'multi_zone') {
+      const hasBrightCore = brief?.processingProfile?.characteristics?.has_bright_core;
+      if (category.includes('emission') || category.startsWith('galaxy') || hasBrightCore ||
+          brief?.target?.fieldCharacteristics?.structuralZones === 'multi_zone') {
         try {
           // Try to find a reference checkpoint for relative comparison
           // Look for the most recent variant tagged as pre-composition reference
