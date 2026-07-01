@@ -1,6 +1,10 @@
 // PixInsight MCP Watcher Script
-// Runs inside PixInsight's PJSR engine (ECMAScript 5)
+// Runs inside PixInsight's PJSR engine (V8 runtime, PixInsight 1.9.4+)
 // Polls the bridge directory for commands, executes them, writes results.
+
+#engine v8
+
+CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 // ============================================================================
 // ImageSolver Library (loaded at preprocessor time for plate solving)
@@ -8,26 +12,11 @@
 
 #define __PJSR_USE_STAR_DETECTOR_V2
 
-#include <pjsr/BRQuadTree.jsh>
-#include <pjsr/ColorSpace.jsh>
-#include <pjsr/DataType.jsh>
-#include <pjsr/FrameStyle.jsh>
-#include <pjsr/LinearTransformation.jsh>
-#include <pjsr/NumericControl.jsh>
-#include <pjsr/SectionBar.jsh>
-#include <pjsr/Sizer.jsh>
-#include <pjsr/StarDetector.jsh>
-#include <pjsr/StdButton.jsh>
-#include <pjsr/StdCursor.jsh>
-#include <pjsr/StdIcon.jsh>
-#include <pjsr/TextAlign.jsh>
-#include <pjsr/UndoFlag.jsh>
-#include <pjsr/PropertyType.jsh>
-#include <pjsr/PropertyAttribute.jsh>
-#include <pjsr/RBFType.jsh>
-#include <pjsr/APASSFlag.jsh>
-#include <pjsr/GaiaFlag.jsh>
-#include <pjsr/ReadTextOptions.jsh>
+// V8 port (Bloco 1): all <pjsr/*.jsh> headers removed. Under the V8 runtime
+// these headers are deprecated; their constants are now static read-only
+// properties of core runtime classes, and StarDetector/BRQuadTree are core
+// classes. The AdP/ImageSolver system scripts included below are already
+// V8-ported by Pleiades and no longer depend on these headers.
 
 #define TITLE           "Image Solver"
 #define SETTINGS_MODULE "SOLVER"
@@ -281,7 +270,7 @@ function handleColorCalibrate(command) {
 
 function handleRemoveGreenCast(command) {
    var P = new SCNR;
-   P.colorToRemove = SCNR.prototype.Green;
+   P.colorToRemove = SCNR.Green;
    P.amount = command.parameters.amount !== undefined ? command.parameters.amount : 1.0;
 
    var view = findViewById(command.targetView);
@@ -402,8 +391,8 @@ function handleSharpen(command) {
 function handleDeconvolve(command) {
    var P = new Deconvolution;
    // Use a Gaussian PSF
-   P.algorithm = Deconvolution.prototype.RichardsonLucy;
-   P.psfMode = Deconvolution.prototype.Gaussian;
+   P.algorithm = Deconvolution.RichardsonLucy;
+   P.psfMode = Deconvolution.Gaussian;
    P.psfGaussianSigma = command.parameters.psfSigma || 2.5;
    P.iterations = [
       [command.parameters.iterations || 50, false, 0, 0, 0, false, 0, 0]
