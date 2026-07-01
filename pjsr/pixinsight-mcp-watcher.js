@@ -56,7 +56,7 @@ function ensureDirectory(path) {
 
 function listJsonFiles(dirPattern) {
    try {
-      return searchDirectory(dirPattern);
+      return File.searchDirectory(dirPattern);
    } catch (e) {
       return [];
    }
@@ -646,7 +646,7 @@ function runWatcher() {
    // Use short sleeps (20ms) with frequent processEvents() for UI responsiveness
    for (;;) {
       // Yield to PixInsight UI
-      processEvents();
+      CoreApplication.processEvents();
 
       // Check abort or shutdown signal
       if (shouldShutdown()) {
@@ -659,16 +659,16 @@ function runWatcher() {
          commandCount++;
          // Yield heavily after command execution so UI can catch up
          for (var y = 0; y < 20; ++y) {
-            processEvents();
-            msleep(20);
+            CoreApplication.processEvents();
+            System.msleep(20);
             if (shouldShutdown()) break;
          }
       } else {
          // No commands — yield frequently with short sleeps for UI responsiveness
          // Total idle cycle: ~500ms (25 x 20ms) before re-checking commands
          for (var i = 0; i < 25; ++i) {
-            msleep(20);
-            processEvents();
+            System.msleep(20);
+            CoreApplication.processEvents();
             if (shouldShutdown()) break;
          }
       }
