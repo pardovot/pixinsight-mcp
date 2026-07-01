@@ -7,33 +7,16 @@
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 // ============================================================================
-// ImageSolver Library (loaded at preprocessor time for plate solving)
+// Plate solving DISABLED in the V8 port (Bloco 2, Option A)
+// ----------------------------------------------------------------------------
+// The AdP/ImageSolver library and its 6 AdP dependency includes were removed,
+// together with the defines that only fed the solver (USE_SOLVER_LIBRARY,
+// SETTINGS_MODULE, SETTINGS_MODULE_SCRIPT, TITLE, STAR_CSV_FILE and
+// __PJSR_USE_STAR_DETECTOR_V2). Reasons: the installed AdP/ImageSolver.js 6.3.1
+// is not V8-compatible (duplicate `let toolTip` — a V8 SyntaxError) and no
+// watcher handler used the solver anyway. See TODO-v8-port.md for the
+// end-to-end fix (watcher + Node) before re-enabling plate solving.
 // ============================================================================
-
-#define __PJSR_USE_STAR_DETECTOR_V2
-
-// V8 port (Bloco 1): all <pjsr/*.jsh> headers removed. Under the V8 runtime
-// these headers are deprecated; their constants are now static read-only
-// properties of core runtime classes, and StarDetector/BRQuadTree are core
-// classes. The AdP/ImageSolver system scripts included below are already
-// V8-ported by Pleiades and no longer depend on these headers.
-
-#define TITLE           "Image Solver"
-#define SETTINGS_MODULE "SOLVER"
-#define STAR_CSV_FILE   (File.systemTempDirectory + "/stars-mcp.csv")
-
-// Include AdP dependencies then ImageSolver in library mode
-#include "/Applications/PixInsight/src/scripts/AdP/Projections.js"
-#include "/Applications/PixInsight/src/scripts/AdP/WCSmetadata.jsh"
-#include "/Applications/PixInsight/src/scripts/AdP/AstronomicalCatalogs.jsh"
-#include "/Applications/PixInsight/src/scripts/AdP/CommonUIControls.js"
-#include "/Applications/PixInsight/src/scripts/AdP/SearchCoordinatesDialog.js"
-#include "/Applications/PixInsight/src/scripts/AdP/CatalogDownloader.js"
-
-#define USE_SOLVER_LIBRARY
-#include "/Applications/PixInsight/src/scripts/AdP/ImageSolver.js"
-
-#define SETTINGS_MODULE_SCRIPT "SOLVER"
 
 // ============================================================================
 // Configuration
