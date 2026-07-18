@@ -398,6 +398,12 @@ Seats are regularly available for remote observation. Visit the [Teams section](
 
 ---
 
+## Credits
+
+- **Alain Escaffre** ([@aescaffre](https://github.com/aescaffre)) — original author and creator of the pipeline, agentic architecture, and PJSR watcher.
+- **Andre Couto** ([@4ndr3c0ut0](https://github.com/4ndr3c0ut0)) — V8 runtime port of the PixInsight watcher (PixInsight 1.9.4+ "Lockhart"), upstream [PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1).
+- **pardovot** ([@pardovot](https://github.com/pardovot)) — cross-platform (Windows) port of the Node pipeline and npm packaging.
+
 ## License
 
-MIT
+MIT © Alain Escaffre. See [LICENSE](LICENSE).
