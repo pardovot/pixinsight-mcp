@@ -1,0 +1,5 @@
+# Signed repository artifacts must never have line endings normalized —
+# the signature covers exact bytes. Treat as binary (no EOL conversion).
+pi-repo/updates.xri -text
+*.xsgn              -text
+*.zip               -text binary
