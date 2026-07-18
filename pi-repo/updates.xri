@@ -2,13 +2,13 @@
 <xri version="1.0">
    <description>
       <p>
-         PixInsight MCP Watcher — bridge script that lets AI assistants (via the
+         PixInsight MCP Watcher - bridge script that lets AI assistants (via the
          @pardovot/pixinsight-mcp MCP server) drive PixInsight. Installs into
          src/scripts/PixInsightMCP and registers under Script &gt; PixInsight MCP.
       </p>
    </description>
    <platform os="all" arch="noarch" version="1.9.4:1.9.9">
-      <package fileName="pixinsight-mcp-watcher.zip" sha1="817ed1e1e9f02f340ad4c8894d42e47ad38025aa" type="script" releaseDate="20260719">
+      <package fileName="pixinsight-mcp-watcher.zip" sha1="c1a1e077684c8087601cc63c6b7b9f193ae7469f" type="script" releaseDate="20260719">
          <title>
             PixInsight MCP Watcher (V8) 0.1.0
          </title>
@@ -24,3 +24,4 @@
       </package>
    </platform>
 </xri>
+<Signature developerId="0104952866723499" timestamp="2026-07-18T22:15:42.282Z" encoding="Base64">4QReBQElK1DFZ6XLw8AHmu70cRziuSwq9x0Fpnt/7VOdgvBTpQwoEEtUUBmgTcwZPY1qxu8uq+7I/V1dVpafDQ==</Signature>

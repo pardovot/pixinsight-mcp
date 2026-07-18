@@ -18,8 +18,13 @@ if (Test-Path $zip) { Remove-Item $zip -Force }
 $fs   = [IO.File]::Open($zip, 'Create')
 $arch = New-Object IO.Compression.ZipArchive($fs, [IO.Compression.ZipArchiveMode]::Create)
 
+# Fixed timestamp so identical inputs produce a byte-identical zip (reproducible
+# sha1). Without this, .NET stamps entries with the current time on every build.
+$fixedTime = [DateTimeOffset]::new(2026, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+
 function Add-Entry($srcPath, $entryName) {
    $e  = $arch.CreateEntry($entryName, [IO.Compression.CompressionLevel]::Optimal)
+   $e.LastWriteTime = $fixedTime
    $os = $e.Open()
    $b  = [IO.File]::ReadAllBytes($srcPath)
    $os.Write($b, 0, $b.Length); $os.Close()
@@ -38,8 +43,12 @@ $arch.Dispose(); $fs.Close()
 $sha1 = (Get-FileHash $zip -Algorithm SHA1).Hash.ToLower()
 Write-Host "sha1: $sha1"
 
-# Patch the sha1 attribute in updates.xri
-$content = Get-Content $xri -Raw
+# Patch the sha1 attribute in updates.xri.
+# NOTE: keep updates.xri ASCII-only. Written with UTF8 (no BOM) via .NET so the
+# byte content stays stable — the file gets code-signed, so re-encoding it or
+# adding a BOM would invalidate the signature.
+$content = [IO.File]::ReadAllText($xri)
 $content = [regex]::Replace($content, 'sha1="[0-9a-f]{40}"', "sha1=`"$sha1`"")
-Set-Content $xri -Value $content -NoNewline -Encoding UTF8
+$enc = New-Object System.Text.UTF8Encoding($false)   # $false = no BOM
+[IO.File]::WriteAllText($xri, $content, $enc)
 Write-Host "updated $xri"
