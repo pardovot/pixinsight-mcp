@@ -1,17 +1,19 @@
 {
   "name": "@pardovot/pixinsight-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCP server bridging AI assistants with PixInsight for astrophotography processing",
   "type": "module",
   "main": "build/index.js",
   "bin": {
     "pixinsight-mcp": "build/index.js",
-    "pixinsight-mcp-install": "install-watcher.mjs"
+    "pixinsight-mcp-install": "install-watcher.mjs",
+    "pixinsight-mcp-watch": "start-watcher-instance.mjs"
   },
   "files": [
     "build",
     "pjsr",
     "install-watcher.mjs",
+    "start-watcher-instance.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -21,6 +23,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node build/index.js",
+    "watch": "node start-watcher-instance.mjs",
     "setup-bridge": "node -e \"const fs=require('fs'),os=require('os'),p=require('path'),b=p.join(os.homedir(),'.pixinsight-mcp');['bridge/commands','bridge/results','bridge/logs','catalog/recipes'].forEach(d=>fs.mkdirSync(p.join(b,d),{recursive:true}))\"",
     "editor": "node editor/server.mjs"
   },
