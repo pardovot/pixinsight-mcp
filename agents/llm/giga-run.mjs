@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// GIGA Pipeline Runner — Single mega-agent via Claude Max (claude -p subprocess)
+// GIGA Pipeline Runner, Single mega-agent via Claude Max (claude -p subprocess)
 // Uses the giga-orchestrator prompt with ALL tools available.
 // ============================================================================
 import fs from 'fs';
@@ -19,7 +19,7 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-import { execSync } from 'child_process';
+import { freeGB } from '../ops/platform.mjs';
 
 import { createBridgeContext } from '../ops/bridge.mjs';
 import { getStats, measureUniformity } from '../ops/stats.mjs';
@@ -38,7 +38,7 @@ const home = os.homedir();
 // ============================================================================
 function cleanPISwapFiles(staleMinutes = 5) {
   // Smart cleanup: only delete swap files not modified in the last N minutes.
-  // Active files are continuously written by PI — safe to keep.
+  // Active files are continuously written by PI, safe to keep.
   const SWAP_DIR = '/var/folders/zs/l60syh197h32ptdrp2yfvzs00000gn/C';
   const now = Date.now();
   const threshold = now - staleMinutes * 60 * 1000;
@@ -78,50 +78,25 @@ function cleanPISwapFiles(staleMinutes = 5) {
 // ============================================================================
 // P2b: Automatic disk space monitoring
 // ============================================================================
-function checkDiskSpace() {
+async function checkDiskSpace() {
   console.log('\n--- Pre-flight: Disk Space Check ---');
 
-  function getFreeGB(mountPoint) {
-    try {
-      // df -g gives output in GB on macOS
-      const output = execSync(`df -g '${mountPoint}' 2>/dev/null`, { encoding: 'utf-8' });
-      const lines = output.trim().split('\n');
-      if (lines.length < 2) return null;
-      // Columns: Filesystem 1G-blocks Used Available Capacity Mounted
-      const cols = lines[1].split(/\s+/);
-      return parseInt(cols[3], 10); // Available column in GB
-    } catch {
-      return null;
-    }
-  }
+  // Check the volume holding the temp/working dir (prep output + PI swap).
+  const tmpFreeGB = await freeGB(os.tmpdir());
 
-  const rootFreeGB = getFreeGB('/');
-  const varFreeGB = getFreeGB('/var');
+  if (tmpFreeGB !== null) console.log(`  working volume: ${tmpFreeGB} GB free`);
 
-  if (rootFreeGB !== null) console.log(`  / (data): ${rootFreeGB} GB free`);
-  if (varFreeGB !== null) console.log(`  /var (swap): ${varFreeGB} GB free`);
-
-  const minFree = Math.min(rootFreeGB ?? Infinity, varFreeGB ?? Infinity);
+  const minFree = tmpFreeGB ?? Infinity;
 
   if (minFree < 8) {
     console.log('  WARNING: Low disk space (<8 GB). Clean swap files MANUALLY before running.');
-    // cleanPISwapFiles(); // DISABLED — crashes PI if it has images open
-
-    // Re-check after cleaning
-    const rootAfter = getFreeGB('/');
-    const varAfter = getFreeGB('/var');
-    const minAfter = Math.min(rootAfter ?? Infinity, varAfter ?? Infinity);
-
-    if (rootAfter !== null) console.log(`  / (data) after cleanup: ${rootAfter} GB free`);
-    if (varAfter !== null) console.log(`  /var (swap) after cleanup: ${varAfter} GB free`);
-
-    if (minAfter < 5) {
-      console.error('  FATAL: Less than 5 GB free after cleanup — aborting to prevent data loss');
+    if (minFree < 5) {
+      console.error('  FATAL: Less than 5 GB free, aborting to prevent data loss');
       process.exit(1);
     }
   }
 
-  return { rootFreeGB, varFreeGB };
+  return { tmpFreeGB };
 }
 
 // ============================================================================
@@ -148,14 +123,14 @@ async function main() {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
   console.log('='.repeat(60));
-  console.log('  GIGA Pipeline — Single Mega-Agent via Claude Max');
+  console.log('  GIGA Pipeline, Single Mega-Agent via Claude Max');
   console.log('  Target:', config.files?.targetName || config.name);
   console.log('  Config:', configPath);
   console.log('='.repeat(60));
 
-  // Pre-flight: disk space check only — swap cleanup DISABLED (crashes PI)
-  checkDiskSpace();
-  // cleanPISwapFiles(); // DISABLED — too risky while PI is running
+  // Pre-flight: disk space check only, swap cleanup DISABLED (crashes PI)
+  await checkDiskSpace();
+  // cleanPISwapFiles(); // DISABLED, too risky while PI is running
 
   // Bridge
   const ctx = createBridgeContext({ log: console.log });
@@ -234,7 +209,7 @@ async function main() {
     .map(([k, v]) => `- **${k}**: \`${v}\` (median=${prepResult.stats[k]?.median?.toFixed(4) || 'N/A'})`)
     .join('\n');
 
-  const initialText = `## PHASE 1 COMPLETE — Deterministic prep has been done for you.
+  const initialText = `## PHASE 1 COMPLETE, Deterministic prep has been done for you.
 
 ### Working assets ready in PixInsight:
 ${viewsList}
@@ -259,15 +234,15 @@ ${prepResult.views.stars ? `### Stars available: \`${prepResult.views.stars}\` (
 ${extractWinningParams(brief.target.classification)}
 
 ${brief.target.classification.includes('emission') ? `
-### TARGET-CLASS TOOL POLICY — READ THIS FIRST
+### TARGET-CLASS TOOL POLICY, READ THIS FIRST
 **This is an emission nebula. The Branch A detail tool is \`shell_detail_enhance\`.**
-\`multi_scale_enhance\` is BLOCKED for this target class — it will refuse with an error.
+\`multi_scale_enhance\` is BLOCKED for this target class, it will refuse with an error.
 Reason: LHE amplifies brightness in bright shells, forcing clamping that destroys texture.
 \`shell_detail_enhance\` enhances texture without increasing peak brightness.
 Use \`create_adaptive_zone_masks\` for zone-based processing.
 Use \`check_highlight_texture\` with reference checkpoints to verify texture preservation.
 ` : ''}
-## SKIP Phase 0 and Phase 1 — they are done.
+## SKIP Phase 0 and Phase 1, they are done.
 ## Begin at Phase 2: Branch Generation.
 ## Call recall_memory first, then start generating bracketed candidate sets.`;
 
@@ -290,7 +265,7 @@ Use \`check_highlight_texture\` with reference checkpoints to verify texture pre
 
   console.log(`\n--- GIGA Agent completed in ${Math.round(elapsed / 1000)}s ---`);
 
-  // Do NOT clean swap files here — PI still has images open and needs its swap files.
+  // Do NOT clean swap files here, PI still has images open and needs its swap files.
   // Cleaning while PI is running causes crashes. Only clean on startup (before PI connects).
 
   if (result.crashError) {
@@ -315,7 +290,7 @@ Use \`check_highlight_texture\` with reference checkpoints to verify texture pre
 
   // RECOVERY: if no final-selection.json, reconstruct from trace
   if (!finalSelection) {
-    console.log('  No final-selection.json — attempting trace recovery...');
+    console.log('  No final-selection.json, attempting trace recovery...');
     try {
       const tracePath = path.join(store.baseDir, 'trace.jsonl');
       if (fs.existsSync(tracePath)) {
@@ -341,7 +316,7 @@ Use \`check_highlight_texture\` with reference checkpoints to verify texture pre
                   break;
                 }
               }
-              // LEGACY: old finish only had view_id — use last save_variant before this finish
+              // LEGACY: old finish only had view_id, use last save_variant before this finish
               if (entry.args?.view_id) {
                 const variants = store.listVariants('giga_orchestrator');
                 if (variants.length > 0) {
@@ -476,7 +451,7 @@ Use \`check_highlight_texture\` with reference checkpoints to verify texture pre
 }
 
 // ============================================================================
-// P3b: Processing profile learning — update learned_overrides from winning params
+// P3b: Processing profile learning, update learned_overrides from winning params
 // ============================================================================
 function updateProcessingProfile(classification, store) {
   const profilePath = path.join(__dirname, '../../agents/processing-profiles.json');

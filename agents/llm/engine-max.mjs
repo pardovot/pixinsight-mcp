@@ -1,6 +1,6 @@
 // ============================================================================
 // Claude Max Engine: uses `claude -p` subprocess instead of API
-// Zero cost — runs on Max subscription via Claude Code
+// Zero cost, runs on Max subscription via Claude Code
 //
 // Each agent = one `claude -p` subprocess that:
 // 1. Gets the system prompt via --append-system-prompt
@@ -9,7 +9,7 @@
 // 4. Claude Code handles the tool loop automatically
 // 5. Returns JSON result
 // ============================================================================
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MCP_SERVER_PATH = path.join(__dirname, 'mcp-agent-tools.mjs');
 
 /**
- * MaxAgent — runs a Claude Code subprocess for each agent.
+ * MaxAgent, runs a Claude Code subprocess for each agent.
  * Uses the user's Max subscription. No API key needed.
  *
  * The tool loop is handled automatically by Claude Code.
@@ -55,7 +55,7 @@ export class MaxAgent {
 
   /**
    * Run the agent via claude CLI subprocess.
-   * @param {string|Array} prompt - The task prompt (text string, or content array — images should be file paths in text)
+   * @param {string|Array} prompt - The task prompt (text string, or content array, images should be file paths in text)
    * @param {string[]} imagePaths - Optional image file paths to include in prompt text
    * @returns {{ finishResult: object|null, transcript: Array, turnCount: number, elapsedMs: number, crashError?: object }}
    */
@@ -68,7 +68,7 @@ export class MaxAgent {
     if (typeof prompt === 'string') {
       promptText = prompt;
     } else if (Array.isArray(prompt)) {
-      // Content array format — extract text blocks, skip image blocks
+      // Content array format, extract text blocks, skip image blocks
       promptText = prompt
         .filter(b => b.type === 'text')
         .map(b => b.text)
@@ -121,6 +121,8 @@ export class MaxAgent {
       const spawnEnv = { ...process.env };
       delete spawnEnv.ANTHROPIC_API_KEY;  // Force OAuth/Max subscription auth
       this._log(`[DEBUG] Args count: ${args.length}, system prompt length: ${this.systemPrompt?.length}`);
+      // cross-spawn resolves the `claude.cmd` shim on Windows and escapes args
+      // (incl. the multi-line system prompt) correctly across platforms.
       const claude = spawn('claude', args, {
         cwd: process.cwd(),
         env: spawnEnv,
@@ -250,14 +252,14 @@ export class MaxAgent {
    */
   _parseFinishResult(text) {
     if (!text) {
-      this._log('[_parseFinishResult] text is null/undefined — returning null');
+      this._log('[_parseFinishResult] text is null/undefined, returning null');
       return null;
     }
 
     // Debug: log first 800 chars of text being parsed so we can see the format
     this._log(`[_parseFinishResult] Parsing text (${text.length} chars). First 800: ${text.slice(0, 800).replace(/\n/g, '\\n')}`);
 
-    // Strategy 0: Structured marker — <<FINISH_VIEW_ID=xxx>> injected by finish tool handler.
+    // Strategy 0: Structured marker, <<FINISH_VIEW_ID=xxx>> injected by finish tool handler.
     // This is the most reliable method: even if the LLM paraphrases the rest of the output,
     // this exact tag may survive in the tool result text or the assistant's summary.
     const markerMatch = text.match(/<<FINISH_VIEW_ID=(\w+)>>/);
@@ -271,7 +273,7 @@ export class MaxAgent {
       };
     }
 
-    // Strategy 1: Exact tool output — "Finished (quality gates PASSED). Best: <view_id>"
+    // Strategy 1: Exact tool output, "Finished (quality gates PASSED). Best: <view_id>"
     const finishMatch = text.match(/Finished\b[^.]*\.\s*Best:\s*(\w+)/);
     if (finishMatch) {
       this._log(`[_parseFinishResult] Strategy 1 matched (exact tool output): view_id=${finishMatch[1]}`);
@@ -360,7 +362,7 @@ export class MaxAgent {
     }
 
     // Fallback: no pattern matched
-    this._log(`[_parseFinishResult] No pattern matched — returning null view_id. Last 300 chars: ${text.slice(-300).replace(/\n/g, '\\n')}`);
+    this._log(`[_parseFinishResult] No pattern matched, returning null view_id. Last 300 chars: ${text.slice(-300).replace(/\n/g, '\\n')}`);
     return {
       type: 'finish',
       view_id: null,

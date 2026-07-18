@@ -1,5 +1,5 @@
 // ============================================================================
-// Deterministic Prep — No LLM involvement
+// Deterministic Prep, No LLM involvement
 //
 // Opens masters, aligns, combines RGB, runs the canonical linear sequence,
 // produces stable working assets. Zero LLM turns spent on file hygiene.
@@ -12,7 +12,7 @@ import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { freeGB, tmpPath, pjsrPath } from '../ops/platform.mjs';
 import { getStats, measureUniformity } from '../ops/stats.mjs';
 import { setiStretch } from '../ops/stretch.mjs';
 import { runGC } from '../ops/gradient.mjs';
@@ -171,7 +171,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   const targetName = F.targetName || 'Target';
   const hasL = !!(F.L?.trim());
   const hasHa = !!(F.Ha?.trim());
-  const outputDir = opts.outputDir || '/tmp/prep';
+  const outputDir = opts.outputDir || tmpPath('prep');
   fs.mkdirSync(outputDir, { recursive: true });
 
   // Extract stretch parameters from processing profile (via brief)
@@ -184,25 +184,21 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   log(`[PREP] Stretch targets from profile: RGB=${rgbTarget}, L=${lTarget.toFixed(2)}, Ha=${haTarget.toFixed(2)}, headroom=${headroom}`);
 
   // ========================================================================
-  // DISK SPACE CHECK — refuse to start if < 20 GB free
+  // DISK SPACE CHECK, refuse to start if < 20 GB free
   // ========================================================================
   try {
-    const dfOut = execSync('df -k /').toString();
-    const lines = dfOut.trim().split('\n');
-    const cols = lines[1].split(/\s+/);
-    const availKB = parseInt(cols[3], 10);
-    const availGB = availKB / 1024 / 1024;
-    if (availGB < 5) {
+    const availGB = await freeGB(outputDir);
+    if (availGB !== null && availGB < 5) {
       throw new Error(`Not enough disk space: ${availGB.toFixed(1)} GB free (minimum: 5 GB). Clean up ~/.pixinsight-mcp/runs/ or prep-cache.`);
     }
-    log(`[PREP] Disk space: ${availGB.toFixed(1)} GB free`);
+    if (availGB !== null) log(`[PREP] Disk space: ${availGB.toFixed(1)} GB free`);
   } catch (e) {
     if (e.message.includes('Not enough disk space')) throw e;
     log(`[PREP] Disk space check skipped: ${e.message}`);
   }
 
   // ========================================================================
-  // CACHE CHECK — skip all processing if inputs haven't changed
+  // CACHE CHECK, skip all processing if inputs haven't changed
   // ========================================================================
   const cacheKey = computeCacheKey(config, brief);
   log(`\n[PREP] Cache key: ${cacheKey}`);
@@ -221,7 +217,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
     if (cached.views.stars) log(`  Stars: ${cached.views.stars}`);
     return cached;
   }
-  log('[PREP] Cache MISS — running full prep...');
+  log('[PREP] Cache MISS, running full prep...');
 
   // Helper: run PJSR and abort on error
   async function pjsrOrDie(script, stepName) {
@@ -240,7 +236,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   };
 
   // ========================================================================
-  // STEP 0: Close ALL open images — start clean
+  // STEP 0: Close ALL open images, start clean
   // ========================================================================
   log('\n[PREP] Step 0: Closing all open images...');
   const existingImgs = await ctx.listImages();
@@ -361,7 +357,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
       }
     }
   } else {
-    log('  All dimensions match — no alignment needed');
+    log('  All dimensions match, no alignment needed');
   }
 
   // ========================================================================
@@ -443,7 +439,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
     hasWCS ? 'WCS_COPIED' : 'NO_WCS';
   `);
   const hasWCS = (wcsResult.outputs?.consoleOutput || '').includes('WCS_COPIED');
-  log('  ' + (hasWCS ? 'WCS copied from R master' : 'No WCS in R master — will plate solve'));
+  log('  ' + (hasWCS ? 'WCS copied from R master' : 'No WCS in R master, will plate solve'));
 
   if (!hasWCS) {
     // Plate solve using ImageSolver with coordinates from FITS headers
@@ -496,11 +492,11 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
 
   // Write curve data to temp file (too large for inline PJSR)
   const spccCurvesModule = await import('../../scripts/spcc-curves.mjs');
-  const spccDataPath = '/tmp/spcc-curves-prep.json';
+  const spccDataPath = tmpPath('spcc-curves-prep.json');
   fs.writeFileSync(spccDataPath, JSON.stringify(spccCurvesModule.default));
 
   const spccR = await ctx.pjsr(`
-    var json=File.readLines('${spccDataPath}').join('');
+    var json=File.readLines('${pjsrPath(spccDataPath)}').join('');
     var c=JSON.parse(json);
     var P=new SpectrophotometricColorCalibration;
     P.applyCalibration=true;
@@ -528,13 +524,13 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   log('  ' + spccOut);
   if (!spccOut.includes('SPCC_OK')) {
     // SPCC can fail when WCS/plate solve is missing (common with drizzled data).
-    // Fall through — the agent can handle color calibration manually, or
+    // Fall through, the agent can handle color calibration manually, or
     // BackgroundNeutralization below provides basic balance.
     log('  WARNING: SPCC failed (likely missing WCS). Falling back to background neutralization only.');
     log('  The agent can run run_spcc or manual color calibration later if needed.');
   }
 
-  // NXT linear (balanced — reduce noise while preserving faint detail)
+  // NXT linear (balanced, reduce noise while preserving faint detail)
   log('  NXT linear (0.30)...');
   await pjsrOrDie(`
     var P=new NoiseXTerminator;
@@ -551,7 +547,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
     P.executeOn(ImageWindow.windowById('${targetName}').mainView);
   `, 'BXT sharpen on RGB');
 
-  // SXT — extract stars from linear RGB
+  // SXT, extract stars from linear RGB
   log('  SXT (linear)...');
   await pjsrOrDie(`
     var P=new StarXTerminator;
@@ -583,7 +579,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   result.stats.rgb = await getStats(ctx, targetName);
   log(`  RGB done: median=${result.stats.rgb.median.toFixed(4)}, max=${(result.stats.rgb.max||0).toFixed(4)}`);
 
-  // Save preview (use saveAs then restore view ID — saveAs changes it)
+  // Save preview (use saveAs then restore view ID, saveAs changes it)
   const rgbPreview = path.join(outputDir, 'base_rgb.jpg');
   await ctx.pjsr(`
     var w=ImageWindow.windowById('${targetName}');
@@ -604,7 +600,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
     log('  GC on L...');
     await runGC(ctx, 'FILTER_L');
 
-    // Background neutralization skipped for mono L — only meaningful on color images
+    // Background neutralization skipped for mono L, only meaningful on color images
 
     // BXT correct
     log('  BXT correct on L...');
@@ -671,7 +667,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
     const haIsStretched = !!(F.haIsStretched);
 
     if (haIsStretched && F.haIsStarless) {
-      // Ha is already stretched AND starless — crop to match RGB if needed, then use as-is
+      // Ha is already stretched AND starless, crop to match RGB if needed, then use as-is
       log('\n[PREP] Step 6: Ha already stretched + starless...');
 
       // Check if Ha needs cropping to match RGB dimensions
@@ -681,7 +677,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
       const rgbDim = rgbDimR.outputs?.consoleOutput;
 
       if (haDim !== rgbDim && haDim !== 'missing' && rgbDim !== 'missing') {
-        log(`  Ha (${haDim}) differs from RGB (${rgbDim}) — center-cropping Ha to match...`);
+        log(`  Ha (${haDim}) differs from RGB (${rgbDim}), center-cropping Ha to match...`);
         const [rgbW, rgbH] = rgbDim.split('x').map(Number);
         await ctx.pjsr(`
           var w = ImageWindow.windowById('FILTER_Ha');
@@ -699,12 +695,12 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
         `);
         log(`  Ha cropped to match RGB`);
       } else {
-        log(`  Ha dimensions match RGB — no crop needed`);
+        log(`  Ha dimensions match RGB, no crop needed`);
       }
 
     } else if (haIsStretched) {
-      // Ha is already stretched (non-linear) — skip linear processing, just SXT
-      log('\n[PREP] Step 6: Ha already stretched — star removal only...');
+      // Ha is already stretched (non-linear), skip linear processing, just SXT
+      log('\n[PREP] Step 6: Ha already stretched, star removal only...');
 
       log('  SXT on Ha (non-linear, unscreen)...');
       await pjsrOrDie(`
@@ -719,13 +715,13 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
       }
 
     } else {
-      // Ha is linear — full processing
+      // Ha is linear, full processing
       log('\n[PREP] Step 6: Linear processing on Ha...');
 
       log('  GC on Ha...');
       await runGC(ctx, 'FILTER_Ha');
 
-      // Background neutralization skipped for mono Ha — only meaningful on color images
+      // Background neutralization skipped for mono Ha, only meaningful on color images
 
       log('  BXT correct on Ha...');
       await pjsrOrDie(`
@@ -770,7 +766,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   }
 
   // ========================================================================
-  // STEP 7: Star layer — deliver LINEAR to agent
+  // STEP 7: Star layer, deliver LINEAR to agent
   // ========================================================================
   // DO NOT stretch stars here. The agent's stretch_stars tool is designed for
   // linear input and handles pedestal clipping + MTF iterations properly.

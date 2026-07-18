@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
+import { isPixInsightAlive, pixInsightMemMB } from './platform.mjs';
 
 const home = os.homedir();
 const DEFAULT_CMD_DIR = path.join(home, '.pixinsight-mcp/bridge/commands');
@@ -22,37 +23,9 @@ export class BridgeCrashError extends Error {
   }
 }
 
-/**
- * Check if PixInsight process is running.
- */
-function isPixInsightAlive() {
-  try {
-    const { execSync } = require('child_process');
-    const out = execSync("ps aux | grep '[P]ixInsight.app' | wc -l", { timeout: 5000 }).toString().trim();
-    return parseInt(out, 10) > 0;
-  } catch {
-    return false;
-  }
-}
-
-// Lazy-load child_process for isPixInsightAlive (ESM compat)
-let _execSync = null;
-async function getExecSync() {
-  if (!_execSync) {
-    const cp = await import('child_process');
-    _execSync = cp.execSync;
-  }
-  return _execSync;
-}
-
+// Cross-platform liveness check (see ops/platform.mjs).
 async function isAlive() {
-  try {
-    const execSync = await getExecSync();
-    const out = execSync("ps aux | grep '[P]ixInsight.app' | wc -l", { timeout: 5000 }).toString().trim();
-    return parseInt(out, 10) > 0;
-  } catch {
-    return false;
-  }
+  return isPixInsightAlive();
 }
 
 /**
@@ -102,7 +75,7 @@ export function createBridgeContext(opts = {}) {
           const alive = await isAlive();
           if (!alive) {
             clearInterval(poll);
-            reject(new BridgeCrashError('PixInsight process not found — it may have crashed. Restart PixInsight and the watcher, then resume with --resume --run-id <runId>'));
+            reject(new BridgeCrashError('PixInsight process not found, it may have crashed. Restart PixInsight and the watcher, then resume with --resume --run-id <runId>'));
           }
         }
         if (att > 2400) { clearInterval(poll); reject(new Error('Timeout: ' + tool)); }
@@ -128,7 +101,7 @@ export function createBridgeContext(opts = {}) {
   }
 
   /**
-   * Quick health check — returns true if PixInsight watcher responds within timeout.
+   * Quick health check, returns true if PixInsight watcher responds within timeout.
    */
   async function ping(timeoutMs = 10000) {
     try {
@@ -149,25 +122,21 @@ export function createBridgeContext(opts = {}) {
 
   async function checkMemory(stepId, liveImages, onAbort) {
     try {
-      const execSync = await getExecSync();
-      const out = execSync("ps aux | grep '[P]ixInsight.app' | awk '{s+=$6} END{print s}'").toString().trim();
-      const memKB = parseInt(out, 10);
-      if (!memKB) return memKB;
-      const memMB = Math.round(memKB / 1024);
+      const memMB = await pixInsightMemMB();
+      if (!memMB) return memMB;
       if (memMB > MEM_ABORT_MB) {
         logFn(`  [MEMORY] CRITICAL: PixInsight using ${memMB}MB`);
         if (onAbort) await onAbort(stepId);
         return memMB;
       } else if (memMB > MEM_WARN_MB) {
-        logFn(`  [MEMORY] WARNING: PixInsight using ${memMB}MB — purging undo history`);
+        logFn(`  [MEMORY] WARNING: PixInsight using ${memMB}MB, purging undo history`);
         if (liveImages) {
           for (const [branch, viewId] of Object.entries(liveImages)) {
             await pjsr(`var w = ImageWindow.windowById('${viewId}'); if (!w.isNull) w.purge();`);
           }
         }
         await pjsr('gc(); processEvents();');
-        const out2 = execSync("ps aux | grep '[P]ixInsight.app' | awk '{s+=$6} END{print s}'").toString().trim();
-        const memMB2 = Math.round(parseInt(out2, 10) / 1024);
+        const memMB2 = await pixInsightMemMB();
         logFn(`  [MEMORY] After purge: ${memMB2}MB`);
         return memMB2;
       } else {
