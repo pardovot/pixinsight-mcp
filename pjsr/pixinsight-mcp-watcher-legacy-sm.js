@@ -2,7 +2,7 @@
 // Runs inside PixInsight's PJSR engine (ECMAScript 5)
 // Polls the bridge directory for commands, executes them, writes results.
 
-#feature-id    PixInsight MCP > Start Watcher (legacy)
+#feature-id    PixInsightMCPWatcherLegacy : PixInsight MCP > Start Watcher (legacy)
 #feature-info  Starts the PixInsight MCP bridge watcher (SpiderMonkey / \
    PixInsight 1.8.9-1.9.3). Polls ~/.pixinsight-mcp/bridge for commands \
    issued by AI assistants and executes them. Leave running during a session.
