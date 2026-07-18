@@ -4,6 +4,12 @@
 
 #engine v8
 
+#feature-id    PixInsight MCP > Start Watcher
+#feature-info  Starts the PixInsight MCP bridge watcher. Polls \
+   ~/.pixinsight-mcp/bridge for commands issued by AI assistants \
+   (via the MCP server) and executes them inside PixInsight. \
+   Leave running during an MCP session.
+
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 // ============================================================================
