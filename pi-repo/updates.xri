@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri version="1.0">
+   <description>
+      <p>
+         PixInsight MCP Watcher — bridge script that lets AI assistants (via the
+         @pardovot/pixinsight-mcp MCP server) drive PixInsight. Installs into
+         src/scripts/PixInsightMCP and registers under Script &gt; PixInsight MCP.
+      </p>
+   </description>
+   <platform os="all" arch="noarch" version="1.9.4:1.9.9">
+      <package fileName="pixinsight-mcp-watcher.zip" sha1="817ed1e1e9f02f340ad4c8894d42e47ad38025aa" type="script" releaseDate="20260719">
+         <title>
+            PixInsight MCP Watcher (V8) 0.1.0
+         </title>
+         <description>
+            <p>
+               Polls ~/.pixinsight-mcp/bridge for commands from the MCP server and
+               executes them inside PixInsight. V8 runtime, PixInsight 1.9.4+.
+            </p>
+            <p>
+               https://github.com/pardovot/pixinsight-mcp
+            </p>
+         </description>
+      </package>
+   </platform>
+</xri>
