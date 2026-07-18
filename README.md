@@ -4,7 +4,7 @@ An autonomous deep sky astrophotography processing pipeline that uses Claude (vi
 
 **Status**: Work in progress. Actively developed and used for production processing.
 
-> **Note on `scripts/run-pipeline.mjs`**: The original fully-scripted pipeline in `scripts/run-pipeline.mjs` was the first approach — a deterministic, config-driven processing chain with no LLM involvement. It is now **superseded by the GIGA agentic pipeline** (`agents/llm/giga-run.mjs`) which uses Claude as a creative processing director. The scripted pipeline remains in the repo for reference but is no longer actively maintained. All new development targets the agentic architecture.
+> **Note on `scripts/run-pipeline.mjs`**: The original fully-scripted pipeline in `scripts/run-pipeline.mjs` was the first approach, a deterministic, config-driven processing chain with no LLM involvement. It is now **superseded by the GIGA agentic pipeline** (`agents/llm/giga-run.mjs`) which uses Claude as a creative processing director. The scripted pipeline remains in the repo for reference but is no longer actively maintained. All new development targets the agentic architecture.
 
 ---
 
@@ -114,7 +114,7 @@ The creative agent runs via `claude -p` subprocess (`agents/llm/engine-max.mjs`)
 
 Quality gates (`agents/ops/quality-gates.mjs`) execute actual PJSR pixel analysis inside PixInsight -- they are not prompt suggestions that the agent might ignore. The `finish` tool runs all gates automatically; the agent cannot complete processing until every gate passes.
 
-- **Zero-tolerance burn scan**: Tiles the image in 100×100px blocks (large enough that individual stars can't false-positive). If ANY block has >3% pixels above 0.93 luminance, the image fails. Zero burnt blocks allowed — the agent literally cannot finish with a blown-out core, regardless of how small the subject is relative to the frame. Every brightness-modifying tool also reports inline burn warnings (`⚠️ BURN WARNING: max=X`).
+- **Zero-tolerance burn scan**: Tiles the image in 100×100px blocks (large enough that individual stars can't false-positive). If ANY block has >3% pixels above 0.93 luminance, the image fails. Zero burnt blocks allowed, the agent literally cannot finish with a blown-out core, regardless of how small the subject is relative to the frame. Every brightness-modifying tool also reports inline burn warnings (`⚠️ BURN WARNING: max=X`).
 - **Star quality**: Detects stars via local-maximum scanning on a 16px grid, refines positions in 5x5 windows, measures FWHM via half-maximum radius in 4 directions (must be < 6px), and color diversity via normalized channel spread (must be > 0.05). Minimum 50 detected stars required.
 - **Subject metrics**: Subject brightness ≥ 0.25 (hard gate), contrast ratio ≥ 2× for PNe / 3× for others, detail score ≥ 0.001.
 - **Ringing detection**: Radial brightness profile around brightest region, counts derivative sign changes.
@@ -398,6 +398,12 @@ Seats are regularly available for remote observation. Visit the [Teams section](
 
 ---
 
+## Credits
+
+- **Alain Escaffre** ([@aescaffre](https://github.com/aescaffre)), original author and creator of the pipeline, agentic architecture, and PJSR watcher.
+- **Andre Couto** ([@4ndr3c0ut0](https://github.com/4ndr3c0ut0)), V8 runtime port of the PixInsight watcher (PixInsight 1.9.4+ "Lockhart"), upstream [PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1).
+- **pardovot** ([@pardovot](https://github.com/pardovot)), cross-platform (Windows) port of the Node pipeline and npm packaging.
+
 ## License
 
-MIT
+MIT © Alain Escaffre. See [LICENSE](LICENSE).
