@@ -1,15 +1,17 @@
 {
   "name": "@pardovot/pixinsight-mcp",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "MCP server bridging AI assistants with PixInsight for astrophotography processing",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "pixinsight-mcp": "build/index.js"
+    "pixinsight-mcp": "build/index.js",
+    "pixinsight-mcp-install": "install-watcher.mjs"
   },
   "files": [
     "build",
     "pjsr",
+    "install-watcher.mjs",
     "README.md",
     "LICENSE"
   ],
