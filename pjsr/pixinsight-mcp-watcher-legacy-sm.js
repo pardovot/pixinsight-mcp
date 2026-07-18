@@ -2,6 +2,11 @@
 // Runs inside PixInsight's PJSR engine (ECMAScript 5)
 // Polls the bridge directory for commands, executes them, writes results.
 
+#feature-id    PixInsight MCP > Start Watcher (legacy)
+#feature-info  Starts the PixInsight MCP bridge watcher (SpiderMonkey / \
+   PixInsight 1.8.9-1.9.3). Polls ~/.pixinsight-mcp/bridge for commands \
+   issued by AI assistants and executes them. Leave running during a session.
+
 // ============================================================================
 // ImageSolver Library (loaded at preprocessor time for plate solving)
 // ============================================================================
@@ -670,7 +675,7 @@ function runWatcher() {
       return false;
    }
 
-   // Main loop — processEvents() keeps PixInsight UI responsive
+   // Main loop, processEvents() keeps PixInsight UI responsive
    // Use short sleeps (20ms) with frequent processEvents() for UI responsiveness
    for (;;) {
       // Yield to PixInsight UI
@@ -692,7 +697,7 @@ function runWatcher() {
             if (shouldShutdown()) break;
          }
       } else {
-         // No commands — yield frequently with short sleeps for UI responsiveness
+         // No commands, yield frequently with short sleeps for UI responsiveness
          // Total idle cycle: ~500ms (25 x 20ms) before re-checking commands
          for (var i = 0; i < 25; ++i) {
             msleep(20);

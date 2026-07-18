@@ -4,6 +4,12 @@
 
 #engine v8
 
+#feature-id    PixInsight MCP > Start Watcher
+#feature-info  Starts the PixInsight MCP bridge watcher. Polls \
+   ~/.pixinsight-mcp/bridge for commands issued by AI assistants \
+   (via the MCP server) and executes them inside PixInsight. \
+   Leave running during an MCP session.
+
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 // ============================================================================
@@ -13,7 +19,7 @@ CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 // together with the defines that only fed the solver (USE_SOLVER_LIBRARY,
 // SETTINGS_MODULE, SETTINGS_MODULE_SCRIPT, TITLE, STAR_CSV_FILE and
 // __PJSR_USE_STAR_DETECTOR_V2). Reasons: the installed AdP/ImageSolver.js 6.3.1
-// is not V8-compatible (duplicate `let toolTip` — a V8 SyntaxError) and no
+// is not V8-compatible (duplicate `let toolTip`, a V8 SyntaxError) and no
 // watcher handler used the solver anyway. See TODO-v8-port.md for the
 // end-to-end fix (watcher + Node) before re-enabling plate solving.
 // ============================================================================
@@ -642,7 +648,7 @@ function runWatcher() {
       return false;
    }
 
-   // Main loop — processEvents() keeps PixInsight UI responsive
+   // Main loop, processEvents() keeps PixInsight UI responsive
    // Use short sleeps (20ms) with frequent processEvents() for UI responsiveness
    for (;;) {
       // Yield to PixInsight UI
@@ -664,7 +670,7 @@ function runWatcher() {
             if (shouldShutdown()) break;
          }
       } else {
-         // No commands — yield frequently with short sleeps for UI responsiveness
+         // No commands, yield frequently with short sleeps for UI responsiveness
          // Total idle cycle: ~500ms (25 x 20ms) before re-checking commands
          for (var i = 0; i < 25; ++i) {
             System.msleep(20);
