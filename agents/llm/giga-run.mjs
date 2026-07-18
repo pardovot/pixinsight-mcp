@@ -19,7 +19,7 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-import { execSync } from 'child_process';
+import { freeGB } from '../ops/platform.mjs';
 
 import { createBridgeContext } from '../ops/bridge.mjs';
 import { getStats, measureUniformity } from '../ops/stats.mjs';
@@ -78,50 +78,25 @@ function cleanPISwapFiles(staleMinutes = 5) {
 // ============================================================================
 // P2b: Automatic disk space monitoring
 // ============================================================================
-function checkDiskSpace() {
+async function checkDiskSpace() {
   console.log('\n--- Pre-flight: Disk Space Check ---');
 
-  function getFreeGB(mountPoint) {
-    try {
-      // df -g gives output in GB on macOS
-      const output = execSync(`df -g '${mountPoint}' 2>/dev/null`, { encoding: 'utf-8' });
-      const lines = output.trim().split('\n');
-      if (lines.length < 2) return null;
-      // Columns: Filesystem 1G-blocks Used Available Capacity Mounted
-      const cols = lines[1].split(/\s+/);
-      return parseInt(cols[3], 10); // Available column in GB
-    } catch {
-      return null;
-    }
-  }
+  // Check the volume holding the temp/working dir (prep output + PI swap).
+  const tmpFreeGB = await freeGB(os.tmpdir());
 
-  const rootFreeGB = getFreeGB('/');
-  const varFreeGB = getFreeGB('/var');
+  if (tmpFreeGB !== null) console.log(`  working volume: ${tmpFreeGB} GB free`);
 
-  if (rootFreeGB !== null) console.log(`  / (data): ${rootFreeGB} GB free`);
-  if (varFreeGB !== null) console.log(`  /var (swap): ${varFreeGB} GB free`);
-
-  const minFree = Math.min(rootFreeGB ?? Infinity, varFreeGB ?? Infinity);
+  const minFree = tmpFreeGB ?? Infinity;
 
   if (minFree < 8) {
     console.log('  WARNING: Low disk space (<8 GB). Clean swap files MANUALLY before running.');
-    // cleanPISwapFiles(); // DISABLED — crashes PI if it has images open
-
-    // Re-check after cleaning
-    const rootAfter = getFreeGB('/');
-    const varAfter = getFreeGB('/var');
-    const minAfter = Math.min(rootAfter ?? Infinity, varAfter ?? Infinity);
-
-    if (rootAfter !== null) console.log(`  / (data) after cleanup: ${rootAfter} GB free`);
-    if (varAfter !== null) console.log(`  /var (swap) after cleanup: ${varAfter} GB free`);
-
-    if (minAfter < 5) {
-      console.error('  FATAL: Less than 5 GB free after cleanup — aborting to prevent data loss');
+    if (minFree < 5) {
+      console.error('  FATAL: Less than 5 GB free — aborting to prevent data loss');
       process.exit(1);
     }
   }
 
-  return { rootFreeGB, varFreeGB };
+  return { tmpFreeGB };
 }
 
 // ============================================================================
@@ -154,7 +129,7 @@ async function main() {
   console.log('='.repeat(60));
 
   // Pre-flight: disk space check only — swap cleanup DISABLED (crashes PI)
-  checkDiskSpace();
+  await checkDiskSpace();
   // cleanPISwapFiles(); // DISABLED — too risky while PI is running
 
   // Bridge

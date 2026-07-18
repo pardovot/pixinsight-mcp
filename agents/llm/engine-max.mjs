@@ -9,7 +9,7 @@
 // 4. Claude Code handles the tool loop automatically
 // 5. Returns JSON result
 // ============================================================================
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -121,6 +121,8 @@ export class MaxAgent {
       const spawnEnv = { ...process.env };
       delete spawnEnv.ANTHROPIC_API_KEY;  // Force OAuth/Max subscription auth
       this._log(`[DEBUG] Args count: ${args.length}, system prompt length: ${this.systemPrompt?.length}`);
+      // cross-spawn resolves the `claude.cmd` shim on Windows and escapes args
+      // (incl. the multi-line system prompt) correctly across platforms.
       const claude = spawn('claude', args, {
         cwd: process.cwd(),
         env: spawnEnv,

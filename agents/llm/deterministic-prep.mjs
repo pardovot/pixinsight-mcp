@@ -12,7 +12,7 @@ import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { freeGB, tmpPath, pjsrPath } from '../ops/platform.mjs';
 import { getStats, measureUniformity } from '../ops/stats.mjs';
 import { setiStretch } from '../ops/stretch.mjs';
 import { runGC } from '../ops/gradient.mjs';
@@ -171,7 +171,7 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   const targetName = F.targetName || 'Target';
   const hasL = !!(F.L?.trim());
   const hasHa = !!(F.Ha?.trim());
-  const outputDir = opts.outputDir || '/tmp/prep';
+  const outputDir = opts.outputDir || tmpPath('prep');
   fs.mkdirSync(outputDir, { recursive: true });
 
   // Extract stretch parameters from processing profile (via brief)
@@ -187,15 +187,11 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
   // DISK SPACE CHECK — refuse to start if < 20 GB free
   // ========================================================================
   try {
-    const dfOut = execSync('df -k /').toString();
-    const lines = dfOut.trim().split('\n');
-    const cols = lines[1].split(/\s+/);
-    const availKB = parseInt(cols[3], 10);
-    const availGB = availKB / 1024 / 1024;
-    if (availGB < 5) {
+    const availGB = await freeGB(outputDir);
+    if (availGB !== null && availGB < 5) {
       throw new Error(`Not enough disk space: ${availGB.toFixed(1)} GB free (minimum: 5 GB). Clean up ~/.pixinsight-mcp/runs/ or prep-cache.`);
     }
-    log(`[PREP] Disk space: ${availGB.toFixed(1)} GB free`);
+    if (availGB !== null) log(`[PREP] Disk space: ${availGB.toFixed(1)} GB free`);
   } catch (e) {
     if (e.message.includes('Not enough disk space')) throw e;
     log(`[PREP] Disk space check skipped: ${e.message}`);
@@ -496,11 +492,11 @@ export async function runDeterministicPrep(ctx, config, opts = {}) {
 
   // Write curve data to temp file (too large for inline PJSR)
   const spccCurvesModule = await import('../../scripts/spcc-curves.mjs');
-  const spccDataPath = '/tmp/spcc-curves-prep.json';
+  const spccDataPath = tmpPath('spcc-curves-prep.json');
   fs.writeFileSync(spccDataPath, JSON.stringify(spccCurvesModule.default));
 
   const spccR = await ctx.pjsr(`
-    var json=File.readLines('${spccDataPath}').join('');
+    var json=File.readLines('${pjsrPath(spccDataPath)}').join('');
     var c=JSON.parse(json);
     var P=new SpectrophotometricColorCalibration;
     P.applyCalibration=true;
