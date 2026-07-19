@@ -3,6 +3,7 @@
 // ----------------------------------------------------------------------------
 #include "MCPWatcherInterface.h"
 #include "MCPWatcherProcess.h"
+#include "Version.h"
 
 #include <pcl/Console.h>
 
@@ -142,6 +143,7 @@ void MCPWatcherInterface::UpdateStatus()
 
 MCPWatcherInterface::GUIData::GUIData( MCPWatcherInterface& w )
 {
+   Version_Label.SetText( "v" MCPWATCHER_VERSION_STR "  (built " MCPWATCHER_BUILD_STR ")" );
    Status_Label.SetText( "Watcher: stopped" );
    Count_Label.SetText( "Processed: 0 command(s)" );
 
@@ -158,6 +160,7 @@ MCPWatcherInterface::GUIData::GUIData( MCPWatcherInterface& w )
 
    Global_Sizer.SetMargin( 8 );
    Global_Sizer.SetSpacing( 6 );
+   Global_Sizer.Add( Version_Label );
    Global_Sizer.Add( Status_Label );
    Global_Sizer.Add( Count_Label );
    Global_Sizer.AddSpacing( 4 );
@@ -176,7 +179,7 @@ bool MCPWatcherInterface::Launch( const MetaProcess& P, const ProcessImplementat
    if ( GUI == nullptr )
    {
       GUI = new GUIData( *this );
-      SetWindowTitle( "MCP Watcher" );
+      SetWindowTitle( "MCP Watcher " "v" MCPWATCHER_VERSION_STR );
       UpdateStatus();
    }
    dynamic = false;

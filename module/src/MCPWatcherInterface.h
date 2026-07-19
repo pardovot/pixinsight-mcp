@@ -57,6 +57,7 @@ private:
       GUIData( MCPWatcherInterface& );
 
       VerticalSizer Global_Sizer;
+         Label      Version_Label;
          Label      Status_Label;
          Label      Count_Label;
          HorizontalSizer Buttons_Sizer;
