@@ -331,9 +331,17 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
   server.tool(
     "run_process",
     "Run any PixInsight process by its class name (e.g. BlurXTerminator, " +
-      "AutomaticBackgroundExtractor, PixelMath). Use get_process_parameters to " +
-      "discover the settings for a process. This is the general mechanism — prefer " +
-      "it over process-specific tools.",
+      "AutomaticBackgroundExtractor, PixelMath). This is the general mechanism — prefer " +
+      "it over process-specific tools.\n" +
+      "METHOD (do this, don't run blindly):\n" +
+      "1. First call get_process_parameters(processId) to see settings + defaults, and " +
+      "reason about what they mean (recall or check pixinsight.com/doc).\n" +
+      "2. Watch for no-op output defaults: some processes only make a side product unless " +
+      "you configure output. E.g. AutomaticBackgroundExtractor defaults to targetCorrection=0 " +
+      "(no correction) — to actually correct the image pass { targetCorrection: 1, replaceTarget: true }.\n" +
+      "3. Pick settings from measuring THIS image (get_image_statistics / run_script), not fixed defaults.\n" +
+      "4. After running, ALWAYS re-measure. If stats are byte-identical to before, it was a no-op — " +
+      "stop and fix the output config; do not build the next step on it.",
     {
       processId: z.string().describe("Process class name, e.g. 'BlurXTerminator'"),
       viewId: z.string().optional().describe("Target view id (omit for a global process)"),

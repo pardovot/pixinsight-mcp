@@ -179,7 +179,7 @@ bool MCPWatcherInterface::Launch( const MetaProcess& P, const ProcessImplementat
    if ( GUI == nullptr )
    {
       GUI = new GUIData( *this );
-      SetWindowTitle( "MCP Watcher " "v" MCPWATCHER_VERSION_STR );
+      SetWindowTitle( "MCP Watcher" );
       UpdateStatus();
    }
    dynamic = false;
