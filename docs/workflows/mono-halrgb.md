@@ -1,244 +1,331 @@
-> ⚠️ PROVISIONAL — NOT LIVE-SOURCE-VERIFIED. This run exhausted the session WebSearch budget (200/200) and authoritative pages 403d, so unlike the other category playbooks it rests on domain knowledge + adversarial cross-check only, NOT verified 2025-2026 sources. Physics/method is sound; all numeric coefficients and PixelMath strings are [UNSOURCED] starting points to tune. Re-verify (browser or a fresh run when the search budget resets) before treating as final. Builds on docs/workflows/mono-lrgb.md.
+> Provenance: 17-leg multi-agent web research (2025-2026) + adversarial recency/evidence/stage verification. Builds on docs/workflows/mono-lrgb.md (LRGB spine). Replaces the earlier PROVISIONAL draft. Ha never touches SPCC. Confidence/consensus/contested tags preserved; unsourced numbers flagged [UNSOURCED].
 
 # MONO-HaLRGB PixInsight Processing Playbook
 
-*Assumes the full LRGB master is already built and processed per the standard mono-LRGB workflow (calibrate → register all channels to one common reference → integrate → DBE/GradientCorrection → BXT → deconv/denoise → SPCC on RGB → stretch → LRGBCombination → curves). This playbook covers only the Ha additions layered onto that spine.*
-
-**Sourcing caveat (applies globally):** Every finding below was generated in a session where the WebSearch budget was exhausted (200/200) and all authoritative pages (RC Astro, Light Vortex, PixInsight docs/forum, SetiAstro, Cloudy Nights) returned 403 / SSL / 404. **No claim was verified against a live 2025-2026 source.** Content rests on domain knowledge + adversarial cross-check only. Physics/geometry claims are robust; all numeric coefficients and exact PixelMath strings are **illustrative starting points, NOT source-quoted** — flagged inline as `[UNSOURCED]`.
+*This playbook assumes you already have a fully processed mono-LRGB master (registration, integration, gradient removal, deconvolution, SPCC, LRGBCombination, and stretch all done on the L/R/G/B broadband data). It covers ONLY the additions needed to fold a monochrome Ha master into that image. One rule threads through everything: **Ha is a single narrowband channel and NEVER touches SPCC** — there is nothing to photometrically color-calibrate in one line-emission channel. SPCC runs on RGB only, before Ha is injected; the Ha track runs in parallel through the same operator order as L and joins at/after the LRGBCombination point.*
 
 ---
 
-## Part 1 — When HaLRGB Is Worth It
+## Part 1 — When HaLRGB Is Worth It (Target Selection + Cost/Benefit)
 
-| | |
-|---|---|
-| **Track** | Ha-track (linear) |
-| **Goal** | Decide whether to spend the Ha integration + processing risk |
-| **Rule** | **Strong yes:** emission nebulae (diffuse HII, SNRs, planetaries) and star-forming galaxies with HII knots (M31/M33/M81/M101, NGC spirals). **Skip:** reflection/dust-only nebulae, star clusters, old-population/elliptical galaxies — Ha adds noise + magenta risk for little payoff. |
-| **Cost/benefit** | Worth it only if the Ha master is **high-SNR**. A thin/undersampled Ha master mostly imports noise and tempts an overdone magenta result. Marginal value rises under light-polluted skies and for faint outer emission; from a dark site plain LRGB may already capture the brightest Ha. |
-| **Confidence** | Medium |
-| **Consensus** | Consensus. **Objectively better** (physics): a 3-7 nm narrowband filter demonstrably raises emission-line SNR/contrast vs the ~100 nm broadband R by rejecting continuum + light pollution. The *degree* of enhancement is preference. |
+Adding Ha is a go/no-go decision made **before** any blend math. Add Ha only when the target has real ionized-hydrogen line emission **AND** your Ha master clears an SNR bar.
 
----
+**Worth it (real 656.28 nm line emission):**
+- Emission nebulae — HII regions, supernova remnants, planetary nebulae.
+- Galaxies **with** active HII knots / star-forming regions — Ha brightens red HII detail that the broadband R buries under continuum.
 
-## Part 2 — The Separate Ha-TRACK (linear, parallel to the LRGB spine)
+**Skip (continuum / scattered-starlight sources, near-zero payoff):**
+- Pure reflection / dust nebulae.
+- Star clusters.
+- Elliptical galaxies.
 
-Ha runs as its own monochrome linear track, in the same operator order as L, and **never touches SPCC** (single narrowband channel — no color to photometrically calibrate; SPCC's star-color database assumes broadband).
+The physics is objective and target-conditional. On line-emission targets a 3–7 nm Ha filter passes essentially all of the 656.28 nm recombination signal while rejecting roughly 90–97% of the broadband skyglow, light pollution, and moonlight that a ~100 nm broadband R admits — so line-to-background contrast and achievable SNR-per-hour are far higher, and Ha stays usable under a bright (broadband) Moon. **The flip side is equally objective:** on continuum-dominated sources the narrowband filter discards most of the source's photons, so SNR is *worse*. "Narrowband beats broadband R" is not a universal win — it is conditional on the target actually emitting the line.
 
-### 2.1 Register + shared crop
-| | |
-|---|---|
-| **Goal** | Pixel-for-pixel alignment of Ha to L/R/G/B |
-| **Process** | StarAlignment Ha to the **same common reference as L/R/G/B** (typically the L master — best star SNR). Do NOT register Ha only to R. Then apply **ONE identical DynamicCrop** (same rectangle/instance) to all five masters. |
-| **Ha-specific** | Ha is grayscale — no debayer, no SPCC. If Ha stars too sparse to solve: raise star-detection sensitivity, enlarge match tolerance, or use a distortion model. |
-| **Verify** | Blink Ha vs R/L, or PixelMath `R - Ha_normalized` and check stars have no residual halo offset **before** any subtraction/blend. |
-| **Confidence / Consensus** | Medium (thin sourcing) / consensus. **Objectively required** — per-pixel subtraction and blending are geometrically meaningless without pixel correspondence + identical dimensions. Misregistration → uncorrectable star rings, red/pink fringing, ghosting in L. |
+**Filter-bandwidth contrast (sourced):** 3 nm gives the strongest skyglow rejection but needs longer subs; 5–7 nm balances contrast vs throughput; 10–12 nm gives more throughput but weaker sky suppression. Narrower helps **only** line-emission targets.
 
-### 2.2 Gradient / background removal (linear)
-DBE / ABE, or **GradientCorrection** / GraXpert, Subtraction mode. Place samples on true background only (Ha has strong faint nebulosity). NB gradients are usually milder than broadband but still correct for a seamless blend. *Recency note: GradientCorrection is increasingly favored over DBE/ABE for linear gradients.*
+**Gate on the Ha master itself.** If the registered Ha frame is thin/noisy, blending it degrades the clean LRGB — it injects magenta mottling and star halos for little gain. No published numeric SNR threshold exists **[UNSOURCED]**; measure by eye:
 
-### 2.3 BlurXTerminator (linear, BEFORE stretch)
-| | |
-|---|---|
-| **Objective constraint** | BXT **must** run on linear data (RC Astro design requirement) — not preference. |
-| **Modes** | (a) *Correct Only* (fix PSF/aberrations, no sharpen), or (b) modest deconv: `Sharpen Stars ~0.25-0.50, Sharpen Nonstellar ~0.7-0.9` `[UNSOURCED numbers]`. Ha's high structural contrast sharpens well; keep star sharpening low to avoid dark rings. |
-| **Confidence** | Medium. Mode choice is preference; the linear requirement is objective. |
+- On the registered **linear** Ha, use Statistics or a preview over blank sky vs signal. If the nebula-to-background contrast is weak, or mottling is visible after a test stretch, either **denoise Ha hard first** (star-removal → NoiseXTerminator) or abstain.
+- Distinguish signal from a copy of R: real HII filaments/shells that R lacks = proceed; a frame that looks like a fainter copy of R (same stars, same galaxy core continuum) = skip.
 
-### 2.4 NoiseXTerminator
-After BXT (linear or early nonlinear). Ha SNR per structure is often lower than L, so denoise matters — but don't over-smooth; the Ha detail is the payload. Moderate denoise + modest detail recovery.
+The blend point sits **at/after LRGBCombination**. (Note a legitimate method fork: some workflows, including the Astrodoc NBRGBCombination recipe, combine before final color balance rather than strictly after — a fork in *where in the color pipeline*, not a change to this go/no-go gate.)
 
-### 2.5 Stretch
-GeneralizedHyperbolicStretch (preferred, best control on high-contrast Ha) or STF-guided HT / MaskedStretch. Match the Ha stretch roughly to the L/RGB stretch so blended tonal ranges are comparable — or keep it slightly gentler and control strength at blend time.
+**Recency note:** none of this go/no-go logic is new. Continuum subtraction and Ha→R/Ha→L blending predate the 2024–2026 AI-tool era; do not treat them as a recent development. Only the *denoise-the-thin-Ha* path benefits from recent tools (SXT/NXT, 2023+).
 
-> **Do NOT** run SCNR on mono Ha (no green). **Keep the master LINEAR through the point of continuum subtraction** (Part 3) — subtraction is only physically valid in linear flux.
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Go/no-go gate | Decide if Ha earns its place | Visual + Statistics on linear Ha; no new process | high | consensus |
 
 ---
 
-## Part 3 — Continuum Subtraction (isolate pure Ha from broadband R)
+## Part 2 — The Separate Ha Linear Track
 
-| | |
-|---|---|
-| **Track** | blend-into-R (also feeds L) |
-| **Goal** | An Ha master = broadband continuum (all red starlight incl. stars) + the Ha line. R contains that *same* continuum. Blending raw Ha double-counts continuum → bloated stars → overdone magenta. Subtraction removes the broadband component so you add **only genuine line emission**. |
-| **Core expression** | `Ha_pure = max(0, Ha - k*R)` — clip negatives; some add a small pedestal. Both images **must be registered and on comparable linear scale** first. |
-| **Confidence** | Medium. **Objectively better** than blending raw Ha (correctness point — prevents double-counting + star bloat), not aesthetic. |
+Process Ha as its own monochrome **linear** master, in the **same operator order as L**, up to (but not including) the blend. Everything that is a per-pixel arithmetic relationship between masters — continuum subtraction, LinearFit, blends — MUST happen while linear, because stretching is a nonlinear remap that breaks flux proportionality and makes scale factors meaningless.
 
-### How to get the scale factor `k` (per-image — never hard-code)
-1. **Star-nulling (empirical, most intuitive):** stars are pure continuum with no Ha line. Tune `k` up/down until stellar residuals vanish (~0) in `Ha_pure`. This is the practical target/check.
-2. **LinearFit (robust, automatable):** LinearFit R to Ha → slope `m`, offset `b`; then `Ha_pure = Ha - (m*R + b)`. Handles differing background/scale automatically. What most tools wrap.
-3. **Bandwidth/flux ratio (physical):** `k` ≈ ratio of effective passband transmission (NB Ha passes far less continuum), so `k` is typically well below 1. Verify empirically.
+1. **StarAlignment** — register Ha to the **ONE common reference** used for L/R/G/B (the luminance / common reference frame), **not** to the red master. Every master must share an identical pixel grid; continuum subtraction and the blends are per-pixel math. Registered images inherit the reference resolution.
+2. **DynamicCrop** — apply the **single shared crop instance** (built from the registration overlap/rejection map) to Ha exactly as to the other masters, so all share identical width/height/origin. (Astrodoc: apply to the unselected image first, then the selected.)
+3. **Gradient removal** — in **subtraction mode** (additive sky gradient), preferring DBE (the sourced "preferred" NB tool); GradientCorrection / MultiscaleGradientCorrection also work on mono/NB. Gradient-correct **both Ha and RGB before any subtraction** — residual gradients in either transfer into the other. If you use GraXpert, run it per grayscale channel; its AI is trained on OSC/RGB and underperforms on raw NB.
+4. **BlurXTerminator on LINEAR Ha** — **Correct-Only** if you only want star-shape correction with zero sharpening; or modest full deconvolution leaning on **Sharpen Nonstellar** for high-contrast Ha structure (filaments/shells), which sharpens without ringing. Keep stellar sharpen conservative to protect faint stars. L (and, by analogy, a detail-carrying Ha) can be deconvolved harder than RGB. Exact numeric defaults are **[UNSOURCED]** (RC Astro page inaccessible) — start modest, increase until detail resolves without ringing/dark-halo overshoot; zoom to 1:1 on a bright rim to verify.
+5. **NoiseXTerminator** — after BXT, still linear.
+6. **Stretch** — only now. Use **GHS** (or HistogramTransformation / MaskedStretch), matching Ha's stretch target to L/RGB so the later blend needs no gross rescaling. GHS D/b/SP are set by measuring the Ha histogram, **not** a fixed number **[method-sourced]**.
 
-Typical tuned range `k ~0.3-1.0` `[UNSOURCED heuristic]` — data/filter dependent, **not a constant. Do not fabricate a value.**
+**Never SPCC** and **never SCNR** a mono Ha channel — SCNR removes a color (typically green) from an RGB image and is undefined on a single-channel master.
 
-### Tool options
-- **PixelMath** — manual `Ha - k*R` (full control).
-- **NBRGBCombination** (native) — supply broadband + NB bandwidth params + scale weights; does **bandwidth-ratio weighted addition**, *not* an explicit per-pixel `Ha - k*R` subtraction. *(Adversarial correction: the finding's gloss slightly overstates this — treat NBRGB as continuum-*aware* scaled combine, not rigorous subtraction.)*
-- **SetiAstro Suite Continuum Subtraction** — automates regression/star-nulling `[existence/algorithm UNVERIFIED]`.
+Before any blend, put Ha on a comparable linear scale to R/L via LinearFit and/or continuum subtraction (Part 3), verified by star-nulling.
 
-**Contested:** clip-negatives vs pedestal (minor); PixelMath vs NBRGB vs SetiAstro (preference, not correctness).
+**Contested within this track:** Correct-Only vs full deconvolution depends on Ha's role — if Ha only feeds a Ha→R color boost, minimal sharpening avoids injecting deconvolution artifacts into the blend; if Ha carries structural detail meant for luminance (Ha→L), modest nonstellar-sharpen deconvolution is warranted.
+
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Ha linear prep | Ha ready to blend, same grid/scale as L | StarAlignment → DynamicCrop → DBE/GC/MGC → BXT (linear) → NXT → GHS | medium | consensus |
 
 ---
 
-## Part 4 — Blending Ha into RED (HaRGB)
+## Part 3 — Continuum Subtraction (Isolating Pure Ha)
 
-| | |
-|---|---|
-| **Goal** | Boost nebular Ha color naturally without magenta |
-| **Confidence** | Medium / consensus on principle |
+**Do NOT blend the raw Ha master.** The R master carries the SAME broadband continuum (starlight, reflection nebulosity, galaxy disk) that the Ha filter also records, and Ha filters leak some continuum too. Blending raw Ha **double-counts** that continuum, producing star bloat, halos, and magenta star cores. This is objective physics, not preference.
 
-### Methods (most-natural → crudest)
-1. **Continuum-subtracted PixelMath addition (recommended):**
-   - Isolate: `Ha_only = max(0, Ha - k*R)`, tune `k ~0.7-1.0` (after comparable scaling) so star cores/faint bg → ~0. `[UNSOURCED]`
-   - Blend: `R' = R + a*Ha_only`, strength `a ~0.5-0.8`. `[UNSOURCED]`
-   - **Anti-magenta tweak:** also push a fraction into green: `G' = G + (0.15..0.25)*a*Ha_only` — turns pure-red/magenta into the natural salmon/pink of real HII regions. `[UNSOURCED]`
-2. **NBRGBCombination** — built-in continuum-aware weighted combine. Expects **LINEAR** data, run **after SPCC, before stretch**. Best low-effort route; can look blocky/magenta on defaults.
-3. **screen:** `R' = R + Ha - R*Ha` — gentler, self-limiting near white.
-4. **max / lighten:** `R' = max(R, Ha)` — simplest but overdrives, bloats Ha stars — the **classic overdone-magenta cause. Not recommended.**
+**The formula (run on registered, linear masters):**
 
-### Avoiding overdone magenta (decision rules)
-- Continuum-subtract — add only genuine excess (the main fix; magenta comes from double-counting red SPCC already balanced).
-- Distribute ~0.2× Ha into green → shifts magenta toward natural salmon.
-- Keep strength moderate (`a ~0.5-0.8`); tune `k` so stars/bg don't inflate.
-- **Work starless** (see Part 6).
-- Tame residual reds afterward with a saturation mask / curves, not by killing the blend.
+```
+Ha_pure = Ha - k * (R - med(R))
+```
+
+Subtract the **median-referenced** continuum `(R - med(R))`, **not** raw R — this preserves Ha's own background/sky level and avoids importing R's gradient. `k` is almost always **< 1**, because the NB bandpass is far narrower than the BB bandpass.
+
+**Never hard-code `k`.** Derive it per-image, three ways (preferred → fallback):
+
+- **(A) Photometric flux-fit — preferred, automatable.** **PhotometricContinuumSubtraction (PCS)** (Charles Hagen / NightPhotons, released Oct 1 2024) detects stars in the broadband image, filters to the brightest below a peak threshold, runs DynamicPSF on the matched stars in **both** Ha and R, uses integrated **flux** (not peak), and fits the linear NB-vs-BB relationship — **the slope is `k`**. Defaults: **Maximum Stars 400, Maximum Peak 0.8** (avoid saturated stars), optional flux plot for verification. Works on linear masters, including starless pairs. Non-linear scatter → raise max-stars. **NarrowbandNormalization** (native process, Blanshan/Cranfield) and **SetiAstro's Continuum Subtraction Utility** are alternative photometric solvers. Note: PCS is often described loosely as "star-flux fit"; the source wording is photometric/optimal weights.
+- **(B) LinearFit regression.** Run LinearFit with R as reference against Ha to obtain slope + offset, then apply `Ha - slope*(R - med(R))`. Verify by star-nulling.
+- **(C) Physical bandwidth/flux ratio — starting estimate only.** `f ≈ (NB_bandpass × NB_subexposure) / (BB_bandpass × BB_subexposure)`. The source explicitly calls this "only an approximation" needing visual tweak. For Ha/SII use broadband **red** as continuum; for OIII use **green**.
+
+**Verify by star-nulling** (the universal check): at high stretch on a star field, stars in `Ha_pure` should sink to background. **Dark holes/rings = `k` too high** (over-subtraction); **residual white star cores = `k` too low** (under-subtraction). Also confirm the background median is unchanged (no gradient imported from R).
+
+**Clip vs pedestal:** after subtraction, over-subtracted stars/background can go negative. A hard clip `max(0, expr)` zeroes them but can leave black cores/rings and truncate noise statistics; **median-referenced subtraction + a light `k` (optionally a small pedestal) preserves background noise and the NB sky level** and is preferred. Exact pedestal value is **[UNSOURCED / reasoning-based]**.
+
+**NBRGBCombination is a bandwidth-weighted COMBINE, not a clean per-pixel subtraction:** `((HA*R_bw) - (R*HA_bw)) / (R_bw - HA_bw)`, weights = filter bandwidths in nm. Lowering the R_bandwidth parameter (e.g. 100 → 40) makes continuum removal more aggressive. Treat it as a convenience combine, not as continuum isolation.
+
+**Recency note:** continuum subtraction is decades old (Ha-minus-scaled-R for galaxies/nebulae). What is genuinely new (2024–2026) is **automation of `k`** — PCS, NarrowbandNormalization, SASpro. Automation is more repeatable, not a different result: a well-star-nulled manual `k` is equivalent. SASpro's Continuum Subtraction Utility is confirmed to exist (SetiAstro), but its internal algorithm is **unverified**.
+
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Continuum subtraction | Isolate pure line emission; null stars | PCS / NarrowbandNormalization / LinearFit / PixelMath | high | consensus |
 
 ---
 
-## Part 5 — Blending Ha into LUMINANCE
+## Part 4 — Blending Ha into RED
 
-| | |
-|---|---|
-| **Goal** | Optional, gentle SNR/detail boost — NOT the primary way to show Ha |
-| **When it helps** | Recover **faint structure** L genuinely lacks: outer nebulosity, faint filaments, low-surface-brightness shells (regions where Ha out-SNRs broadband L). |
-| **When it hurts** | Dumping raw/heavy Ha into L is the biggest cause of the flat/lifeless look: L carries all detail+brightness, so globally brightening emission regions crushes their saturation and shrinks LRGBCombination's chrominance headroom. |
-| **Method** | Blend on the L track **before LRGBCombination**, using **lighten/screen (never raw max)** so you never darken existing L: `L' = max(L, k*Ha_scaled)` or softer screen `~((~L)*(~(k*Ha)))`, `k ~0.2-0.5` `[UNSOURCED]`, Ha pre-scaled via LinearFit to L. Keep **stars out** of the Ha contribution (starless Ha or star mask) to avoid dark rings/halos. Blend both-linear (best SNR math) or both-nonlinear (easier tuning). |
-| **Confidence** | Medium. **Objectively true** (signal theory): adding higher-SNR Ha to noise-limited L raises luminance SNR there. Also objective: raising a pixel's lightness reduces its max achievable saturation → heavy Ha-to-L necessarily desaturates bright emission. *How much* to blend is preference. |
+Two-stage, measure → configure → verify. **Stage 1 is Part 3** (continuum-subtract to `Ha_only`). **Stage 2 adds to red**, ordered most-natural → crudest:
 
-> *Adversarial refinement:* saturation is not strictly monotonic in lightness (LRGBCombination works in CIE L\*a\*b\*/L\*c\*h\*, not HSL; saturation peaks near mid-tones), but the practical conclusion — all-Ha-into-L looks flat — holds either way.
+**(a) PixelMath additive (most natural).** Add `Ha_only` to R, distributing a fraction off pure-red so oversaturated crimson becomes the natural salmon/pink of real HII:
 
-### Ha-to-R vs Ha-to-L vs both
-- **Ha→R** changes **hue/saturation** (nebula color); needs continuum subtraction to avoid magenta.
-- **Ha→L** changes **detail/brightness** (structure, SNR); no hue shift, but erodes saturation if overdone.
-- **Complementary, not substitutes. Mature approach = both:** strong-but-clean Ha in R for color + light Ha in L for faint-structure SNR, then use LRGBCombination Saturation/Lightness sliders + chrominance NR to recover the saturation the L-blend costs. **If forced to pick one for a natural result: favor Ha→R, use Ha→L sparingly.**
+```
+R' = R + a * (Ha_only - med(Ha_only))
+G' = G + <green_fraction> * a * (Ha_only - med(Ha_only))
+B' = B  (unchanged, or a tiny blue fraction)
+```
+
+- The **NightPhotons sourced defaults** put the non-red fraction into **blue**: `R=1.0, G=0.0, B=0.05, m=0.999`, via `$T*~R + R*mtf(~m,(mtf(m,$T)+mtf(m,NB)))`. Increase B/G for a pinker tone.
+- A widely-circulated **community convention** instead pushes **~20% into green** (`G' = G + 0.2*a*Ha_only`) to mute magenta. **Be honest about which this is:** distributing *some* fraction off pure-red is defensible and physically motivated; but "~20% into *green* specifically" is a competing **taste convention**, not objective — the cited primary (NightPhotons) puts it in blue, not green. Pick one, tune by eye.
+- **Blend strength `a` is [UNSOURCED] — TUNE.** Start low (`a ≈ 0.2–0.4`), raise until HII structure reads clearly without the red channel clipping.
+
+**(b) NBRGBCombination script** (guided UI, linear, before stretch). Astrodoc starting points: **RGB bandwidth ~200**; **Ha bandwidth = your filter** (e.g. 7 nm Baader); **Ha scale ~1.2 for galaxies, ~4 for bright emission nebulae** — these are START values; run ColorCalibration after.
+
+**(c) Screen or max/lighten blends (crudest).** Prone to blowing out cores; use only for a quick look. Example RGB-mode feel: `R*0.6 + Ha*0.4`.
+
+**Add Ha to R, NEVER as the primary of B.** Ha is a red line (656 nm); Hβ belongs in blue but is faint and already in your broadband.
+
+**Decision rules (from the image):**
+1. **Magenta/red rings around stars** → continuum subtraction too weak; **raise `k`** (Part 3).
+2. **Overall hue** — real HII should read salmon/pink, not saturated crimson or magenta; if magenta, increase the green (or blue) fraction, or lower `a`.
+3. **Core clipping** — inspect brightest nebula cores in readout; back off `a` if clipped.
+
+**Why magenta arises** (two complementary framings, not exclusive): (A) *physical* — hydrogen emits ~80% red (Ha) + ~20% blue (Hβ), so red+blue without green reads magenta; the fix is adding green. (B) *workflow* — SPCC already balanced red, so dumping un-subtracted Ha over-drives red and, with existing blue, tips to magenta; the fix is continuum subtraction + moderate `a`. The exact green fraction (0.2 common) is an empirical tuning target, not rigorously derived.
+
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Ha → R | Show Ha as HII color, natural hue | PixelMath additive (green/blue push) / NBRGBCombination / screen | high | consensus |
+
+---
+
+## Part 5 — Blending Ha into LUMINANCE (Optional, Gentle)
+
+Ha→L is **optional and gentle**, not the primary way to show Ha. The primary display path is chrominance/red (Part 4). Ha→L is a **targeted SNR/detail boost** only for faint outer nebulosity and filaments where Ha genuinely out-SNRs L. The safest default (the Vicent Peris school): keep Ha entirely on the chrominance/red side and leave L untouched; add Ha→L only if faint structure demands it.
+
+**Method:**
+1. **LinearFit Ha with L as the reference — non-negotiable precondition.** Peris: the max/mix operators fail "if the brightness and background illumination level in the narrowband image don't fit perfectly to the same properties of the broadband image."
+2. **Blend operator = screen or lighten/max (per-pixel brighter wins), NOT a fixed 50/50 average.** Peris: naive 50% R + 50% Ha "does degrade terribly the signal-to-noise ratio of the nebulas" — averaging two channels of unequal SNR discards signal.
+3. Do it **BEFORE LRGBCombination, on starless masters** (stars excluded via SXT/StarNet) so star cores aren't blown and Ha's black star-holes don't punch L.
+4. **Strength/opacity is [UNSOURCED].** After LinearFit, blend via screen or a lighten expression (`L2 = L + w*(Ha-L)*(Ha>L)` style); start `w` small (~0.2–0.4) and raise only until faint filaments emerge WITHOUT flattening the red nebula core. A CN-community "~30% opacity Ha-Red as luminance" figure appeared in search snippets but the source did not load — **treat as illustrative [UNSOURCED / needsBrowser]**. Note: Peris **Ha-boost factors of ×2..×12 are for the CHROMINANCE/HaGB red path**, NOT luminance weights — do not reuse them here.
+
+**When it helps vs hurts (objective signal theory):**
+- **Helps** where Ha out-SNRs L over emission nebulosity — a lighten/max blend selects the higher-signal pixel, raising local luminance SNR (same reason L boosts SNR in LRGB). Region-dependent.
+- **Hurts** over stars, continuum objects, galaxy cores, and star fields, where L wins — so the blend must be **selective**.
+- **Desaturation is a mathematical consequence, not taste:** LRGBCombination substitutes lightness (L*) while keeping chrominance (a*, b*). Inflating L in red-nebula regions raises L* under fixed a*, b*, lowering the chroma/lightness ratio → lower perceived saturation and a flat look. This is why Peris matches luminances in a linear (gamma = 1.0) working space.
+
+**Verify** (star-nulling doesn't apply to an L blend): overlay L-blended vs un-blended; the delta should be confined to faint nebulosity, background must not lift, bright star cores unchanged.
+
+**Ha→R vs Ha→L vs both (contested):** R (chrominance) is the correct place to **show** Ha as color; L is optional detail/SNR only. Whether to touch L at all is genuinely contested — Peris school keeps Ha purely chrominance for cleanest SNR and color fidelity; detail-first imagers use Ha (or an Ha-R blend) as luminance and accept a saturation-recovery step. **Consensus warning: do HaLRGB, not LHaRGB** — if Ha deepens R but L is left un-boosted, LRGBCombination's flatter L flattens the very Ha you added → saturation loss. Keep what's in L consistent with what's in the color.
+
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Ha → L | Optional SNR/detail on faint structure | LinearFit(ref=L) → screen/lighten (starless) → LRGBCombination | medium | mixed |
 
 ---
 
 ## Part 6 — Star & Color Handling
 
-| | |
-|---|---|
-| **Core pitfall** | Ha into R (or L) boosts stars in red only → pink/magenta cores + red halos; Ha PSF often larger → halo mismatch with RGB stars. |
-| **Confidence** | Medium |
+Ha is red-only, so blending raw Ha into R (or L) lifts star **cores in red only** → pink/magenta cores; and because the **Ha PSF is usually LARGER** than the broadband PSF, you also get a **red halo** ringing each star. Two independent, complementary fixes — best used together:
 
-**Two mutually-reinforcing fixes (both objectively target the physical cause, not cosmetic):**
-1. **Continuum subtraction before any blend** (Part 3) — removes broadband stellar signal so blending `Ha_net` inherently suppresses magenta stars.
-2. **Starless split** (popular modern method): StarXTerminator → remove stars → do ALL Ha enhancement on the **starless** nebula (into starless R and/or L) → screen the **unmodified RGB stars** back on top last: `result = max/screen(starless_blended, stars_original)`. Fully decouples nebula Ha boost from star color.
+**(1) Continuum-subtract the Ha (Part 3)** so stellar (continuum) signal nulls and only true nebular Ha remains. This addresses the *mechanical cause* of magenta cores and red halos: the broadband R already contains the Ha photons, so blending raw Ha double-counts stellar continuum. (Sources call subtraction "mandatory"; that is slightly overstated — some workflows add raw Ha to R and compensate in the blend — but the double-counting physics strongly favors subtracting first.)
 
-*Adversarial correction:* the starless split is **increasingly common / a popular modern approach**, NOT a proven universal "default consensus" — NBRGBCombination and direct continuum-subtracted PixelMath blends remain common. AI star removal is a genuine capability gain, but "dominant default" overstates it.
+**(2) Starless-split.** SXT the RGB into starless + stars, add the continuum-subtracted Ha only to the **STARLESS** nebula, then **screen the unmodified broadband stars back LAST** so Ha never touches a star — making the core/halo problem structurally impossible.
 
-**Blend mechanics that protect stars:** gate the add with a nebula/range mask or inverse star mask so star cores are excluded: `R_new = R + Ha_net` or `max(R, Ha_net)`, masked.
+- **Screen recombine:** `combine(starless, stars, op_screen())` i.e. `~((~starless)*(~stars))`, after both are stretched.
+- **SXT on LINEAR data, subtraction method, unscreen = OFF** (matches project rule — unscreen only on nonlinear). Objectively better star-color accuracy than nonlinear/unscreen extraction. Take final stars from the **tighter-PSF broadband** channel, never from Ha.
 
-**Residual magenta cleanup (Ha problem is MAGENTA, not green — plain SCNR won't fix):**
-- **Invert → SCNR (remove green) → Invert back** — mechanically correct: magenta = inverse of green.
-- Or CurvesTransformation hue channel rotating magenta → red; or star-mask desaturation; or reduce Ha opacity.
+Starless-split is **popular and increasingly the default** (driven by SXT making star removal trivial), but **NOT the single agreed method** — continuum subtraction on the full image remains canonical, and AstroBackyard explicitly frames the RGB-star swap as *optional* (neutral/white Ha stars are a legitimate choice). The two approaches are complementary, not competing.
 
-**Star reduction:** if Ha halos bloated, run star reduction on Ha before blend, or always take stars from the tighter-PSF (usually RGB/L broadband) channel. **Do SPCC on RGB before any Ha injection** so star colors are set first.
+**Residual magenta cleanup:** `Invert → SCNR(Green, Average Neutral, Amount=1.0) → Invert`. Valid because magenta is the exact hue-wheel complement of green; works linear or nonlinear. If too strong, lower Amount or gate with a star mask.
+
+**Caveat on "leak Ha into blue":** some formulas suggest adding a small blue fraction (e.g. `B + 0.2*Boost*(Ha_clean - med)`) to keep emission from going pure-red. **Be careful — this is physically off:** Ha is 656 nm red and does not belong in blue, and adding red-signal Ha to blue **increases** magenta (R+B), rather than preventing it. Treat any blue-leak as an optional taste knob, not a magenta fix; the real anti-magenta levers are continuum subtraction (kill the star contribution) and the green push (Part 4).
+
+**Decision rule:** zoom to bright stars. Pink/magenta cores and/or a red ring = Ha continuum leaking onto stars → sample star pixels in `Ha_clean`; if stars are still visible, **raise `k`** (or fix filter-bandwidth values) until star residual nulls. After blend, star cores should keep their SPCC-calibrated broadband color, halos should not be red-fringed, and nebular Ha should brighten. Prefer the starless-split whenever you already run SXT (this pipeline does).
+
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Stars & color | No magenta cores / red halos | Continuum sub + SXT starless-split + screen recombine; invert-SCNR-invert cleanup | high | mixed |
 
 ---
 
-## Part 7 — WHERE Blending Sits in the Sequence
+## Part 7 — WHERE the Blend Sits: Linear vs Nonlinear Camp
 
-Ha→R has **two valid, genuinely contested placements**:
+**Neither camp is objectively better** — it is a control-vs-fidelity preference tradeoff, and both are in wide current use.
 
-- **(A) LINEAR blend** (classic NBRGB school): after RGB is DBE'd + SPCC-calibrated but **still linear**, combine continuum-subtracted Ha into R (NBRGBCombination), then stretch the combined RGB as one image. Keeps star colors/channel relationships consistent through a single stretch. Physically correct (subtraction meaningful in linear flux).
-- **(B) NONLINEAR blend** (modern PixelMath school): stretch RGB and Ha separately to matched brightness, then blend into R post-stretch via lighten/max/screen. Finer, tunable control; easier to keep natural / judge magenta by eye. Trades single-stretch consistency for per-step control.
+- **LINEAR camp** — combine while still linear (NBRGBCombination / Vicent Peris method, or PixelMath add-back), **after DBE + SPCC on RGB**, then a **single global stretch** of the combined image. Favored by Peris and Ron Brecher for maximal photometric consistency. Pick it when you want one global stretch across the frame.
+- **NONLINEAR camp** — stretch RGB and Ha **separately** to matched brightness, then blend **post-stretch** via PixelMath lighten/max/screen. Favored in newer PixelMath tutorials. Pick it when you want independent control of Ha contrast / star-size vs the broadband stretch. Requires both images stretched to comparable brightness and matched backgrounds first (LinearFit or manual). Screen `~(~RGB * ~Ha)` protects highlights; max/lighten is simplest; additive gives the most punch but risks clipping.
 
-**Neither is objectively better — pick ONE camp, do not double-add.**
+**Firm consensus points — identical in BOTH camps (objective, evidence-backed):**
+1. **Exclude Ha from SPCC entirely.** A single narrowband channel has no color ratios to photometrically calibrate — definitional, not stylistic. SPCC runs on RGB only, at/after the combine point.
+2. **Continuum-subtract Ha BEFORE any blend** (Part 3) so you inject only true line emission, not leaked starlight/red-continuum. Peris: mandatory, because un-subtracted Ha enhances red areas that are stellar halos/continuum, not nebulae.
+3. **Route pure Ha primarily into R** — Ha = 656.3 nm, deep red. This is objective. Optionally leak ~20% into B to represent Hβ, but **this blue share is a cosmetic approximation, NOT objective** — Hβ is not actually measured; some workflows put Ha into R only. Treat it as a taste knob.
+4. **Do the Ha→L enhancement in the nonlinear domain feeding LRGBCombination** (Part 5), not as a second linear injection.
+5. **Do NOT double-add.** If Ha goes into L (luminance) AND into R (chrominance), that is the intended **two-place** injection — do not additionally re-inject the same Ha into the combined result a third time.
 
-Ha→L is added to L **nonlinearly, BEFORE LRGBCombination**, via max/lighten/screen so structure brightens without darkening.
+**Manual linear add-back (Galactic Hunter, PixelMath, background preserved via `-med`):**
+```
+R'       = $T + B * (Ha_pure - med(Ha_pure))
+B'(blue) = $T + B * 0.2 * (Ha_pure - med(Ha_pure))
+G'       = $T   (unchanged)
+```
+`B` (blend/boost strength) example = 2 is **illustration only — TUNE [UNSOURCED]**. The 0.2 blue coefficient is the Hβ approximation (see the caveat above).
 
-**Firm consensus regardless of camp:** (1) Ha excluded from SPCC; (2) continuum-subtract before blending; (3) Ha into R not B (blue is the other magenta source); (4) Ha→L done nonlinear before LRGBCombination.
+**Decision rules:** red stellar halos → continuum subtraction insufficient, raise `k`/re-fit. Bloated/magenta stars → `B` too high or Ha not subtracted. Background red cast → `-med()` term omitted or backgrounds not matched (LinearFit). Nebula flat / Ha lost → `B` too low or Ha crushed in the stretch. Choosing camp: need independent Ha star-size/contrast tuning → nonlinear; want one global stretch and tightest photometric consistency → linear.
+
+**Recency note:** the linear-vs-nonlinear debate is long-running and unresolved by recency. Continuum subtraction is long-standing (Bornemann's ContinuumSub dates to 2017; Peris's NBRGBCombination predates 2020). The genuinely recent development is **PCS (~2024) automating the scale factor** — a tooling improvement, not a change to the math. Newer PixelMath-post-stretch tutorials reflect **preference/control, not proven superiority**.
+
+| Track | Goal | Process | Confidence | Consensus |
+|---|---|---|---|---|
+| Blend placement | Choose linear vs nonlinear injection | NBRGBCombination / PixelMath add-back (linear) OR lighten/max/screen (nonlinear) | high | mixed |
 
 ---
 
 ## Recommended Full HaLRGB Sequence
 
 ```
-LRGB spine (assumed done): calibrate → register ALL masters (L,R,G,B,Ha)
-   to one common reference (linear) → integrate → shared DynamicCrop.
+# PREREQUISITE: fully processed mono-LRGB master (SPCC + LRGBCombination + stretch done, RGB only)
 
-RGB path:
-  1. RGB linear prep: DBE/GradientCorrection → SPCC (Ha EXCLUDED).
+PART 1 — GO/NO-GO GATE
+  1. Confirm target has real Ha line emission (emission neb / HII knots) — else STOP.
+  2. Stretch a preview of the registered linear Ha: clean signal over smooth bg = proceed;
+     grainy/mottled = denoise-first (star-remove -> NXT) or abstain.
 
-Ha path (parallel, linear):
-  2. Ha linear prep: DBE/GradientCorrection → BXT (linear) → NXT.
-     (optional StarXTerminator → starless Ha)
-  3. Continuum-subtract:  Ha_pure = max(0, Ha - k*R)
-     (k via star-nulling or LinearFit; tune so stars → ~0)
+PART 2 — HA LINEAR TRACK (parallel to L, same operator order)
+  3. StarAlignment: register Ha to the COMMON reference (luminance frame, not R).
+  4. DynamicCrop: apply the ONE shared crop instance to Ha.
+  5. DBE / GradientCorrection / MGC (subtraction mode) on Ha AND RGB before any subtraction.
+  6. BlurXTerminator on LINEAR Ha (Correct-Only, or modest Sharpen-Nonstellar).
+  7. NoiseXTerminator (still linear).
+  # keep Ha LINEAR — do NOT stretch yet if combining in the linear camp.
 
-Blend into RED — pick ONE camp:
-  4a. LINEAR camp:  NBRGBCombination on linear RGB (after SPCC, before stretch)
-  4b. NONLINEAR camp: stretch RGB + Ha_pure to matched brightness, then
-      R' = R + a*Ha_pure   (a~0.5-0.8),   G' = G + 0.2*a*Ha_pure
+PART 3 — CONTINUUM SUBTRACTION (linear, registered)
+  8. Derive k: PCS (Max Stars 400, Max Peak 0.8) / NarrowbandNormalization / LinearFit(R->Ha)
+     / bandwidth-ratio first guess.
+  9. Ha_pure = Ha - k*(R - med(R)).   Median-referenced, NOT raw R.
+ 10. VERIFY star-nulling: stars sink to bg (dark holes = k too high; white cores = k too low);
+     background median unchanged. Prefer median-sub + light k over hard clipping.
 
-  5. Stretch RGB (if not already stretched in 4a).
+PART 4/5/6/7 — BLEND (pick a camp)
+ [LINEAR camp]
+ 11a. NBRGBCombination (RGB bw ~200; Ha bw = filter; Ha scale ~1.2 galaxies / ~4 neb) OR
+      PixelMath add-back: R'=R+a*(Ha_pure-med); G'=G+<green_frac>*a*(...); B ~ untouched.
+ 12a. ColorCalibration / single global stretch of the combined image.
+ [NONLINEAR camp]
+ 11b. Stretch Ha (GHS) to match RGB brightness; LinearFit backgrounds.
+ 12b. PixelMath lighten/max/screen Ha_pure into R (color) and optionally L (detail).
 
-Luminance:
-  6. Build/stretch L; blend starless Ha_pure into L (nonlinear):
-     L' = max(L, k*Ha_scaled)   (k~0.2-0.5) — faint structure only.
+ 13. (Optional) Ha -> L: LinearFit(ref=L), screen/lighten at low w, STARLESS, pre-LRGBCombination.
+     Do HaLRGB not LHaRGB — keep L consistent with the color you added.
+ 14. STAR HANDLING: work starless (SXT linear, unscreen OFF); add Ha only to starless layer;
+     screen unmodified broadband stars back LAST.
+ 15. Residual magenta: Invert -> SCNR(green) -> Invert.
+ 16. VERIFY: star cores keep broadband color, no red halos, nebula Ha brightened, bg neutral.
 
-Combine:
-  7. LRGBCombination: apply enhanced L' to Ha-enhanced RGB.
-
-Cleanup:
-  8. Star handling (starless split re-add if used) → invert-SCNR-invert for
-     residual magenta → curves/saturation → done.
+# Ha NEVER enters SPCC at any step.  Do NOT double-add (two-place R+L injection is the max).
 ```
-
-*All coefficients `[UNSOURCED starting points]` — tune per dataset.*
 
 ---
 
 ## (a) What Changed Recently — and Is It Actually Better?
 
-| Change (2024→2026) | Actually better? |
-|---|---|
-| **BXT / SXT / NXT AI models, GraXpert, GradientCorrection, NarrowbandNormalization** | **Ergonomics only.** Makes preparing a clean linear Ha master + handling stars easier and sharper. Does **not** change *when* Ha is worth it or the blend math. This is a real capability gain (input quality), not fashion. |
-| **Shift away from NBRGBCombination → continuum-subtracted PixelMath / SetiAstro scripts** | Better *for a natural look* — but because **continuum subtraction is correct signal-physics**, NOT because it's newer. Continuum subtraction is a **long-standing** technique (classic PixelMath, Peris/Cannistra lineage); framing it as "the biggest 2024→2026 change" is one narrative, not established fact. |
-| **Starless split via StarXTerminator** | Genuine improvement for star-color preservation (removes the star-color mismatch entirely). **Increasingly common / popular**, but "dominant default consensus" is overstated — verify. |
-| **SetiAstro Suite (SASpro) continuum-subtraction / NB-normalization tools** | Real, popular convenience wrappers around the same isolate-then-add math. Specific tool names/params/attribution (Franklin Marek "popularized" it) **UNVERIFIED**. |
+| Development | Date | Actually new? | Better? |
+|---|---|---|---|
+| Continuum subtraction (Ha − k·R) | decades old (arXiv 2013; pro Ha imaging far older) | **No** — recency trap. Standard in PixInsight for years | N/A — it is the baseline technique |
+| NBRGBCombination (Vicent Peris method) | pre-2020 | No — legacy built-in | Fine, but tends to bloat/tint stars vs continuum subtraction |
+| Bornemann ContinuumSubtraction script | 2017 | No | Manual/scripted `k`; superseded in convenience by PCS |
+| **PhotometricContinuumSubtraction (PCS)** | **Oct 1 2024** | **Yes — genuinely new tooling** | **Yes for repeatability** — solves `k` from star flux vs eyeballing; result equals a well-star-nulled manual `k` |
+| NarrowbandNormalization (native) | recent (Blanshan/Cranfield) | Yes | Comparable photometric solver; no consensus winner vs PCS/SASpro |
+| SetiAstro Continuum Subtraction Utility | recent | Yes (exists; internal algorithm unverified) | Automates the same idea; unverified method |
+| BlurXTerminator 2.0 / AI4 | **Dec 14 2023** (some sources say Dec 17) | **NOT 2024–2026** — recency trap | Improves star/aberration handling; relevant to Ha *prep*, not to the blend/color pitfall |
+| Starless-split default (via SXT) | SXT ~2022+, AI updates through 2024–2025 | Popularity surge is recent; the screen-blend idea is old | Convenient and structurally clean, but **not mandatory** — full-image continuum subtraction remains canonical |
 
-**Net:** fundamentals (Ha's role, continuum subtraction, SPCC exclusion) are stable and unchanged. "Newer" is genuinely better only on prep-tool ergonomics + AI star removal. Do not treat the recency narrative as evidence of superior method.
+**Bottom line:** the *math* of HaLRGB is old and unchanged; the genuine 2024–2026 gain is **one-click photometric solving of the continuum scale factor** (removing guesswork on `k`). Newer tools do not produce a fundamentally better *image* than a careful manual workflow — they make the correct workflow faster and more repeatable. Blend *strength* remains pure preference.
 
 ---
 
 ## (b) Contested / Open Decisions
 
-1. **Ha→R vs Ha→L vs both** — target-dependent preference. Mature = both; if picking one, favor R.
-2. **Linear vs nonlinear Ha→R blend timing** — NBRGB (linear, single-stretch consistency) vs PixelMath (nonlinear, per-step control). Both valid; no objective winner.
-3. **Continuum subtraction vs low-opacity screen/lighten without formal subtraction** — both camps report natural results.
-4. **Synthetic super-luminance (L+Ha, ± R)** vs keeping L purely broadband — SNR/detail gain vs saturation cost.
-5. **Blend expression** — additive vs screen vs lighten/max; and clip-negatives vs pedestal.
-6. **`k` and `a` values** — data/filter dependent; no universal constant. Tune per image.
-7. **Any Ha into blue?** — most say no or trace only.
-8. **NBRGBCombination vs PixelMath vs SetiAstro** — workflow preference; PixelMath+starless argued better at avoiding magenta stars, but not universally.
+1. **Linear vs nonlinear blend placement** — genuinely contested. Linear camp (NBRGBCombination / add-back, single global stretch; Peris, Brecher) for photometric consistency vs nonlinear camp (matched-brightness lighten/max/screen post-stretch) for independent star/contrast control. No source shows one objectively beats the other.
+2. **Ha → L at all?** Peris school keeps Ha purely chrominance (cleanest SNR, most color-faithful); detail-first imagers use Ha/Ha-R as luminance and accept a saturation-recovery step.
+3. **Ha → R vs Ha → L vs both** — R is correct for *color*; L is optional detail/SNR only; "both" is common but sequence/consistency (HaLRGB not LHaRGB) matters.
+4. **Green push amount and where the off-red fraction goes** — ~20% into *green* (community convention) vs the NightPhotons default of a small fraction into *blue* (`G=0, B=0.05`). Not rigorously derived; empirical tuning target. (And a naive blue leak can *worsen* magenta — see Part 6.)
+5. **Continuum subtraction vs plain LinearFit-scaled blend** — subtraction removes the broadband/star component so only line emission blends (cleaner over galaxies/star fields); many nebula workflows blend Ha directly with a scale factor.
+6. **Starless-split as the dominant default?** Popular and increasingly go-to, but not unanimous; full-image continuum subtraction is still canonical, and RGB-star swap is framed as optional (white Ha stars are legitimate).
+7. **Clip-negatives vs pedestal** after subtraction — reasoning-based, weakly sourced; median-sub + light `k` preferred over aggressive clip.
+8. **Blend into blue for Hβ?** Some route ~20% to blue to represent Hβ; others use R only. Hβ is not actually measured — cosmetic approximation, not objective.
+9. **Correct-Only vs full deconvolution on Ha** — depends on whether Ha only feeds a color boost (minimal) or carries structural detail for luminance (modest nonstellar-sharpen).
+10. **Native NarrowbandNormalization vs PCS vs SetiAstro** — all recent and capable; no consensus winner.
+11. **Exact `k`/`Q`/`f` and blend strength `a`/`B`** — inherently per-dataset. Anyone quoting a universal constant is wrong; measure → configure → verify every time.
+12. **SASpro Continuum Subtraction Utility's internal algorithm** — tool confirmed to exist; method (linear fit? photometric? clip behavior?) unverified.
 
 ---
 
 ## (c) Consolidated needsBrowser List
 
-**All returned 403 / SSL failure / 404 this session — none verified. Priority: fetch to confirm 2025-2026 wording, current tool defaults, and exact expressions/coefficients before treating any number as canonical.**
+The following URLs were inaccessible during research (403 / SSL / not loaded). Re-fetch each in a browser to confirm the noted claim before treating it as source-verified.
 
-- `https://www.rc-astro.com/wp/2023/03/13/halrgb-combination/` (403) — HaLRGB combination guidance
-- `https://www.rc-astro.com/blurxterminator/` and `/tips/` (403) — current linear NB / Correct-Only settings
-- `https://www.rc-astro.com/resources/StarXTerminator/` (403) — starless-split workflow
-- `https://www.lightvortexastronomy.com/tutorial-combining-ha-and-oiii-data-into-lrgb-images.html` (SSL)
-- `.../tutorial-combining-narrowband-with-broadband.html` (SSL) — NB linear prep + continuum subtraction
-- `.../tutorial-combining-monochrome-ha-with-rgb.html` (SSL) — Ha→R PixelMath expressions
-- `.../tutorial-combining-and-blending-narrowband-Ha-into-LRGB.html` (SSL)
-- `https://pixinsight.com/doc/tools/NBRGBCombination/NBRGBCombination.html` (403) — internal bandwidth/scaling math + default bandwidth values
-- `https://pixinsight.com/forum/` (403) — 2025-2026 HaLRGB / k-factor / LinearFit / magenta-star threads
-- `https://www.setiastro.com/` (404/portfolio only) — SASpro Continuum Subtraction + NarrowbandNormalization tool names, params, algorithm, release dates
-- `https://www.cloudynights.com/topic/807650-adding-ha-to-rgb-in-pixinsight/` (403) — PixelMath vs NBRGBCombination consensus
-
-**Specific items to confirm in-browser:** (1) current recommended BXT/NXT NB defaults; (2) whether GradientCorrection has officially superseded DBE/ABE for linear gradients; (3) NBRGBCombination default bandwidth values + whether it does any real subtraction; (4) SetiAstro Continuum Subtraction algorithm + correct tool names/attribution; (5) any dated evidence that starless-split is truly "dominant" vs merely popular.
+| URL | What to confirm |
+|---|---|
+| https://pixinsight.com/tutorials/narrowband/ | **Primary source.** Vicent Peris "New Approach to Combination of Broadband and Narrowband Data" — that continuum subtraction is "mandatory," the exact `k` formula, that it is done linear before stretch, and the max/mix operators + Ha-boost ×2..×12 (chrominance) wording |
+| https://pixinsight.com/examples/M31-Ha/ | Worked M31 Ha example: continuum-subtraction `k` factor and combine placement |
+| https://www.rc-astro.com/software/bxt/ | BXT amount / Sharpen Stars / Sharpen Nonstellar defaults; per-channel narrowband guidance |
+| https://www.rc-astro.com/blurxterminator-2-0-ai4-release/ | Exact BXT AI4 release date (Dec 14 vs Dec 17 2023) and change list |
+| https://www.rc-astro.com/starxterminator-usage-notes/ | SXT linear vs nonlinear, unscreen-off, subtraction extraction, screen recombine |
+| https://www.lightvortexastronomy.com/tutorial-combining-lrgb-with-narrowband.html | Canonical LRGB+NB tutorial: Ha→L and Ha→R placement, bandwidth-weighted subtraction formulas |
+| https://www.lightvortexastronomy.com/tutorial-preparing-monochrome-images-for-colour-combination-and-further-post-processing.html | Luminance as alignment reference; LinearFit for mono color-combination |
+| https://chaoticnebula.com/pixinsight-lrgbha-combination/ | LRGB+Ha PixelMath walkthrough; blend factors; L-can-run-higher-strength claim |
+| https://chaoticnebula.com/how-to-reduce-blurring-in-astrophotos-with-blurxterminator/ | Confirm L can be deconvolved harder than RGB |
+| https://www.highpointscientific.com/astronomy-hub/post/astro-photography-guides/ha-rgb-pixinsight | Screen-blend nonlinear formula `~(~BB*~NB)`; confirm post-stretch placement |
+| https://www.cloudynights.com/topic/822468-proper-blending-of-ha-w-lrgb/ | Consensus on Ha/LRGB blending |
+| https://www.cloudynights.com/forums/topic/751206-how-to-combine-ha-with-lrgb-in-galaxies/ | Galaxy-specific Ha consensus (scale, subtlety) |
+| https://www.cloudynights.com/forums/topic/787918-ha-as-luminance/ | Ha-as-luminance opinions; the ~30% opacity figure |
+| https://www.cloudynights.com/forums/topic/725936-problems-combining-ha-and-red-channel-in-pixinsight/ | Magenta/halo cause consensus |
+| https://www.cloudynights.com/topic/946231-what-is-the-best-way-to-add-continuum-ha-to-rgb/ | Best-practice add-Ha-to-RGB consensus |
+| https://www.cloudynights.com/forums/topic/993260-pixinsight-help-needed-lrgb-ha-processing-for-reflection-nebula/ | Reflection-nebula Ha edge case (Part 1 skip logic) |
+| https://app.astrobin.com/forum/topic/201571/.../incorporating-ha-into-rgb-images | Linear vs nonlinear Ha-into-RGB consensus |
+| https://app.astrobin.com/forum/topic/138868/new-script-photometriccontinuumsubtraction-pixinsight | PCS mechanism: star detection, DynamicPSF flux pairs, linear flux-ratio fit |
+| https://app.astrobin.com/forum/topic/183748/.../continuum-subtraction-in-nebulas | Continuum subtraction practice in nebulae |
+| https://pixinsight.com/forum/index.php?threads/adding-ha-to-red-channel-and-luminance-channel.18021/ | On-topic: Ha into R AND L; linear vs nonlinear consensus |
+| https://pixinsight.com/forum/index.php?threads/mtf-and-adding-continuum-subtracted-nb-to-bb.20074/ | `mtf()` nonlinear-domain matching math |
+| https://pixinsight.com/forum/index.php?threads/combining-ha-with-lum.9145/ | Ha-into-luminance discussion |
+| https://pixinsight.com/forum/index.php?threads/adding-ha-to-nebula-image.3279/ | Adding Ha to nebula images |
+| https://pixinsight.com/forum/index.php?threads/using-pixelmath-to-get-rid-of-magenta-stars-in-sho-hubble-palette-narrowband.7128/ | PixelMath magenta-star removal |
+| https://remoteastrophotography.com/using-scnr-with-an-inverted-image-to-reduce-or-eliminate-magenta-stars-in-narrowband-images/ | invert → SCNR(green) → invert method (page now 410) |
+| https://chaoticnebula.com/pixinsight-lrgbha-combination/ | LRGB+Ha combination formulas and blend factors |
+| https://jonrista.com/the-astrophotographers-guide/pixinsights/narrow-band-combinations-with-pixelmath-hoo/ | PixelMath narrowband combination reference |
+| http://www.robgendlerastropics.com/HARGB.html | Classic HaRGB luminance-blend guidance |
+| https://www.setiastro.com/pjsr-scripts | SetiAstro Continuum Subtraction Utility + NBRGB Combination — confirm algorithm |
+| https://telescope.live/tutorials/mastering-h-alpha-contrast-guide-pixinsights-continuum-subtraction-script | Continuum-subtraction script walkthrough |
+| https://www.youtube.com/watch?v=QVYksOHlwHk | SASpro Galaxy Continuum Subtraction example — confirm tool behavior |
+| https://arxiv.org/pdf/1311.3665 | Skewness Transition Analysis — evidence continuum subtraction is long-standing |
+| https://github.com/areinartz/PI_ContinuumSubtraction | Long-standing continuum-subtraction script (recency-trap reference) |

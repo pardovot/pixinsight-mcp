@@ -13,8 +13,8 @@ each kind of data). This README lets a fresh session continue the series at full
 | OSC-RGB (broadband) | `osc-rgb.md` | ✅ verified |
 | mono-RGB | `mono-rgb.md` | ✅ verified |
 | mono-LRGB | `mono-lrgb.md` | ✅ verified |
-| mono-HaLRGB | `mono-halrgb.md` | ⚠️ **PROVISIONAL** — web-search budget was exhausted mid-run, so NOT live-source-verified. Physics sound; numbers `[UNSOURCED]`. **Re-run to replace.** |
-| mono-SHO | — | ⬜ not started (the hardest / most-contested; narrowband palette). The Tier-1 capstone. |
+| mono-HaLRGB | `mono-halrgb.md` | ✅ verified (17-leg re-run; replaced the provisional draft; surfaced PhotometricContinuumSubtraction/PCS Oct-2024) |
+| mono-SHO | `mono-sho.md` | ✅ verified (Tier-1 capstone; narrowband palette) |
 
 Tier-2 (later): OSC-SHO/foraxx, hybrid mono-Ha+OSC, dual-scope blends.
 
