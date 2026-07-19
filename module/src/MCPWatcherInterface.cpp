@@ -22,14 +22,14 @@ MCPWatcherInterface::MCPWatcherInterface()
    TheMCPWatcherInterface = this;
 }
 
-void MCPWatcherInterface::EnsureTimerConfigured()
+void MCPWatcherInterface::EnsureTimer()
 {
-   if ( m_timerConfigured )
+   if ( !m_timer.IsNull() )
       return;
-   m_timer.SetInterval( m_intervalSec );
-   m_timer.SetPeriodic( true );
-   m_timer.OnTimer( (Timer::timer_event_handler)&MCPWatcherInterface::e_Timer, *this );
-   m_timerConfigured = true;
+   m_timer = new Timer;
+   m_timer->SetInterval( m_intervalSec );
+   m_timer->SetPeriodic( true );
+   m_timer->OnTimer( (Timer::timer_event_handler)&MCPWatcherInterface::e_Timer, *this );
 }
 
 MCPWatcherInterface::~MCPWatcherInterface()
@@ -66,7 +66,7 @@ InterfaceFeatures MCPWatcherInterface::Features() const
 
 void MCPWatcherInterface::StartWatcher()
 {
-   if ( m_timer.IsRunning() )
+   if ( IsRunning() )
       return;
 
    if ( !m_poller.Initialize() )
@@ -75,18 +75,18 @@ void MCPWatcherInterface::StartWatcher()
       return;
    }
 
-   EnsureTimerConfigured();
-   m_timer.Start();
+   EnsureTimer();
+   m_timer->Start();
    Console().NoteLn( "<end><cbr>[MCP Watcher] Started (non-blocking). PixInsight stays usable." );
    UpdateStatus();
 }
 
 void MCPWatcherInterface::StopWatcher()
 {
-   if ( !m_timer.IsRunning() )
+   if ( m_timer.IsNull() || !m_timer->IsRunning() )
       return;
 
-   m_timer.Stop();
+   m_timer->Stop();
    Console().NoteLn( "<end><cbr>[MCP Watcher] Stopped. Processed "
                      + String( m_poller.TotalProcessed() ) + " command(s)." );
    UpdateStatus();
@@ -98,7 +98,7 @@ void MCPWatcherInterface::StopWatcher()
 // ----------------------------------------------------------------------------
 void MCPWatcherInterface::e_Timer( Timer& sender )
 {
-   if ( &sender != &m_timer )
+   if ( m_timer.IsNull() || &sender != m_timer.Ptr() )
       return;
 
    int n = m_poller.ProcessPending( /*maxPerTick=*/10 );
@@ -130,11 +130,12 @@ void MCPWatcherInterface::UpdateStatus()
    if ( GUI == nullptr )
       return;
 
-   GUI->Status_Label.SetText( m_timer.IsRunning() ? "Watcher: running (non-blocking)"
-                                                  : "Watcher: stopped" );
+   bool running = IsRunning();
+   GUI->Status_Label.SetText( running ? "Watcher: running (non-blocking)"
+                                      : "Watcher: stopped" );
    GUI->Count_Label.SetText( "Processed: " + String( m_poller.TotalProcessed() ) + " command(s)" );
-   GUI->Start_Button.Enable( !m_timer.IsRunning() );
-   GUI->Stop_Button.Enable( m_timer.IsRunning() );
+   GUI->Start_Button.Enable( !running );
+   GUI->Stop_Button.Enable( running );
 }
 
 // ----------------------------------------------------------------------------
