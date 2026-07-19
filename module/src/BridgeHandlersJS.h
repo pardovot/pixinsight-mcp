@@ -3,7 +3,8 @@
 #ifndef __BridgeHandlersJS_h
 #define __BridgeHandlersJS_h
 namespace pcl {
-static const char* const MCP_HANDLERS_JS = R"MCPJS(
+static const char* const MCP_HANDLERS_JS =
+R"MCPJS(
 // ============================================================================
 // Command Handlers
 // ============================================================================
@@ -84,6 +85,8 @@ function handleCloseImage(command) {
       throw new Error("Image not found: " + viewId);
    }
    window.forceClose();
+)MCPJS"
+R"MCPJS(
    return {
       status: "success",
       outputs: {},
@@ -164,6 +167,8 @@ function handleRemoveGradient(command) {
       outputs: {},
       message: "Gradient removed from " + command.targetView + " (ABE, degree " + P.polyDegree + ")"
    };
+)MCPJS"
+R"MCPJS(
 }
 
 function handleColorCalibrate(command) {
@@ -244,6 +249,8 @@ function handleStretchImage(command) {
 }
 
 function handleApplyCurves(command) {
+)MCPJS"
+R"MCPJS(
    var P = new CurvesTransformation;
    var curvePoints = command.parameters.curvePoints || [[0, 0], [1, 1]];
    var channel = command.parameters.channel || "rgb";
@@ -324,6 +331,8 @@ function handleDeconvolve(command) {
    return {
       status: "success",
       outputs: {},
+)MCPJS"
+R"MCPJS(
       message: "Deconvolved " + command.targetView
    };
 }
@@ -391,6 +400,67 @@ function handleBlendNarrowband(command) {
    };
 }
 
+// ============================================================================
+// XTerminator suite (BlurXTerminator / NoiseXTerminator / StarXTerminator)
+// ============================================================================
+
+function handleRunBXT(command) {
+   var p = command.parameters || {};
+   var P = new BlurXTerminator;
+   if (p.correctOnly !== undefined) P.correct_only = !!p.correctOnly;
+   if (p.sharpenStars !== undefined) P.sharpen_stars = p.sharpenStars;
+   if (p.sharpenNonstellar !== undefined) P.sharpen_nonstellar = p.sharpenNonstellar;
+   if (p.adjustHalos !== undefined) P.adjust_halos = p.adjustHalos;
+   if (p.lumOnly !== undefined) P.lum_only = !!p.lumOnly;
+   if (p.nonstellarPsfDiameter !== undefined) {
+)MCPJS"
+R"MCPJS(
+      P.auto_nonstellar_psf = false;
+      P.nonstellar_psf_diameter = p.nonstellarPsfDiameter;
+   }
+   var view = findViewById(command.targetView);
+   if (!view) throw new Error("View not found: " + command.targetView);
+   P.executeOn(view);
+   return {
+      status: "success",
+      outputs: {},
+      message: "BlurXTerminator applied to " + command.targetView + (p.correctOnly ? " (correct only)" : "")
+   };
+}
+
+function handleRunNXT(command) {
+   var p = command.parameters || {};
+   var P = new NoiseXTerminator;
+   if (p.denoise !== undefined) P.denoise = p.denoise;
+   if (p.detail !== undefined) P.detail = p.detail;
+   if (p.iterations !== undefined) P.iterations = p.iterations;
+   var view = findViewById(command.targetView);
+   if (!view) throw new Error("View not found: " + command.targetView);
+   P.executeOn(view);
+   return {
+      status: "success",
+      outputs: {},
+      message: "NoiseXTerminator applied to " + command.targetView
+   };
+}
+
+function handleRunSXT(command) {
+   var p = command.parameters || {};
+   var P = new StarXTerminator;
+   // stars=true generates a separate stars image; result view becomes starless.
+   if (p.generateStars !== undefined) P.stars = !!p.generateStars;
+   if (p.unscreen !== undefined) P.unscreen = !!p.unscreen;
+   if (p.overlap !== undefined) P.overlap = p.overlap;
+   var view = findViewById(command.targetView);
+   if (!view) throw new Error("View not found: " + command.targetView);
+   P.executeOn(view);
+   return {
+      status: "success",
+      outputs: {},
+      message: "StarXTerminator applied to " + command.targetView
+   };
+}
+
 function handleRunScript(command) {
    var code = command.parameters.code;
    // Capture console output
@@ -425,6 +495,8 @@ function findWindowByViewId(viewId) {
          }
       }
    }
+)MCPJS"
+R"MCPJS(
    return null;
 }
 
@@ -470,11 +542,17 @@ function dispatchCommand(command) {
    if (tool === "combine_lrgb") return handleCombineLRGB(command);
    if (tool === "blend_narrowband") return handleBlendNarrowband(command);
 
+   // XTerminator suite
+   if (tool === "run_bxt") return handleRunBXT(command);
+   if (tool === "run_nxt") return handleRunNXT(command);
+   if (tool === "run_sxt") return handleRunSXT(command);
+
    // Script execution
    if (tool === "run_script") return handleRunScript(command);
 
    throw new Error("Unknown tool: " + tool);
 }
-)MCPJS";
+)MCPJS"
+;
 } // namespace pcl
 #endif
