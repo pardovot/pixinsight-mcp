@@ -1,6 +1,17 @@
-# Implementation Roadmap
+> # ⚠️ STALE, UPSTREAM DOC. DO NOT FOLLOW.
+> This is **aescaffre's original pre-implementation plan**, kept only for historical reference.
+> It **contradicts this fork's architecture**: Phase 5 below prescribes **per-process tools**
+> (`remove_gradient`, `denoise`, `sharpen`, `deconvolve`, `combine_lrgb` …), the exact
+> anti-pattern this project **abandoned** in favour of the generic
+> **`run_process(processId, viewId, settings)` + `get_process_parameters`**.
+> Following this document has already caused a regression in another session.
+>
+> **Architecture + current rules → [`/CLAUDE.md`](../CLAUDE.md).**
+> (The active fixes/debt/automation plan is kept locally in `.claude/plans/`, gitignored, not in the repo.)
 
-## Phase 0 — Project Setup
+# Implementation Roadmap (upstream, historical)
+
+## Phase 0, Project Setup
 - [x] Create knowledge base documentation
 - [x] Create GitHub repository
 - [x] Define recipes catalog schema and design
@@ -9,7 +20,7 @@
 - [ ] Set up build tooling (esbuild or tsc)
 - [ ] Create bridge + catalog directory structure helper
 
-## Phase 1 — Proof of Concept (Bridge)
+## Phase 1, Proof of Concept (Bridge)
 **Goal**: One working end-to-end tool through the full stack.
 
 ### MCP Server
@@ -32,7 +43,7 @@
 - [ ] Test: ask Claude "What images are open in PixInsight?" -> get answer
 - [ ] Document the setup process
 
-## Phase 2 — Image Management + First Processing Tools
+## Phase 2, Image Management + First Processing Tools
 **Goal**: Open/save images and run basic post-processing operations.
 
 - [ ] `open_image` tool
@@ -43,7 +54,7 @@
 - [ ] `remove_gradient` tool (ABE)
 - [ ] `stretch_image` tool (HistogramTransformation / AutoHistogram)
 
-## Phase 3 — Recipes Catalog (Core)
+## Phase 3, Recipes Catalog (Core)
 **Goal**: Searchable recipe catalog with source attribution.
 
 ### Catalog Infrastructure
@@ -59,7 +70,7 @@
 - [ ] Each with full source attribution and step details
 - [ ] Validate recipes by executing them
 
-## Phase 4 — Recipe Import + Discovery
+## Phase 4, Recipe Import + Discovery
 **Goal**: AI can find and import new recipes from the web.
 
 ### On-Demand + Manual Import
@@ -79,7 +90,7 @@
 - [ ] Budget cap / rate limiting (max N LLM calls per run)
 - [ ] Freshness re-crawl (monthly schedule, optional)
 
-## Phase 5 — Recipe Execution Engine
+## Phase 5, Recipe Execution Engine
 **Goal**: Claude can execute a full recipe on user's data, step by step.
 
 - [ ] Implement `execute_recipe` tool
@@ -97,7 +108,7 @@
   - [ ] `combine_lrgb` tool (LRGBCombination)
   - [ ] `blend_narrowband` tool (PixelMath-based Ha/SII/OIII blending)
 
-## Phase 6 — Pre-Processing Tools (Direct Use)
+## Phase 6, Pre-Processing Tools (Direct Use)
 **Goal**: Full calibration-to-integration for users who want to go beyond WBPP.
 
 - [ ] `calibrate_frames` tool (ImageCalibration)
@@ -106,7 +117,7 @@
 - [ ] `integrate_frames` tool (ImageIntegration)
 - [ ] `evaluate_subframes` tool (SubframeSelector)
 
-## Phase 7 — Advanced Features
+## Phase 7, Advanced Features
 - [ ] `plate_solve` tool (ImageSolver)
 - [ ] `extract_channels` / `combine_channels` tools
 - [ ] `run_script` tool (arbitrary PJSR execution)
@@ -114,7 +125,7 @@
 - [ ] Image thumbnail preview as MCP resources
 - [ ] Migrate catalog to SQLite for performance
 
-## Phase 8 — Polish & Distribution
+## Phase 8, Polish & Distribution
 - [ ] Error messages with actionable guidance
 - [ ] Comprehensive logging
 - [ ] npm package for easy installation
@@ -122,7 +133,7 @@
 - [ ] User documentation / tutorial
 - [ ] Example workflows (narrowband LRGB, broadband LRGB, SHO palette, mosaic)
 
-## Phase 9 — Community & Portal (Future)
+## Phase 9, Community & Portal (Future)
 - [ ] Shared online recipe catalog (API-backed)
 - [ ] User contributions (submit recipes)
 - [ ] Recipe ratings and reviews

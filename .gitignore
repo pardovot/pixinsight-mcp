@@ -4,3 +4,6 @@ dist/
 *.js.map
 .env
 .DS_Store
+
+# Local planning docs (not for the repo)
+.claude/plans/
