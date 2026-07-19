@@ -1,0 +1,11 @@
+# Build artifacts
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+*-pxm.*
+/build/
+/x64/
+/Debug/
+/Release/
