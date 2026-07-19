@@ -81,7 +81,7 @@ PCL_MODULE_EXPORT int InstallPixInsightModule( int mode )
 {
    new pcl::MCPWatcherModule;
 
-   if ( mode == pcl::InstallMode::Install )
+   if ( mode == pcl::InstallMode::FullInstall )
    {
       new pcl::MCPWatcherProcess;
       new pcl::MCPWatcherInterface;

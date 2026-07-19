@@ -46,18 +46,21 @@ int BridgePoller::ProcessPending( int maxPerTick )
    if ( m_commandsDir.IsEmpty() )
       return 0;
 
+   // Snapshot matching command files first. HandleCommandFile() deletes files,
+   // so we must not mutate the directory while still iterating it.
+   StringList names;
+   FindFileInfo info;
+   for ( File::Find f( m_commandsDir + "/*.json" ); f.NextItem( info ); )
+      if ( !info.IsDirectory() )
+         names.Add( info.name );
+
    int processed = 0;
-
-   // Snapshot the current command files. Only *.json, oldest first is fine for
-   // MVP (the MCP bridge sends one command at a time and waits for its result).
-   StringList files = File::SearchDirectory( m_commandsDir + "/*.json" );
-
-   for ( const String& name : files )
+   for ( const String& name : names )
    {
       if ( processed >= maxPerTick )
          break;
 
-      String path = m_commandsDir + '/' + File::ExtractNameAndSuffix( name );
+      String path = m_commandsDir + '/' + name;
       try
       {
          HandleCommandFile( path );
