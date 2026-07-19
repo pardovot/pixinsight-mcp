@@ -146,7 +146,17 @@ newNB = ((NB * RGB_bandwidth) - (RGB * NB_bandwidth)) / (RGB_bandwidth - NB_band
 
 Example symbols `R_bandwidth=100`, `HA_bandwidth=7 (or 3)`. Relevant only when blending NB into a broadband RGB.
 
-> Provenance note: the "Foraxx" name is the Discord-handle branding of the modified-SHO variant (~2022–2023) built on the 2020 self-referential formulas; NarrowbandNormalization productizes that dynamic math into a GUI. A later Blanshan mtf-based "Foraxx" variant could not be source-loaded — flagged unverified, not reproduced.
+**Static "FORAX" (one x — Maxime Oudoux, ~2018)** `[SOURCED VERBATIM, browser-verified astroaf.space "WTF is FORAX?", Doug/AstroAF, 13 Jul 2025]` — a *static, linear-weighted* blend, NOT the dynamic mtf palette (see name-collision note):
+
+```
+R = SII·n + Ha·m
+G = Ha·n + OIII·m
+B = OIII          (n>m; example n=0.8, m=0.2 — tune to taste, NOT fixed)
+```
+
+Optional luminance blend the same author uses: `FORAX × ~(k - Lum)`, `k≈0.6` `[SOURCED example, tune]`. Author's final background-contrast tweak: `$T × (1 - (1 - $T)^2.2 × 0.3)` `[SOURCED example]`.
+
+> **Name-collision warning (browser-verified).** There are TWO distinct things sharing this name: **(1) "Foraxx" (two x)** = the *dynamic, per-pixel mtf* palette above (`Oiii^~Oiii` adaptive weights, ~2020, popularized via AutoIntegrate/NarrowbandNormalization), and **(2) "FORAX" (one x)** = Maxime Oudoux's *static linear-weighted* blend `rgb(SII·n+Ha·m, Ha·n+OIII·m, OIII)`, shared ~2018. They are different formulas with different behavior — do not conflate. The earlier "later Blanshan mtf-based Foraxx variant" that research flagged for `astroaf.space` was a **wrong expectation**: that page documents the *static one-x FORAX*, not an mtf Blanshan variant. NarrowbandNormalization does productize the two-x dynamic math into a GUI. The Blanshan mtf-specific "Foraxx" variant (if distinct from the self-referential 2020 form already captured above) remains unverified.
 
 ---
 
@@ -308,7 +318,7 @@ Both are current/valid. Per-channel is cleaner *for star artifacts* but whether 
 10. **Star-field source** — true broadband RGB vs synthetic-RGB-from-NB vs HOO bicolor; depends on available data.
 11. **Replace vs correct SHO stars** — replacement is dominant but keeping NB stars + SCNR/desaturate is legitimate (cheaper, preserves NB star intensity).
 12. **Whether SCNR-green is even a good idea** — near-universal, but it removes real OIII/teal signal; honest position is "yes, conservatively, after pre-balancing." Exact SCNR amount is per-image, never source-fixed.
-13. **Exact "real" Foraxx formula** — the self-referential community form is verbatim-confirmed; a later Blanshan mtf-based variant is unverified.
+13. **Exact "real" Foraxx formula** — the two-x self-referential dynamic form is verbatim-confirmed; the *static one-x "FORAX"* (Oudoux) is now browser-verified too (see Part 5 name-collision note); a Blanshan-specific mtf variant, if genuinely distinct from the captured 2020 form, remains unverified.
 14. **Synthetic RGB-from-SHO star coefficients** — vary by author; `R=Ha, G=0.5*OIII+0.5*SII, B=OIII` is unverified.
 15. **Static-blend coefficients** (e.g. `0.8*Ha+0.2*OIII`) — taste knobs, not derived constants.
 
@@ -335,7 +345,7 @@ Both are current/valid. Per-channel is cleaner *for star artifacts* but whether 
 | `https://pixinsight.com/tutorials/narrowband/` | 403 — official NBRGBCombination equation + authorship |
 | `https://www.cosmicphotons.com/pi-modules/narrowbandnormalization/` | Not loaded — verbatim NarrowbandNormalization params/lineage |
 | `https://www.astroworldcreations.com/blog/new-pixinsight-process-narrowbandnormalization` | JS-only/truncated — full NBN params + Blanshan lineage |
-| `https://astroaf.space/wtf-is-forax/` | 403 — the actual/Blanshan mtf-based Foraxx formula verbatim |
+| ~~`https://astroaf.space/wtf-is-forax/`~~ | ✅ **RESOLVED (browser 2026-07-19)** — loaded fine; the fetch-tool 403 was bot-blocking. Content is the *static one-x FORAX* (Oudoux ~2018), NOT an mtf Blanshan variant — captured verbatim in Part 5 with a name-collision warning. |
 | `https://remoteastrophotography.com/foraxx-palette-script…` (and NBN / SCNR-invert variants) | 410 Gone — Foraxx script write-up; invert→SCNR→invert magenta procedure |
 | `https://www.cloudynights.com/topic/966485-foraxx-script/` | 403 — community consensus on Foraxx |
 | `https://forums.ruuth.xyz/t/foraxx-palette-utility/177` | Not loaded — AutoIntegrate Foraxx implementation details |
