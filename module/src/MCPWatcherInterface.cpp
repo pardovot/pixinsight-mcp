@@ -15,14 +15,21 @@ MCPWatcherInterface* TheMCPWatcherInterface = nullptr;
 
 MCPWatcherInterface::MCPWatcherInterface()
 {
+   // IMPORTANT: do NO API/GUI/Timer work here. The interface is constructed at
+   // module-install time, before the platform is ready to accept event-handler
+   // bindings — doing so crashes InitializePixInsightModule. All timer setup is
+   // deferred to EnsureTimerConfigured() (called on first Start).
    TheMCPWatcherInterface = this;
+}
 
-   // Configure the periodic timer. It is NOT started until StartWatcher():
-   // starting binds it to the event loop, where it fires during idle without
-   // blocking the application.
+void MCPWatcherInterface::EnsureTimerConfigured()
+{
+   if ( m_timerConfigured )
+      return;
    m_timer.SetInterval( m_intervalSec );
    m_timer.SetPeriodic( true );
    m_timer.OnTimer( (Timer::timer_event_handler)&MCPWatcherInterface::e_Timer, *this );
+   m_timerConfigured = true;
 }
 
 MCPWatcherInterface::~MCPWatcherInterface()
@@ -68,6 +75,7 @@ void MCPWatcherInterface::StartWatcher()
       return;
    }
 
+   EnsureTimerConfigured();
    m_timer.Start();
    Console().NoteLn( "<end><cbr>[MCP Watcher] Started (non-blocking). PixInsight stays usable." );
    UpdateStatus();
