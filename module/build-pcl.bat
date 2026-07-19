@@ -18,6 +18,14 @@ if "%PCL_BUILD_OUT%"=="" set "PCL_BUILD_OUT=%USERPROFILE%\pcl-build"
 set "OUTDIR=%PCL_BUILD_OUT%\lib"
 set "INTDIR=%PCL_BUILD_OUT%\obj"
 
+REM PCL.vcxproj references these env vars for its include paths (and PCL's
+REM standard build convention). Without them the compiler can't find pcl/*.h.
+set "PCLDIR=%PI_ROOT%"
+set "PCLINCDIR=%PI_ROOT%\include"
+set "PCLSRCDIR=%PI_ROOT%\src"
+set "PCLLIBDIR=%OUTDIR%"
+set "PCLBINDIR=%PI_ROOT%\bin"
+
 if not exist "%MSBUILD%" goto :no_msbuild
 if not exist "%PCL_VCXPROJ%" goto :no_vcxproj
 
