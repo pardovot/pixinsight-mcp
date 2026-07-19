@@ -2,11 +2,11 @@
 // PixInsight MCP Watcher module — bridge poller implementation.
 // ----------------------------------------------------------------------------
 #include "BridgePoller.h"
+#include "BridgeHandlersJS.h"
 
 #include <pcl/File.h>
-#include <pcl/FileInfo.h>
-#include <pcl/ImageWindow.h>
-#include <pcl/View.h>
+#include <pcl/MetaModule.h>
+#include <pcl/Variant.h>
 
 namespace pcl
 {
@@ -19,7 +19,6 @@ BridgePoller::BridgePoller()
 
 bool BridgePoller::Initialize()
 {
-   // <home>/.pixinsight-mcp/bridge/{commands,results,logs}
    String home = File::HomeDirectory();
    m_bridgeDir   = home + "/.pixinsight-mcp/bridge";
    m_commandsDir = m_bridgeDir + "/commands";
@@ -28,7 +27,7 @@ bool BridgePoller::Initialize()
    try
    {
       if ( !File::DirectoryExists( m_commandsDir ) )
-         File::CreateDirectory( m_commandsDir, true/*createIntermediateDirectories*/ );
+         File::CreateDirectory( m_commandsDir, true );
       if ( !File::DirectoryExists( m_resultsDir ) )
          File::CreateDirectory( m_resultsDir, true );
       return true;
@@ -59,11 +58,9 @@ int BridgePoller::ProcessPending( int maxPerTick )
    {
       if ( processed >= maxPerTick )
          break;
-
-      String path = m_commandsDir + '/' + name;
       try
       {
-         HandleCommandFile( path );
+         HandleCommandFile( name );
       }
       catch ( ... )
       {
@@ -78,99 +75,53 @@ int BridgePoller::ProcessPending( int maxPerTick )
 
 // ----------------------------------------------------------------------------
 
-void BridgePoller::HandleCommandFile( const String& path )
+void BridgePoller::HandleCommandFile( const String& fileName )
 {
-   // Read the command JSON.
-   IsoString utf8 = File::ReadTextFile( path );
-   String commandJson( utf8.UTF8ToUTF16() );
+   // Command file is "<id>.json"; the result uses the same basename.
+   String cmdPath = m_commandsDir + '/' + fileName;
+   String resPath = m_resultsDir  + '/' + fileName;
 
-   IsoString id   = ExtractStringField( commandJson, "id" );
-   IsoString tool = ExtractStringField( commandJson, "tool" );
+   String rawJson = File::ReadTextFile( cmdPath ).UTF8ToUTF16();
 
-   String body = Dispatch( tool, commandJson );
+   // Build the delegating script: the proven JS handlers (which define
+   // dispatchCommand) followed by a wrapper that runs THIS command and returns
+   // the result JSON string. The raw command JSON is embedded directly as a JS
+   // object literal — JSON is a valid JS expression, so no escaping is needed.
+   String script = String( MCP_HANDLERS_JS );
+   script += "\n;(function(){"
+             "var __start=Date.now();"
+             "var __cmd=";
+   script += rawJson;
+   script += ";"
+             "try{"
+               "var __r=dispatchCommand(__cmd);"
+               "return JSON.stringify({id:__cmd.id,timestamp:(new Date()).toISOString(),"
+                 "status:__r.status,process:__cmd.process,duration_ms:Date.now()-__start,"
+                 "outputs:__r.outputs||{},message:__r.message||\"\"});"
+             "}catch(e){"
+               "return JSON.stringify({id:__cmd.id,timestamp:(new Date()).toISOString(),"
+                 "status:\"error\",process:__cmd.process,duration_ms:Date.now()-__start,"
+                 "error:{message:String((e&&e.message)||e),type:(e&&e.name)||\"Error\"}});"
+             "}})()";
 
-   // Write result file: <results>/<id>.json
-   if ( !id.IsEmpty() )
+   String resultJson;
+   try
    {
-      String resultPath = m_resultsDir + '/' + String( id ) + ".json";
-      File::WriteTextFile( resultPath, IsoString( body.ToUTF8() ) );
+      // EvaluateScript must run on the root thread — the timer fires there.
+      Variant v = Module->EvaluateScript( script, "JavaScript" );
+      resultJson = v.ToString();
+   }
+   catch ( ... )
+   {
+      // Only reached on a parse-level failure; the wrapper catches JS runtime
+      // errors internally and returns an error result.
+      resultJson = "{\"status\":\"error\",\"message\":\"module EvaluateScript failed\"}";
    }
 
-   // Remove the command file so it isn't reprocessed.
-   if ( File::Exists( path ) )
-      File::Remove( path );
-}
+   File::WriteTextFile( resPath, resultJson.ToUTF8() );
 
-// ----------------------------------------------------------------------------
-
-String BridgePoller::Dispatch( const IsoString& tool, const String& /*commandJson*/ )
-{
-   // MVP native handlers. Extend this switch with the remaining tools, or route
-   // to the JS logic — see MCPWatcherInterface // TODO(js-delegation).
-   if ( tool == "list_open_images" || (tool.IsEmpty()) )
-      return HandleListOpenImages();
-
-   if ( tool == "ping" )
-      return HandlePing();
-
-   // Unknown / not-yet-ported tool.
-   return "{\"status\":\"error\",\"message\":\"tool not implemented in native module (MVP): "
-          + String( tool ) + "\"}";
-}
-
-// ----------------------------------------------------------------------------
-
-String BridgePoller::HandlePing()
-{
-   return "{\"status\":\"success\",\"outputs\":{},\"message\":\"pong (native module)\"}";
-}
-
-String BridgePoller::HandleListOpenImages()
-{
-   String images = "[";
-   Array<ImageWindow> windows = ImageWindow::AllWindows();
-   for ( size_type i = 0; i < windows.Length(); ++i )
-   {
-      View v = windows[i].MainView();
-      ImageVariant img = v.Image();
-      if ( i > 0 )
-         images += ',';
-      images += "{\"id\":\"" + v.Id() + "\","
-                 "\"width\":" + String( img.Width() ) + ","
-                 "\"height\":" + String( img.Height() ) + ","
-                 "\"channels\":" + String( img.NumberOfChannels() ) + ","
-                 "\"isColor\":" + String( img.IsColor() ? "true" : "false" ) + "}";
-   }
-   images += "]";
-
-   return "{\"status\":\"success\",\"outputs\":{\"images\":" + images + "},"
-          "\"message\":\"Found " + String( windows.Length() ) + " open image(s)\"}";
-}
-
-// ----------------------------------------------------------------------------
-// Minimal envelope-field extractor: finds  "key" : "value"  and returns value.
-// Good enough for id/tool on the MVP. Replace with a real JSON parser for
-// command parameters. TODO(json)
-// ----------------------------------------------------------------------------
-IsoString BridgePoller::ExtractStringField( const String& json, const IsoString& key )
-{
-   String needle = "\"" + String( key ) + "\"";
-   size_type k = json.Find( needle );
-   if ( k == String::notFound )
-      return IsoString();
-
-   size_type colon = json.Find( ':', k + needle.Length() );
-   if ( colon == String::notFound )
-      return IsoString();
-
-   size_type q1 = json.Find( '"', colon + 1 );
-   if ( q1 == String::notFound )
-      return IsoString();
-   size_type q2 = json.Find( '"', q1 + 1 );
-   if ( q2 == String::notFound )
-      return IsoString();
-
-   return IsoString( json.Substring( q1 + 1, q2 - q1 - 1 ).ToUTF8() );
+   if ( File::Exists( cmdPath ) )
+      File::Remove( cmdPath );
 }
 
 } // namespace pcl
