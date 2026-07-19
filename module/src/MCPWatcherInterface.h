@@ -46,6 +46,9 @@ private:
    BridgePoller m_poller;
    Timer        m_timer;              // periodic, fires during idle
    double       m_intervalSec = 0.3;  // 300 ms poll cadence
+   bool         m_timerConfigured = false;
+
+   void EnsureTimerConfigured();
 
    struct GUIData
    {
