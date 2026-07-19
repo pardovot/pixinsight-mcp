@@ -1,4 +1,15 @@
-# Implementation Roadmap
+> # ⚠️ STALE — UPSTREAM DOC. DO NOT FOLLOW.
+> This is **aescaffre's original pre-implementation plan**, kept only for historical reference.
+> It **contradicts this fork's architecture**: Phase 5 below prescribes **per-process tools**
+> (`remove_gradient`, `denoise`, `sharpen`, `deconvolve`, `combine_lrgb` …) — the exact
+> anti-pattern this project **abandoned** in favour of the generic
+> **`run_process(processId, viewId, settings)` + `get_process_parameters`**.
+> Following this document has already caused a regression in another session.
+>
+> **Architecture + current rules → [`/CLAUDE.md`](../CLAUDE.md).**
+> (The active fixes/debt/automation plan is kept locally in `.claude/plans/` — gitignored, not in the repo.)
+
+# Implementation Roadmap (upstream, historical)
 
 ## Phase 0 — Project Setup
 - [x] Create knowledge base documentation
