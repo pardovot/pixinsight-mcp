@@ -67,7 +67,11 @@ Then commit and summarize highlights from the notification's truncated preview o
 When a run flags authoritative pages under `needsBrowser` (they 403 the WebFetch/WebSearch tools), verify the load-bearing ones via `claude-in-chrome` (navigate + read_page). Confirmed primary facts already captured: SPCC narrowband lines (Hα 656.0, [OIII] 500.7, [SII] 674.2, [NII] 658.4, Hβ 486.1); OSC → Ideal QE, mono → real QE; MGC = observational additive gradient (needs plate-solve + SPFC + MARS); MARS DR2 ~1.35 GB (1 Aug 2025).
 
 ## To resume (fresh session)
+**Tier-1 is COMPLETE (6/6 verified).** Next work is Tier-2 and optional primary cross-checks.
+
 1. Confirm the search cap is raised (settings.json env; ≥1000).
-2. **Re-run mono-HaLRGB** (author the workflow per the pattern; the provisional `mono-halrgb.md` shows the intended structure — replace it with a verified version).
-3. **Run mono-SHO** (Tier-1 capstone): narrowband palette (SHO/Hubble), per-channel NB processing, SPCC narrowband mode wavelengths, palette mapping (PixelMath/NBRGB), SCNR/hue, star handling, the linear-vs-nonlinear NB-combine and dynamic-vs-static (Foraxx) debates.
+2. **Tier-2 categories** (author each as one `Workflow` per the pattern above): OSC-SHO/foraxx, hybrid mono-Ha+OSC, dual-scope blends.
+3. **Optional primary-source cross-check** (browser, not search-cap-limited): the HaLRGB + SHO playbooks each carry a large `needsBrowser` list (RC Astro, pixinsight.com, Light Vortex, Cloudy Nights, SetiAstro all 403/SSL/JS-only). Verify the load-bearing ones via `claude-in-chrome` — priority: Foraxx/dynamic-palette published expressions, PhotometricContinuumSubtraction (PCS) algorithm/params, NBRGBCombination internal math, current BXT/NXT NB defaults.
 4. Commit each as `docs/workflows/<cat>.md`; keep this README's status table updated.
+
+Reusable workflow scripts + extractor live in the session scratchpad (`wf-halrgb.mjs`, `wf-sho.mjs`, `extract-playbook.mjs`) — copy their shape for Tier-2.
