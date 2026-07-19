@@ -55,7 +55,36 @@ The fork relationship is now mostly **git ancestry and attribution**, not shared
 
 ## 3. Debt / cleanup
 
-**Dead weight (delete or archive):** `agents/`, `scripts/` pipeline, `editor/`, target configs (`M81_LRGB_agentic.json`, `NGC891_LRGB_v9.json`, …), `equipment.json`, `toto.txt`, `reddit-post.md`, `TODO-v8-port.md` (V8 port done).
+### ⚠️ Correction: `agents/ops/` is a HARVEST target, not dead weight [verified]
+Inspection shows `agents/ops/` already implements the automation layer §4 says is missing —
+and it talks to **the same bridge** our MCP server uses (`agents/ops/bridge.mjs` →
+`~/.pixinsight-mcp/bridge`), so it can be wrapped as MCP tools rather than rewritten:
+
+| File | Contains | Serves |
+|---|---|---|
+| `quality-gates.mjs` (1,625 lines) | `checkStarQuality`, `checkRinging`, `checkSharpness`, `checkCoreBurning`, `scanBurntRegions`, `checkSaturation`, `checkTonalPresence`, `checkHighlightTexture`, `checkStarLayerIntegrity`, `checkBrightChroma` | **M4 verification gates** |
+| `stats.mjs` | `getStats`, `measureUniformity` (gradient residual) | **M2 measurement** |
+| `subject-metrics.mjs` | `measureSubjectDetail`, `locateSubjectROI` | **M2 measurement** |
+| `gradient.mjs` | `runABE`, `runPerChannelABE`, `runGC`, `runSCNR` — **correctly configured** (the config whose absence caused our ABE no-op bug) | M3/M5 execution |
+| `stretch.mjs` | `setiStretch`, GHS via PixelMath (`computeGHSCoefficients`, `buildGHSExpr`) | M3/M5 execution |
+| `masks.mjs`, `preview.mjs`, `checkpoint.mjs` | masks, previews, checkpointing | M4 checkpoints |
+
+**Keep and harvest these.** They are battle-tested on real data and represent the single
+largest shortcut to M2/M4.
+
+**Keep (ours / in use):** `scripts/ping-watcher.mjs` (our bridge round-trip test),
+`scripts/shutdown-watcher.mjs`, `scripts/build-pi-repo.ps1`, `scripts/spcc-curves.mjs`
+(SPCC filter curve data).
+
+**Dead weight (delete or archive):** `agents/llm/` (the `claude -p` subprocess orchestration —
+superseded: Claude now drives directly via MCP), `agents/critics/`, `agents/memory/`,
+`scripts/run-pipeline.mjs` + the one-off `process-*`/`test-*`/`research-*`/`pi-tool` scripts,
+`editor/`, target configs (`M81_LRGB_agentic.json`, `NGC891_LRGB_v9.json`, …), `equipment.json`,
+`toto.txt`, `reddit-post.md`, `TODO-v8-port.md` (V8 port done).
+
+*Reference-only before deletion:* `agents/llm/deterministic-prep.mjs` encodes the measure→decide→
+configure linear sequence, and `agents/classifier.mjs` does target classification — both now
+largely superseded by `docs/workflows/`, but worth a read before they go.
 
 **Actively dangerous stale guidance:**
 - **`docs/ROADMAP.md`** — upstream's plan; Phase 5 prescribes **per-process tools**, contradicting our generic-`run_process` decision. Demonstrably caused a regression in another session. → Delete or clearly mark stale.
@@ -104,3 +133,28 @@ The fork relationship is now mostly **git ancestry and attribution**, not shared
 5. **M2 → M5 automation build-out.**
 
 Rationale for M1 before cleanup: an end-to-end run tells you what actually matters, making "what's dead vs needed" obvious rather than guessed.
+
+---
+
+## Decisions (settled)
+
+1. **Fork/detach** — deferred until after the `agents/ops` harvest (harvest first; the remaining upstream surface is then small enough that detaching is trivial).
+2. **`agents/`, `scripts/`, `editor/`** — **harvest `agents/ops/`** (see §3 correction); keep the 4 in-use scripts; delete/archive the rest.
+3. **Cross-platform: yes, preferred.** Feasible — upstream already ships PCL makefiles for linux/macOS (`src/pcl/linux/g++`, `src/pcl/macosx/g++`), so the module can build there. Work: replace `.bat` scripts with cross-platform equivalents (node or `.sh`), add mac/linux paths to build/install, CI-build all three.
+4. **JS watchers — deprecate.** The module is the runtime. Keep the V8 watcher only as a documented emergency fallback (or drop once the module install flow is fixed).
+5. **Legacy SpiderMonkey watcher — drop** (`pjsr/pixinsight-mcp-watcher-legacy-sm.js`). User is on 1.9.4/V8; it also ships in the npm package for no reason.
+6. **M1 target:** `D:\AP\FMA180 Pro\North America Pelican Clamshell\ATR3CMOS26000KPA\WBPP\master\masterLight_BIN-1_6224x4168_EXPOSURE-300.00s_FILTER-NoFilter_RGB_autocrop.xisf` — **OSC / HOO** (duoband). Playbook: `docs/workflows/osc-hoo.md`.
+7. **Tests/CI — now.** Minimum worth having immediately:
+   - bridge round-trip smoke test (`ping-watcher` as an assertion),
+   - **stale-handler guard**: assert `BridgeHandlersJS.h` matches `gen-handlers.sh` output (kills P0-#2 permanently),
+   - MCP server boot + `tools/list` snapshot,
+   - module build in CI (once cross-platform).
+8. **Versioning — protocol version, not lockstep.** Coupling npm and module versions is brittle (different channels, different cadences). Instead define a **bridge protocol version** emitted by the module and checked by the MCP server at first contact, failing loudly on mismatch ("update X"). Package versions stay independent; compatibility becomes explicit and self-diagnosing.
+
+## Revised sequencing (supersedes the list above)
+1. **P0 fixes** — install `.xsgn`; `build.bat` → run `gen-handlers.sh`.
+2. **Kill stale guidance** — `ROADMAP.md` ✅ done; `.claude/skills` (ES5/macOS); README.
+3. **M1 end-to-end run** on the OSC-HOO master — highest-information action.
+4. **Harvest `agents/ops/`** into MCP measurement + gate tools (M2/M4 shortcut), guided by what M1 exposes.
+5. **Cleanup + detach decision**; drop legacy watcher; deprecate JS watchers.
+6. **Cross-platform + CI**; then M3/M5 automation build-out.
