@@ -24,7 +24,9 @@ set "PCLDIR=%PI_ROOT%"
 set "PCLINCDIR=%PI_ROOT%\include"
 set "PCLSRCDIR=%PI_ROOT%\src"
 set "PCLLIBDIR=%OUTDIR%"
+set "PCLLIBDIR64=%OUTDIR%"
 set "PCLBINDIR=%PI_ROOT%\bin"
+set "PCLBINDIR64=%PI_ROOT%\bin"
 
 if not exist "%MSBUILD%" goto :no_msbuild
 if not exist "%PCL_VCXPROJ%" goto :no_vcxproj
