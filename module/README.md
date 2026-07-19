@@ -66,19 +66,42 @@ does NOT loop, then have the module run it once per tick. Running PJSR from a
 module needs the core script-execution API — marked `// TODO(js-delegation)` in
 `MCPWatcherInterface`. Deferred until we confirm that API on the installed PCL.
 
-## Build (deferred — not built yet)
+## Build (Windows / MSVC)
 
-Requires the PixInsight Class Library (PCL) and a C++17 toolchain.
+The toolchain is already present in a standard PixInsight + VS 2022 BuildTools
+setup — no extra downloads:
 
-1. Clone PCL: https://gitlab.com/pixinsight/PCL  → set `PCLDIR`, `PCLSRCDIR`,
-   `PCLINCDIR`, `PCLLIBDIR`, `PCLBINDIR` env vars.
-2. On Windows: MSVC (Visual Studio Build Tools, x64). PixInsight modules build
-   as `.dll` named `MCPWatcher-pxm.dll`.
-3. Use the PCL module makefile pattern (see PCL's `src/modules/processes/*` for
-   templates) or a CMake wrapper. A skeleton `Makefile` will be added once the
-   toolchain is chosen.
-4. Install the built `*-pxm.dll` into `<PixInsight>/bin/` (or via
-   Process > Modules > Install Modules).
+- MSVC (VS 2022 BuildTools, `cl.exe` x64), CMake + Ninja (bundled with BuildTools)
+- **PCL SDK ships inside PixInsight**: headers in `<PixInsight>/include/pcl`,
+  full source in `<PixInsight>/src/pcl`, and the Windows VS project
+  `src/pcl/windows/vc17/PCL.vcxproj`.
+
+Steps:
+
+1. **Build PCL once** (no prebuilt lib ships):
+   ```
+   module\build-pcl.bat
+   ```
+   Produces `PCL-pxi.lib` in `%USERPROFILE%\pcl-build\lib` (writable; Program
+   Files is read-only).
+
+2. **Build the module**:
+   ```
+   module\build.bat
+   ```
+   Sets up MSVC (`vcvars64`), points CMake at the PCL SDK, builds
+   `module\build\MCPWatcher-pxm.dll`.
+
+3. **Install**: copy `MCPWatcher-pxm.dll` to `<PixInsight>/bin/` (admin), or
+   PixInsight → Process → Modules → Install Modules → select the dll.
+
+Build flags mirror PixInsight's own `PCL.vcxproj`: C++20, `/MD`, `/arch:AVX2`,
+defines `__PCL_WINDOWS __PCL_AVX2 __PCL_FMA` etc. (encoded in `CMakeLists.txt`).
+
+> First-link caveat: the module links `PCL-pxi.lib`; if MSVC reports unresolved
+> host/Qt-backed symbols at link time, add the matching `*.lib` to
+> `target_link_libraries` in `CMakeLists.txt` and rebuild. Expected to need
+> iteration on the first real build.
 
 ## Signing
 
