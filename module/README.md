@@ -112,6 +112,14 @@ preferences for local testing.
 
 ## Status
 
-**Scaffold only — not compiled or tested.** PCL API signatures below follow
-standard PCL conventions but must be checked against the installed PCL version;
-uncertain spots are marked `// TODO(pcl)`.
+**Builds successfully** on Windows x64 (VS 2022 BuildTools MSVC 14.44, PCL from
+PixInsight 1.9.4). `build-pcl.bat` + `build.bat` produce
+`build/MCPWatcher-pxm.dll` (~2.7 MB), exporting the required
+`IdentifyPixInsightModule` / `InstallPixInsightModule` entry points.
+
+**Not yet loaded/tested in PixInsight.** Next: install the dll (enable unsigned
+module installation or sign it), launch Process > Utilities > MCP Watcher >
+Start, and verify the bridge round-trips *while PixInsight stays interactive*.
+
+Handler coverage is still the MVP set (`ping`, `list_open_images`); extend
+`BridgePoller::Dispatch()` once the non-blocking architecture is confirmed.
