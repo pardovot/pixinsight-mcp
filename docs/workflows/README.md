@@ -5,6 +5,18 @@ multi-agent web-research workflows, verified for recency/evidence. They ground t
 autonomous-processing agent (the MCP drives PixInsight; these tell it *how* to process
 each kind of data). This README lets a fresh session continue the series at full quality.
 
+> **⚠️ Read `/CLAUDE.md` (repo root) first for the architecture + tool-design decisions.**
+> Two things that are easy to regress on and are NOT in this file:
+> 1. **Use the generic `run_process(processId, viewId, settings)` + `get_process_parameters`.
+>    NEVER add per-process MCP tools** — that anti-pattern was deliberately abandoned.
+>    Existing `run_bxt`/`sharpen`/etc. are legacy wrappers only.
+> 2. **The end goal is autonomous processing from a SHORT goal-driven prompt** (state the
+>    outcome; the agent picks + configures processes, measures, and verifies) — not
+>    step-by-step per-process instructions. These playbooks are that agent's knowledge layer.
+>
+> Also in CLAUDE.md: the non-blocking native C++ module (why PixInsight stays interactive),
+> the V8 (not ES5) reality, and the measure→configure→verify methodology.
+
 ## Status
 
 | Category | File | Status |
