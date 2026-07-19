@@ -48,7 +48,8 @@ Each category = one `Workflow` call. Structure (see prior scripts / the committe
 5. `RESEARCH_GUIDE` string baked into every research prompt: the category context + "single image vs per-channel" rules + "prefer 2025-2026 authoritative sources (pixinsight.com, RC Astro, SetiAstro); record 403'd URLs under needsBrowser, do NOT invent; newer≠better; never fabricate settings."
 6. `pipeline(SUBTOPICS, research→FINDING, verify→VERDICT)` — research each leg then adversarially verify (recency + evidence-vs-preference + stage correctness).
 7. A single `synthesize` agent → the Markdown playbook (structured by stage), + a "what changed & is it better" table + contested list + needsBrowser.
-8. `return { playbook, needsBrowser, contested, stepCount }`.
+8. **Browser-fallback stage (auto, not manual):** after synthesize, dedup `needsBrowser` and resolve the load-bearing URLs via `claude-in-chrome` — WebFetch/WebSearch 403s are a tool limitation, not a dead end, so the browser should be *dispatched automatically on failure*, not parked in a list for a human. **Constraint:** claude-in-chrome drives ONE shared tab, so this MUST be a **serial post-research stage in the main loop** (or a single dedicated agent) — never inline in the parallel research legs (they'd fight over the browser + spawn permission prompts). Skip a URL only if the fact is already `[SOURCED VERBATIM]` from an accessible mirror (check first — research often captures the formula from a secondary source even when the primary 403s).
+9. `return { playbook, needsBrowser, contested, stepCount }`.
 
 Scale ≈ 21-25 agents, ~250-320s, ~500-700k subagent tokens per category. User is on Max; multi-agent is authorized for this series.
 
@@ -64,7 +65,7 @@ EOF
 Then commit and summarize highlights from the notification's truncated preview only.
 
 ## Primary-source cross-check (browser, not subject to the search cap)
-When a run flags authoritative pages under `needsBrowser` (they 403 the WebFetch/WebSearch tools), verify the load-bearing ones via `claude-in-chrome` (navigate + read_page). Confirmed primary facts already captured: SPCC narrowband lines (Hα 656.0, [OIII] 500.7, [SII] 674.2, [NII] 658.4, Hβ 486.1); OSC → Ideal QE, mono → real QE; MGC = observational additive gradient (needs plate-solve + SPFC + MARS); MARS DR2 ~1.35 GB (1 Aug 2025).
+**This is step 8 of the pattern above — do it automatically, don't wait to be asked.** When a run flags authoritative pages under `needsBrowser` (they 403 the WebFetch/WebSearch tools), verify the load-bearing ones via `claude-in-chrome` (navigate + read_page) as a serial post-research pass. Confirmed primary facts already captured: SPCC narrowband lines (Hα 656.0, [OIII] 500.7, [SII] 674.2, [NII] 658.4, Hβ 486.1); OSC → Ideal QE, mono → real QE; MGC = observational additive gradient (needs plate-solve + SPFC + MARS); MARS DR2 ~1.35 GB (1 Aug 2025).
 
 ## To resume (fresh session)
 **Tier-1 is COMPLETE (6/6 verified).** Next work is Tier-2 and optional primary cross-checks.
