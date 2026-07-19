@@ -29,7 +29,9 @@ echo   project : "%PCL_VCXPROJ%"
 echo   output  : "%OUTDIR%\PCL-pxi.lib"
 echo.
 
-"%MSBUILD%" "%PCL_VCXPROJ%" /p:Configuration=Release /p:Platform=x64 /p:OutDir="%OUTDIR%\" /p:IntDir="%INTDIR%\" /m /verbosity:minimal
+REM Doubled trailing backslash (\\") so MSBuild doesn't read \" as an escaped
+REM quote and merge the OutDir/IntDir arguments.
+"%MSBUILD%" "%PCL_VCXPROJ%" /p:Configuration=Release /p:Platform=x64 /p:OutDir="%OUTDIR%\\" /p:IntDir="%INTDIR%\\" /m /verbosity:minimal
 if errorlevel 1 goto :build_failed
 
 echo.
