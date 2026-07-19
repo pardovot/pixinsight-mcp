@@ -59,6 +59,11 @@ if(PCL_LIB)
   target_link_libraries(MCPWatcher PRIVATE "${PCL_LIB}")
 endif()
 
+# Windows system libs PCL depends on (add more here if the linker reports
+# further unresolved __imp_* symbols):
+#   userenv  -> GetUserProfileDirectoryW (File::HomeDirectory)
+target_link_libraries(MCPWatcher PRIVATE userenv)
+
 # PixInsight modules are DLLs named "<Id>-pxm.dll" with no lib prefix.
 set_target_properties(MCPWatcher PROPERTIES
   PREFIX ""
