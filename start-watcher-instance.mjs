@@ -26,7 +26,7 @@ function arg(name) {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : null;
 }
 const dryRun = process.argv.includes('--dry-run');
-const slot = arg('--slot') || '1';
+const slot = arg('--slot');   // optional explicit instance number
 
 function findPixInsight() {
   const explicit = arg('--pi') || process.env.PIXINSIGHT_EXE;
@@ -50,10 +50,14 @@ if (!dryRun && !fs.existsSync(pi)) {
   process.exit(1);
 }
 
-// -n=<slot> forces a separate instance; -r=<script> runs the watcher at startup.
-// PixInsight accepts forward slashes on all platforms; use them to avoid any
-// backslash parsing quirk in the -r= argument on Windows.
-const piArgs = [`-n=${slot}`, `-r=${watcher.replace(/\\/g, '/')}`];
+// Instance flag:
+//   bare  -n         -> open the NEXT AVAILABLE instance (default; avoids
+//                       colliding with an instance number already running)
+//   -n=<slot>        -> open a specific instance number (via --slot)
+// -r=<script> runs the watcher at startup. PixInsight accepts forward slashes
+// on all platforms; use them to avoid a backslash quirk in the -r= argument.
+const instanceFlag = slot ? `-n=${slot}` : '-n';
+const piArgs = [instanceFlag, `-r=${watcher.replace(/\\/g, '/')}`];
 
 console.log(`PixInsight : ${pi}`);
 console.log(`Watcher    : ${watcher}`);
@@ -71,6 +75,6 @@ child.on('error', (e) => {
 });
 child.unref();
 
-console.log(`\nLaunched watcher instance (slot ${slot}) in the background.`);
-console.log('Your normal PixInsight (slot 0) stays free for manual work.');
+console.log(`\nLaunched watcher instance (${slot ? 'instance ' + slot : 'next available instance'}) in the background.`);
+console.log('Your normal PixInsight instance stays free for manual work.');
 console.log('Stop it: node scripts/shutdown-watcher.mjs  — or close that instance.');

@@ -222,6 +222,62 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     }
   );
 
+  // run_bxt (BlurXTerminator)
+  server.tool(
+    "run_bxt",
+    "Run BlurXTerminator (deconvolution/sharpening) on a linear image",
+    {
+      viewId: z.string().describe("View ID of the image"),
+      correctOnly: z.boolean().default(false).describe("Only correct PSF, no sharpening"),
+      sharpenStars: z.number().optional().describe("Stellar sharpening 0..1 (default ~0.25)"),
+      sharpenNonstellar: z.number().optional().describe("Non-stellar sharpening 0..1 (default ~0.90)"),
+      adjustHalos: z.number().optional().describe("Halo adjustment -0.5..0.5"),
+      lumOnly: z.boolean().optional().describe("Apply to luminance only"),
+    },
+    async ({ viewId, correctOnly, sharpenStars, sharpenNonstellar, adjustHalos, lumOnly }) => {
+      const result = await bridge.sendCommand("run_bxt", "BlurXTerminator", {
+        correctOnly, sharpenStars, sharpenNonstellar, adjustHalos, lumOnly,
+      }, { executeMethod: "executeOn", targetView: viewId });
+      return processResult(result, `BlurXTerminator applied to **${viewId}**${correctOnly ? " (correct only)" : ""}`);
+    }
+  );
+
+  // run_nxt (NoiseXTerminator)
+  server.tool(
+    "run_nxt",
+    "Run NoiseXTerminator (AI denoise) on an image",
+    {
+      viewId: z.string().describe("View ID of the image"),
+      denoise: z.number().optional().describe("Denoise amount 0..1"),
+      detail: z.number().optional().describe("Detail retention 0..1"),
+      iterations: z.number().optional().describe("Iterations"),
+    },
+    async ({ viewId, denoise, detail, iterations }) => {
+      const result = await bridge.sendCommand("run_nxt", "NoiseXTerminator", {
+        denoise, detail, iterations,
+      }, { executeMethod: "executeOn", targetView: viewId });
+      return processResult(result, `NoiseXTerminator applied to **${viewId}**`);
+    }
+  );
+
+  // run_sxt (StarXTerminator)
+  server.tool(
+    "run_sxt",
+    "Run StarXTerminator (star removal) on an image",
+    {
+      viewId: z.string().describe("View ID of the image"),
+      generateStars: z.boolean().optional().describe("Also produce a stars-only image (result becomes starless)"),
+      unscreen: z.boolean().optional().describe("Use unscreen star extraction"),
+      overlap: z.number().optional().describe("Tile overlap 0..0.5"),
+    },
+    async ({ viewId, generateStars, unscreen, overlap }) => {
+      const result = await bridge.sendCommand("run_sxt", "StarXTerminator", {
+        generateStars, unscreen, overlap,
+      }, { executeMethod: "executeOn", targetView: viewId });
+      return processResult(result, `StarXTerminator applied to **${viewId}**`);
+    }
+  );
+
   // combine_lrgb
   server.tool(
     "combine_lrgb",
