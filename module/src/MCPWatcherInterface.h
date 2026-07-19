@@ -12,6 +12,7 @@
 
 #include <pcl/ProcessInterface.h>
 #include <pcl/Timer.h>
+#include <pcl/AutoPointer.h>
 #include <pcl/Sizer.h>
 #include <pcl/Label.h>
 #include <pcl/PushButton.h>
@@ -39,16 +40,17 @@ public:
    // Start/stop polling programmatically (also wired to the UI buttons).
    void StartWatcher();
    void StopWatcher();
-   bool IsRunning() const { return m_timer.IsRunning(); }
+   bool IsRunning() const { return !m_timer.IsNull() && m_timer->IsRunning(); }
 
 private:
 
-   BridgePoller m_poller;
-   Timer        m_timer;              // periodic, fires during idle
-   double       m_intervalSec = 0.3;  // 300 ms poll cadence
-   bool         m_timerConfigured = false;
+   BridgePoller        m_poller;
+   // Lazily allocated: a Qt-backed Timer must NOT be constructed at module
+   // install time (crashes InitializePixInsightModule). Created on first Start.
+   AutoPointer<Timer>  m_timer;
+   double              m_intervalSec = 0.3;  // 300 ms poll cadence
 
-   void EnsureTimerConfigured();
+   void EnsureTimer();
 
    struct GUIData
    {
