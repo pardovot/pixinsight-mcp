@@ -461,6 +461,80 @@ function handleRunSXT(command) {
    };
 }
 
+// ============================================================================
+// Generic process runner — run ANY PixInsight process by name.
+// This is the primary mechanism; the process-specific handlers above are just
+// convenience wrappers.
+// ============================================================================
+
+function instantiateProcess(processId) {
+   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(processId || "")) {
+      throw new Error("Invalid process id: " + processId);
+   }
+   var P;
+   try {
+      P = eval("new " + processId + ";");
+   } catch (e) {
+      throw new Error("Unknown process: " + processId + " (" + e.message + ")");
+   }
+   return P;
+}
+
+function handleRunProcess(command) {
+   var p = command.parameters || {};
+   var processId = p.processId || command.process;
+   var P = instantiateProcess(processId);
+
+   // Apply settings: { paramName: value, ... } assigned directly on the instance.
+   var settings = p.settings || {};
+   var applied = [];
+   for (var k in settings) {
+      if (settings.hasOwnProperty(k)) {
+         P[k] = settings[k];
+         applied.push(k);
+      }
+   }
+
+)MCPJS"
+R"MCPJS(
+   if (command.targetView) {
+      var view = findViewById(command.targetView);
+      if (!view) throw new Error("View not found: " + command.targetView);
+      P.executeOn(view);
+      return {
+         status: "success",
+         outputs: { processId: processId, applied: applied },
+         message: processId + " executed on " + command.targetView +
+                  (applied.length ? " [" + applied.join(", ") + "]" : " (defaults)")
+      };
+   } else {
+      P.executeGlobal();
+      return {
+         status: "success",
+         outputs: { processId: processId, applied: applied },
+         message: processId + " executed globally" +
+                  (applied.length ? " [" + applied.join(", ") + "]" : " (defaults)")
+      };
+   }
+}
+
+function handleGetProcessParameters(command) {
+   var p = command.parameters || {};
+   var processId = p.processId;
+   var P = instantiateProcess(processId);
+   var params = {};
+   for (var k in P) {
+      if (typeof P[k] !== "function") {
+         params[k] = P[k];   // name -> default value
+      }
+   }
+   return {
+      status: "success",
+      outputs: { processId: processId, parameters: params },
+      message: processId + ": " + Object.keys(params).length + " parameter(s)"
+   };
+}
+
 function handleRunScript(command) {
    var code = command.parameters.code;
    // Capture console output
@@ -495,8 +569,6 @@ function findWindowByViewId(viewId) {
          }
       }
    }
-)MCPJS"
-R"MCPJS(
    return null;
 }
 
@@ -505,6 +577,8 @@ function findViewById(viewId) {
    for (var i = 0; i < windows.length; ++i) {
       if (windows[i].mainView.id === viewId) {
          return windows[i].mainView;
+)MCPJS"
+R"MCPJS(
       }
       for (var j = 0; j < windows[i].previews.length; ++j) {
          if (windows[i].previews[j].id === viewId) {
@@ -542,10 +616,14 @@ function dispatchCommand(command) {
    if (tool === "combine_lrgb") return handleCombineLRGB(command);
    if (tool === "blend_narrowband") return handleBlendNarrowband(command);
 
-   // XTerminator suite
+   // XTerminator suite (convenience wrappers)
    if (tool === "run_bxt") return handleRunBXT(command);
    if (tool === "run_nxt") return handleRunNXT(command);
    if (tool === "run_sxt") return handleRunSXT(command);
+
+   // Generic: run any process by name, or introspect its parameters
+   if (tool === "run_process") return handleRunProcess(command);
+   if (tool === "get_process_parameters") return handleGetProcessParameters(command);
 
    // Script execution
    if (tool === "run_script") return handleRunScript(command);

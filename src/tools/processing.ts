@@ -327,6 +327,46 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     }
   );
 
+  // run_process — generic: run ANY PixInsight process by name
+  server.tool(
+    "run_process",
+    "Run any PixInsight process by its class name (e.g. BlurXTerminator, " +
+      "AutomaticBackgroundExtractor, PixelMath). Use get_process_parameters to " +
+      "discover the settings for a process. This is the general mechanism — prefer " +
+      "it over process-specific tools.",
+    {
+      processId: z.string().describe("Process class name, e.g. 'BlurXTerminator'"),
+      viewId: z.string().optional().describe("Target view id (omit for a global process)"),
+      settings: z.record(z.any()).optional().describe("Process parameters as { name: value } (see get_process_parameters)"),
+    },
+    async ({ processId, viewId, settings }) => {
+      const result = await bridge.sendCommand("run_process", processId, {
+        processId,
+        settings: settings ?? {},
+      }, viewId ? { executeMethod: "executeOn", targetView: viewId } : { executeMethod: "executeGlobal" });
+      return processResult(result, `${processId} executed${viewId ? ` on **${viewId}**` : " (global)"}`);
+    }
+  );
+
+  // get_process_parameters — introspect a process's settable parameters + defaults
+  server.tool(
+    "get_process_parameters",
+    "List the settable parameters (and their default values) of a PixInsight process, " +
+      "so you know what 'settings' run_process accepts.",
+    {
+      processId: z.string().describe("Process class name, e.g. 'BlurXTerminator'"),
+    },
+    async ({ processId }) => {
+      const result = await bridge.sendCommand("get_process_parameters", processId, { processId });
+      if (result.status === "error") {
+        return { content: [{ type: "text" as const, text: `Error: ${result.error.message}` }], isError: true };
+      }
+      const params = (result as any).outputs?.parameters ?? {};
+      const lines = Object.keys(params).map((k) => `- ${k} = ${JSON.stringify(params[k])}`).join("\n");
+      return { content: [{ type: "text" as const, text: `**${processId}** parameters:\n${lines}` }] };
+    }
+  );
+
   // run_script
   server.tool(
     "run_script",
