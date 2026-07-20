@@ -7,3 +7,5 @@ dist/
 
 # Local planning docs (not for the repo)
 .claude/plans/
+
+result-tests/*.xisf
