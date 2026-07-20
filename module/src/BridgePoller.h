@@ -41,6 +41,9 @@ private:
    String    m_commandsDir;
    String    m_resultsDir;
    size_type m_totalProcessed = 0;
+   // Re-entrancy guard: true while a command is executing. A long process pumps
+   // the event loop, which can re-fire the poll timer; nested ticks must no-op.
+   bool      m_busy = false;
 
    // Execute one command file (by name, e.g. "<id>.json") and write its result.
    void HandleCommandFile( const String& fileName );
