@@ -53,14 +53,26 @@ and mention it — a run should not block on questions the research has already 
 
 **Detect existing state; do not blindly redo it.** WBPP masters arrive partly prepared:
 
-- **Plate solve:** usually already present, and the WCS survives stacking. Check first
-  (`run_script`: `View.window.astrometricSolution()` returns null if unsolved; or look for WCS
-  FITS keywords `CTYPE1`/`CTYPE2`). Only run ImageSolver if the solution is absent — re-solving is
-  wasted time. (BlurXTerminator strips the WCS, so copy it back after BXT if a later step needs it.)
+- **Plate solve:** usually already present, and the WCS survives stacking. Check with
+  `run_script`: **`View.window.hasAstrometricSolution`** (a boolean property — NOT
+  `astrometricSolution()`, which is not a function and will throw). The solution is stored as an
+  XISF property, so `CTYPE*` FITS keywords are often absent even on a solved image — don't rely on
+  them. Only run ImageSolver if `hasAstrometricSolution` is false. **BXT does NOT necessarily strip
+  the WCS** — in Run 1 a BXT correct-only pass preserved it. Do not assume; re-check
+  `hasAstrometricSolution` after BXT and only re-solve if it actually went false.
 - **Autocrop / crop masks:** a `_autocrop` master is already cropped — do not crop it again. WBPP
   also leaves a stray `<image>_crop_mask` view floating; list open images at the start
   (`list_open_images`) and close any `*_crop_mask` view so it can't be picked up as a target by a
   later step.
+
+**MARS database: assume it is configured.** Do not try to detect the MARS DB by probing paths or
+Settings — the PJSR constants for that (`DataType_String`, etc.) aren't loaded in the watcher's
+bare context and the probes give false negatives (Run 1 wrongly concluded "not installed"). Just
+run MGC with `useMARSDatabase=true`. **MGC headless will silently no-op with an empty
+`marsDatabaseFiles` — the GUI config does not transfer to the process parameter.** Pass it
+explicitly as a table row: `marsDatabaseFiles: [[true, "<abs path to the .xmars file>"]]` (the
+DB lives under `%APPDATA%/Roaming/Pleiades/XMARS/` on Windows). If MGC no-ops (the gate catches it)
+or errors, report that clearly and fall back to GradientCorrection — do not silently continue.
 
 ## Step 2 — execute, one playbook step at a time
 
@@ -89,6 +101,34 @@ For **every** step, in this loop — never skip the measure/verify halves:
   physical emission lines (Hα 656.3, OIII 500.7), not filter marketing centers.
 - **Starless/SXT is an OPTIONAL branch, never a mandatory step.**
 - **Never fabricate numeric settings.** Measure → configure → verify, every step.
+
+### Operational gotchas (proven in real runs — see docs/PROCESSING_JOURNAL.md)
+
+- **Long processes look like they "fail".** SPFC / SPCC / MGC do Gaia photometry and run past the
+  MCP `run_process` 300 s timeout; the wrapper then returns a timeout/no-result **even though the
+  process succeeded**. Do NOT retry blindly. **Verify by artifact:** re-measure the image, or check
+  the metadata the process writes (e.g. SPFC writes `PCL:SPFC:*` / `PCL:Signature:FluxCalibration`
+  properties). Judge success by the image changing as expected, never by the wrapper's return.
+- **There is no programmatic undo** (`canUndo=false` — the undo stack is GUI-owned). If you need to
+  revert a step, you must ask the user to press Ctrl+Z in PixInsight. So: **snapshot before risky
+  steps** by cloning the view (a `_backup` copy) rather than relying on undo, especially before the
+  stretch — that avoids the no-undo trap entirely.
+- **Gauge denoising with MRS noise, not stdDev.** Global stdDev and background-box stdDev are
+  dominated by real signal and the star field, so they can *rise* after a correct denoise (BXT
+  enhanced the stars; SPCC lifted a zero-clip). Use PixInsight's multiresolution/k-sigma noise
+  estimator to measure the true noise floor. Run 1 raised a false "NXT added noise" alarm from the
+  wrong metric.
+- **SPFC needs filter curves supplied explicitly** on OSC — its defaults ship empty and it errors
+  `Parsing CSV spectrum parameter ... At least 5 items are required`. Give it the sensor's actual
+  R/G/B curves (the same Sony/IMX curves SPCC uses) + Ideal QE.
+
+### Where the quality is currently weak (flag, don't wing it)
+
+The **stretch and color-shaping** steps are the least-researched and produced a poor result in
+Run 1 (dim stretch, pink background, SCNR at 100% questionable). Follow the playbook, but if the
+user says the look is wrong, treat it as a **research gap** (log it via `process-retro`), not a
+cue to invent numbers. Consider `master_lin_backup`-style snapshots before the stretch so
+iterating is cheap.
 
 ## Checkpoints & review
 
