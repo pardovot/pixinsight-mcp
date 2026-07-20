@@ -1,0 +1,104 @@
+// Build the MCP Watcher PixInsight module.
+//
+//   node module/build.mjs
+//
+// Always regenerates the embedded JS handlers first — without that the module
+// compiles with STALE handler logic, which is a silent correctness bug.
+//
+// Verified on: Windows (MSVC via vcvars64 + CMake/Ninja).
+// macOS/Linux use the same CMake project with the system compiler — written
+// but not yet verified there.
+
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import * as cfg from "./config.mjs";
+import { generate } from "./gen-handlers.mjs";
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, { stdio: "inherit", shell: false, ...options });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${path.basename(command)} exited with code ${result.status}`);
+}
+
+/**
+ * On Windows the MSVC environment comes from vcvars64.bat, which can only be
+ * applied by a shell. Run it, then dump the resulting environment so the rest
+ * of the build inherits it — this avoids requiring the caller to be inside a
+ * Developer Command Prompt.
+ */
+function msvcEnvironment() {
+  if (!fs.existsSync(cfg.vcvars)) {
+    throw new Error(`vcvars64 not found: ${cfg.vcvars}\nSet VS or VCVARS to override.`);
+  }
+  const marker = "__MCP_ENV__";
+  const command = `call "${cfg.vcvars}" >nul && echo ${marker} && set`;
+  // windowsVerbatimArguments is required: without it Node escapes the inner
+  // quotes as \" and cmd cannot parse the path, which contains spaces.
+  const result = spawnSync(
+    process.env.ComSpec || "cmd.exe",
+    ["/d", "/s", "/c", `"${command}"`],
+    { encoding: "utf8", windowsVerbatimArguments: true },
+  );
+  if (result.status !== 0 || !result.stdout.includes(marker)) {
+    throw new Error(
+      `vcvars64 failed to initialise the MSVC environment.\n${(result.stderr || "").trim().slice(0, 500)}`,
+    );
+  }
+
+  const out = result.stdout.slice(result.stdout.indexOf(marker) + marker.length);
+  const env = { ...process.env };
+  for (const line of out.split(/\r?\n/)) {
+    const eq = line.indexOf("=");
+    if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1);
+  }
+  // Ninja ships alongside CMake in the VS install but is not on PATH.
+  if (cfg.ninjaDir) env.PATH = `${cfg.ninjaDir}${path.delimiter}${env.PATH}`;
+  return env;
+}
+
+function main() {
+  console.log("Regenerating embedded handlers ...");
+  const { output, lines } = generate();
+  console.log(`  ${output} (${lines} lines)`);
+
+  if (!fs.existsSync(cfg.pclLibPath)) {
+    console.warn(`[WARN] ${cfg.pclLibName} not found in ${cfg.pclLibDir} - run build-pcl first.`);
+  }
+
+  let env = { ...process.env };
+  if (cfg.isWindows) {
+    console.log("Activating MSVC x64 environment ...");
+    env = msvcEnvironment();
+  }
+  // CMake reads these for the PCL SDK location.
+  env.PCLINCDIR = cfg.pclIncDir;
+  env.PCLLIBDIR = cfg.pclLibDir;
+
+  console.log("Configuring ...");
+  console.log(`  PCLINCDIR=${cfg.pclIncDir}`);
+  console.log(`  PCLLIBDIR=${cfg.pclLibDir}`);
+  const generator = cfg.isWindows ? ["-G", "Ninja"] : [];
+  run(cfg.cmake, ["-S", cfg.moduleDir, "-B", cfg.buildDir, ...generator, "-DCMAKE_BUILD_TYPE=Release"], { env });
+
+  console.log("Building ...");
+  run(cfg.cmake, ["--build", cfg.buildDir, "--config", "Release"], { env });
+
+  if (!fs.existsSync(cfg.modulePath)) {
+    console.warn(`\n[WARN] Build finished but ${cfg.moduleName} was not produced in ${cfg.buildDir}.`);
+    return;
+  }
+
+  console.log(`\n[OK] Module -> ${cfg.modulePath}`);
+  console.log("[WARN] This build is UNSIGNED. Sign it before installing:");
+  console.log("         node module/sign.mjs");
+  console.log("       PixInsight blocks unsigned modules unless");
+  console.log("       AllowUnsignedModuleInstallation=true.");
+}
+
+try {
+  main();
+} catch (err) {
+  console.error(`\n[ERROR] ${err.message}`);
+  process.exit(1);
+}
