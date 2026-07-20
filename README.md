@@ -1,407 +1,362 @@
-# PixInsight MCP -- Autonomous Deep Sky Astrophotography Processing
+# PixInsight MCP — drive PixInsight from Claude, without freezing it
 
-An autonomous deep sky astrophotography processing pipeline that uses Claude (via Claude Code / Max subscription) to drive PixInsight through file-based IPC. The LLM acts as a processing director -- making creative decisions about stretching, detail enhancement, color saturation, and star management -- while code-enforced quality gates prevent common processing failures like ringing artifacts, core burning, and star destruction.
+An **MCP server** that lets an AI assistant (Claude Code, Claude Desktop) operate
+[PixInsight](https://pixinsight.com) directly — open masters, measure them, run any process,
+and inspect the result — while **PixInsight stays fully interactive** so you can watch and
+review the work live.
 
-**Status**: Work in progress. Actively developed and used for production processing.
+This is a fork of [aescaffre/pixinsight-mcp](https://github.com/aescaffre/pixinsight-mcp) that
+diverged substantially: it adds a **native PixInsight module**, a **generic process runner**
+instead of per-process tools, and a **research-backed workflow knowledge base**.
+See [Relationship to upstream](#relationship-to-upstream).
 
-> **Note on `scripts/run-pipeline.mjs`**: The original fully-scripted pipeline in `scripts/run-pipeline.mjs` was the first approach — a deterministic, config-driven processing chain with no LLM involvement. It is now **superseded by the GIGA agentic pipeline** (`agents/llm/giga-run.mjs`) which uses Claude as a creative processing director. The scripted pipeline remains in the repo for reference but is no longer actively maintained. All new development targets the agentic architecture.
-
----
-
-## What It Does
-
-You provide calibrated, stacked master frames (post-WBPP) and a minimal JSON config. The pipeline classifies your target, recalls processing knowledge from prior runs, executes deterministic linear prep, then hands control to a Claude agent that generates bracketed candidate sets across four creative branches, self-critiques, and composes a final image -- all while code-enforced quality gates prevent the agent from producing ringing artifacts, burnt cores, or destroyed stars.
-
-```
-You: config.json with M81 HaLRGB file paths + "push IFN hard, vivid galaxy colors"
-
-Pipeline:
-  1. Classifies M81 as galaxy_spiral (core_arms_ifn, broadband, high dynamic range)
-  2. Recalls memory: "Seti target 0.12 for L, HDRMT inverted 6L/1i, Ha strength 0.25"
-  3. Deterministic prep: align, combine, GC, BXT, SPCC, NXT, SXT, stretch (~12 min, cached)
-  4. Creative agent generates 16 candidates across 4 branches:
-     - Luminance detail: LHE + HDRMT from weak to overdone
-     - IFN/faint structure: shadow-lifting curves from subtle to aggressive
-     - Color: saturation curves + Ha injection from restrained to overdone
-     - Stars: stretch + color saturation from bright to over-reduced
-  5. Critic pass selects branch winners, identifies overdone boundaries
-  6. Composes 4 final candidates (balanced, bold-IFN, bold-color, edge)
-  7. Art director picks near-edge-but-credible winner
-  8. Quality gates pass -> saves final XISF + JPG -> saves memory for next target
-```
+**Status:** working and used for real processing. The autonomous end-to-end flow is still
+being built — see [Roadmap](#roadmap).
 
 ---
 
-## Architecture Overview
+## Why a native module
 
-```
-                        +---------------------+
-                        |   Config JSON        |
-                        |  (target, channels,  |
-                        |   aesthetic prefs)    |
-                        +---------+-----------+
-                                  |
-                        +---------v-----------+
-                        |  Classifier          |
-                        |  agents/classifier   |
-                        |  target-taxonomy.json|
-                        +---------+-----------+
-                                  |
-               +------------------+------------------+
-               |                                     |
-    +----------v-----------+           +-------------v-----------+
-    | Phase 1: Deterministic|           | Phase 2+: Creative Agent |
-    | Prep (no LLM)         |           | (Claude Max subprocess)  |
-    | deterministic-prep.mjs|           | giga-run.mjs             |
-    |                       |           |                          |
-    | open, align, combine, |           | 53 MCP tools             |
-    | GC, BN, BXT, SPCC,   |           | bracket-then-critic      |
-    | NXT, SXT, stretch     |           | 4 branches x 4 candidates|
-    +-----------+-----------+           | quality gates             |
-                |                       +-------------+-------------+
-                |                                     |
-                +----> PixInsight (PJSR) <------------+
-                       via file-based bridge IPC
-                       (~/.pixinsight-mcp/bridge/)
-```
+PJSR (PixInsight's scripting engine) is **single-threaded**. A running script holds the main
+thread, so the original JS watcher — a `for(;;)` polling loop — froze the whole application
+while it ran. You could not pan, zoom, or review anything. There is no way around this from a
+script: a background `Timer` does not survive the script returning (verified).
 
-### Two-Phase Design
+A **compiled module** can. `MCPWatcher-pxm.dll` installs a `pcl::Timer` that fires on
+PixInsight's **own event loop during idle** — the app is never "busy running a script".
 
-**Phase 1: Deterministic Prep** (`agents/llm/deterministic-prep.mjs`) -- Zero LLM involvement. Opens calibrated masters, aligns channels via StarAlignment, combines RGB, runs the canonical linear processing sequence (gradient correction, BlurXTerminator correction, astrometric solution copy, SPCC color calibration, background neutralization, NoiseXTerminator, BlurXTerminator sharpening, StarXTerminator star extraction, Seti statistical stretch). Repeats for L and Ha channels if present. This phase is deterministic and **cached**: a SHA-256 fingerprint of the script content plus input file headers (size + mtime + first/last 64KB) means identical inputs skip reprocessing entirely.
+- PixInsight stays **fully interactive** while the bridge polls.
+- You can **review the agent's work at any time** — no stop/resume, no second instance.
+- Human-in-the-loop checkpoints become practical: the agent pauses, you look, you continue.
 
-**Phase 2+: Creative Agent** (`agents/llm/giga-run.mjs`) -- A single Claude agent spawned as a `claude -p` subprocess (running on a Max subscription, zero API cost) receives the prepped working assets and a system prompt dynamically built from the target's classification and processing traits. The agent has access to 53 MCP tools that map to PixInsight operations and drives the creative processing through a structured bracket-then-critic workflow.
-
-### File-Based Bridge IPC
-
-Node.js communicates with PixInsight's PJSR scripting engine through a file-based bridge at `~/.pixinsight-mcp/bridge/`. A watcher script (`pjsr/pixinsight-mcp-watcher.js`, ECMAScript 5) runs inside PixInsight, polls for JSON command files, executes them via the PJSR engine, and writes result files. This is the only way to programmatically control PixInsight -- there is no socket or HTTP API. Bridge latency is approximately 2 seconds per tool call.
-
-### The Claude Max Engine
-
-The creative agent runs via `claude -p` subprocess (`agents/llm/engine-max.mjs`). No API key is needed -- it uses the user's Claude Max subscription through Claude Code. The system prompt is passed via `--append-system-prompt`, the initial message contains prep results and diagnostic views, and custom MCP tools are provided via an MCP server configuration. Claude Code handles the tool loop automatically. Budget is set to 200 turns for the full pipeline.
+The module is a **thin shell**: it delegates every bridge command to the embedded JS handlers
+(generated from `pjsr/pixinsight-mcp-watcher.js`) via `MetaModule::EvaluateScript`. Handler
+logic lives in **one** place — the JS — and C++ only provides the non-blocking timer.
 
 ---
 
-## The Tool Inventory
-
-60 tools organized into categories (`agents/llm/tools.mjs`):
-
-| Category | Tools | Purpose |
-|----------|-------|---------|
-| measurement | get_image_stats, measure_uniformity | Read pixel statistics, background uniformity |
-| preview | save_and_show_preview | Export diagnostic JPEGs for visual inspection |
-| image_mgmt | clone_image, restore_from_clone, close_image, purge_undo | State management and memory control |
-| gradient | run_gradient_correction, run_abe, run_per_channel_abe, run_scnr | Background flattening and green cast removal |
-| denoise | run_nxt | NoiseXTerminator |
-| sharpen | run_bxt | BlurXTerminator (correct + sharpen modes) |
-| stretch | seti_stretch, auto_stretch, stretch_stars | Statistical stretch, quick inspection, star stretch |
-| masks | create_luminance_mask, apply_mask, remove_mask, close_mask | Mask creation, application, cleanup |
-| detail | run_lhe, run_hdrmt | LocalHistogramEqualization, HDRMultiscaleTransform |
-| curves | run_curves, run_pixelmath | Tonal and color adjustments, arbitrary expressions |
-| lrgb | lrgb_combine | Luminance-RGB combination with LinearFit |
-| ha_injection | ha_inject_red, ha_inject_luminance | Narrowband Ha blending into RGB (soft-clamp prevents burning) |
-| narrowband | extract_pseudo_oiii, continuum_subtract_ha, dynamic_narrowband_blend, create_synthetic_luminance, create_zone_masks | Emission-line extraction from broadband, dual-zone color, zone-based HDR |
-| stars | star_screen_blend | Star reintegration via screen blend |
-| quality_gate | check_star_quality, check_ringing, check_core_burning, check_sharpness, scan_burnt_regions | Zero-tolerance burn scan (100×100 blocks), star quality, ringing detection |
-| memory | recall_memory, save_memory | Hierarchical knowledge store access |
-| scoring | compute_scores, submit_scores | Multi-dimensional image scoring (8 dimensions) |
-| control | save_variant, list_variants, load_variant, finish | Candidate management and workflow control |
-
----
-
-## Key Innovations
-
-### Quality Gates as Code-Enforced Constraints
-
-Quality gates (`agents/ops/quality-gates.mjs`) execute actual PJSR pixel analysis inside PixInsight -- they are not prompt suggestions that the agent might ignore. The `finish` tool runs all gates automatically; the agent cannot complete processing until every gate passes.
-
-- **Zero-tolerance burn scan**: Tiles the image in 100×100px blocks (large enough that individual stars can't false-positive). If ANY block has >3% pixels above 0.93 luminance, the image fails. Zero burnt blocks allowed — the agent literally cannot finish with a blown-out core, regardless of how small the subject is relative to the frame. Every brightness-modifying tool also reports inline burn warnings (`⚠️ BURN WARNING: max=X`).
-- **Star quality**: Detects stars via local-maximum scanning on a 16px grid, refines positions in 5x5 windows, measures FWHM via half-maximum radius in 4 directions (must be < 6px), and color diversity via normalized channel spread (must be > 0.05). Minimum 50 detected stars required.
-- **Subject metrics**: Subject brightness ≥ 0.25 (hard gate), contrast ratio ≥ 2× for PNe / 3× for others, detail score ≥ 0.001.
-- **Ringing detection**: Radial brightness profile around brightest region, counts derivative sign changes.
-- **Over-denoising**: NXT denoise values above 0.25 are flagged; the prompt enforces a 0.15 maximum for final passes.
-
-### Target Taxonomy and Classifier
-
-A 12-category taxonomy (`agents/target-taxonomy.json`) defines processing-relevant traits for every deep sky object type:
-
-| Category | Examples | Key Traits |
-|----------|----------|------------|
-| galaxy_spiral | M31, M51, M81 | core_arms_ifn, broadband, high DR, IFN goal |
-| galaxy_edge_on | NGC 891, NGC 4565 | core_halo, dust lanes, IFN goal |
-| galaxy_elliptical | M87, M49 | core_halo, smooth profile, outer halo goal |
-| galaxy_cluster | Abell 2151, Stephan's Quintet | tiny_multiple, diverse color, background galaxies |
-| emission_nebula | M42, NGC 7000 | ha_dominant, multi_zone, filaments goal |
-| planetary_nebula | M27, M57, M97 | dual_narrowband, core_halo, shells/knots |
-| reflection_nebula | M45, NGC 7023 | broadband, scattered light, outer halo |
-| dark_nebula | Barnard 33, LDN 1622 | silhouette against star field, subtle texture |
-| supernova_remnant | NGC 6960, Simeis 147 | filamentary structure, dual narrowband |
-| star_cluster_globular | M13, M3 | stars_are_subject, core resolution challenge |
-| star_cluster_open | NGC 884, NGC 869 | stars_are_subject, color diversity |
-| mixed_field | Rho Ophiuchi, Cygnus Wall | multi_zone, competing priorities |
-
-Each category carries 7 trait dimensions (signalType, structuralZones, colorZonation, starRelationship, faintStructureGoal, subjectScale, dynamicRange) plus boolean flags and free-text processing notes.
-
-The classifier (`agents/classifier.mjs`) maps target names to categories using a known-object lookup (100+ objects) with heuristic fallbacks, then generates a processing brief including classification, workflow detection (LRGB, HaLRGB, HaRGB, RGB), aesthetic intent, and field characteristics. **Zero hardcoded target text exists in the prompt** -- the same generic orchestrator prompt handles M81 and the Owl Nebula because all behavior is driven by taxonomy traits and processing notes.
-
-### Hierarchical Memory with Auto-Promotion
-
-Five levels of processing knowledge (`agents/memory/hierarchical-memory.mjs`), stored as JSON at `~/.pixinsight-mcp/agent-memory/hierarchical.json`:
-
-1. **universal** -- applies to all targets (e.g., "NXT denoise > 0.25 destroys detail")
-2. **trait** -- keyed by trait name (e.g., "core_halo" targets need HDRMT maskClipLow >= 0.35)
-3. **type** -- keyed by classification (e.g., galaxy_spiral Seti stretch target = 0.12)
-4. **data_class** -- keyed by workflow + subject scale (e.g., HaLRGB_large)
-5. **target** -- keyed by target name (e.g., M81 specific Ha injection strength)
-
-The `recallForBrief()` function gathers all relevant entries from all levels, matching on classification, all trait keys (structuralZones, signalType, colorZonation, etc.), data class fingerprint, and target name. The agent receives a formatted summary at the start of every run.
-
-The memory optimizer (`optimizeMemory()`) runs after every processing session and automatically promotes entries up the hierarchy:
-- Same param+value wins in 3+ targets of the same type --> promote to type level
-- Same param+value confirmed across 2+ types sharing a trait --> promote to trait level
-- Type-level entry confirmed across all data classes --> promote to universal
-
-This means knowledge from processing M81 (galaxy_spiral with core_arms_ifn and high dynamic range) can inform processing of the Veil Nebula (supernova_remnant), because they share processing traits like bright cores and similar HDRMT masking requirements.
-
-### Bracket-Then-Critic Workflow
-
-The creative agent follows a structured 7-phase workflow defined in `agents/llm/prompts/giga-orchestrator.mjs`. For each of four branches, the agent must generate exactly four candidates at increasing intensity:
-
-- **weak / restrained** -- clearly too conservative
-- **target / bold** -- the intended sweet spot
-- **edge** -- pushing limits, may show first artifacts
-- **overdone** -- intentionally too strong, marking the rejection boundary
-
-If the agent cannot produce an overdone candidate, it has not searched enough of the parameter space. This is enforced in the prompt as a hard requirement: "NEVER call finish after producing only one acceptable result."
-
-The four branches address conflicting goals that cannot be optimized simultaneously:
-- **Branch A -- Luminance Detail**: LHE multi-scale + HDRMT inverted (when L channel present)
-- **Branch B -- Faint Structure / IFN**: Shadow-lifting curves through inverted luminance masks
-- **Branch C -- Color Richness**: Two-stage saturation curves + hue-selective boosts + Ha injection
-- **Branch D -- Star Policy**: Stretch, color saturation, and reduction decisions on the extracted star layer
-
-After generation, a critic pass evaluates candidates per branch, identifies overdone boundaries, selects winners, and may trigger one narrow refinement round. Composition candidates (balanced, bold-IFN, bold-color, edge) combine branch winners, followed by a composition critic and art director decision targeting "near-edge but credible."
-
-### Prep Caching
-
-Deterministic prep computes a cache key from a SHA-256 hash of the prep script content plus fingerprints of each input master file (file size + mtime + first/last 64KB content hash). Cache hits load pre-computed XISF files directly into PixInsight, skipping 10-15 minutes of linear processing. Cache is stored at `~/.pixinsight-mcp/prep-cache/`.
-
-### Scoring Model
-
-An 8-dimension scoring model (`agents/scoring.mjs`) with target-type-specific weight profiles:
-- detail_credibility, background_quality, color_naturalness, star_integrity
-- tonal_balance, subject_separation, artifact_penalty, aesthetic_coherence
-
-Each dimension scored 0-100. Weight profiles vary by target type (galaxy_spiral weights detail_credibility highest; star_cluster_open weights star_integrity highest).
-
----
-
-## Processing Flow
+## Architecture
 
 ```
-DETERMINISTIC PREP (Phase 1, ~10-15 min first run, cached thereafter):
-  disk space check (>= 20 GB required)
-  --> cache key computation (script hash + input fingerprints)
-  --> [cache hit: load XISF files, skip to Phase 2]
-  --> close all open images
-  --> open masters (with channel swap if configured)
-  --> check dimensions, align to R reference via StarAlignment
-  --> combine RGB channels
-  --> gradient correction (GC or ABE, auto-selected)
-  --> BXT correct_only (deconvolution)
-  --> copy astrometric solution back (BXT strips WCS)
-  --> SPCC color calibration
-  --> background neutralization
-  --> NXT linear denoise (0.20)
-  --> BXT sharpen
-  --> SXT star extraction (linear mode, stars=true only)
-  --> Seti statistical stretch (target=0.12, headroom=0.05)
-  --> NXT post-stretch denoise (0.25)
-  --> [repeat GC, BXT, NXT, SXT, stretch for L and Ha if present]
-  --> save to cache
-
-CREATIVE AGENT (Phase 2+, ~30-60 min via Claude Max):
-  Phase 0: recall_memory, inspect prep diagnostics
-  Phase 2: Branch generation (4 branches x 4 candidates = 16 candidates)
-    Branch A -- Luminance detail (LHE, HDRMT, masks)
-    Branch B -- Faint structure / IFN (shadow-lifting curves, inverted masks)
-    Branch C -- Color / Ha injection (saturation curves, narrowband blending)
-    Branch D -- Stars (stretch, color saturation, screen blend params)
-  Phase 3: Branch critic pass (score, compare, select winners)
-  Phase 4: Optional narrow refinement (1 round max)
-  Phase 5: Composition candidates (balanced, bold-IFN, bold-color, edge)
-  Phase 6: Composition critic pass
-  Phase 7: Art director decision (near-edge but credible)
-  Phase 7.5: Final gradient correction
-  Phase 8: Quality gates (star quality, ringing, core burning)
-  Phase 9: Final polish + save_memory
-  --> save final XISF + JPG
-  --> run memory optimizer (auto-promote patterns)
+  Claude (Claude Code / Desktop)
+        │  MCP (stdio)
+        ▼
+  MCP server  ──  src/ (TypeScript → build/)
+        │
+        │  file-based bridge:  ~/.pixinsight-mcp/bridge/
+        │    commands/<id>.json  in    results/<id>.json  out
+        ▼
+  MCPWatcher-pxm.dll  ──  pcl::Timer on PixInsight's event loop  (module/)
+        │  MetaModule::EvaluateScript
+        ▼
+  Embedded JS handlers  ──  generated from pjsr/pixinsight-mcp-watcher.js
+        ▼
+  PixInsight  (stays interactive throughout)
 ```
+
+There is no socket or HTTP API into PixInsight; the file bridge is the only mechanism.
+Round-trip latency is roughly the poll interval (default 300 ms).
+
+### Three delivery channels
+
+1. **MCP server** (npm) — `@pardovot/pixinsight-mcp`
+2. **Signed PixInsight update repo** (`pi-repo/`) — users add one URL; PixInsight auto-installs
+   and auto-registers the watcher
+3. **Native C++ module** (`module/`) — **the runtime**
 
 ---
 
-## Results
+## The tool design: one generic runner, not per-process tools
 
-Successfully processed with zero target-specific code changes between runs:
+Every PixInsight process is `new X; set params; executeOn(view)`. So instead of a tool per
+process, this fork exposes:
 
-- **M81/M82** (Bode's Galaxy + Cigar Galaxy) -- spiral galaxy, HaLRGB, 5 channels. IFN visible in galactic cirrus, Ha emission highlighting HII regions in spiral arms, dust lanes resolved with HDRMT inverted, core structure preserved with headroom stretch.
-- **M97 Owl Nebula** -- planetary nebula, LRGB. Internal shell structure resolved via fine-scale LHE, faint outer halo revealed through shadow-lifting, OIII/Ha zoned color preserved. First-attempt result described as "stunning" with zero target tuning.
-- **Abell 2151 Hercules Cluster** -- galaxy cluster, LRGB. Dozens of tiny diverse galaxies sharpened with conservative SXT overlap, star color diversity preserved, varied galaxy morphologies and colors visible.
+- **`run_process(processId, viewId?, settings?)`** — runs **any** process by class name
+  (`BlurXTerminator`, `AutomaticBackgroundExtractor`, `PixelMath`, anything installed)
+- **`get_process_parameters(processId)`** — introspects that process's settable parameters and
+  current defaults
+- **`run_script(...)`** — raw PJSR escape hatch
+
+One generic pair covers every process with zero per-process maintenance. **Adding
+`run_bxt`-style tools is the anti-pattern this fork deliberately moved past.** The remaining
+per-process tools are legacy convenience wrappers, kept for compatibility and not extended.
+
+### Never run a process blind
+
+The methodology is baked into the tool descriptions and
+[`docs/PROCESSING_GUIDE.md`](docs/PROCESSING_GUIDE.md):
+
+1. **`get_process_parameters` first** — reason about what the settings mean.
+2. **Watch for no-op output defaults.** Canonical case: `AutomaticBackgroundExtractor` defaults
+   to `targetCorrection=0` + `replaceTarget=false`, so it builds a background *model* and leaves
+   your image **untouched**. To actually correct: `{ targetCorrection: 1, replaceTarget: true }`.
+3. **Choose settings by measuring *this* image** (`get_image_statistics`, `run_script`) — not by
+   copying fixed numbers.
+4. **Execute, then re-measure.** Byte-identical statistics mean a no-op — stop and fix it; never
+   build the next step on a no-op.
+
+---
+
+## Tools
+
+23 tools. The ones that matter are in bold.
+
+| Category | Tools |
+|---|---|
+| Generic execution | **`run_process`**, **`get_process_parameters`**, **`run_script`**, `run_pixelmath` |
+| Image management | `list_open_images`, `open_image`, `save_image`, `close_image`, **`get_image_statistics`** |
+| Legacy wrappers | `remove_gradient`, `color_calibrate`, `remove_green_cast`, `stretch_image`, `apply_curves`, `denoise`, `sharpen`, `deconvolve`, `run_bxt`, `run_nxt`, `run_sxt`, `combine_lrgb`, `blend_narrowband` |
+| Research | `search_processing_recommendations` |
+
+Authoritative definitions live in `src/tools/*.ts`. (`docs/mcp-tools.md` is upstream's
+aspirational catalog and is marked stale.)
+
+---
+
+## Workflow knowledge base
+
+`docs/workflows/` holds **per-acquisition-category playbooks** — how to process each kind of
+data, with confidence / consensus / contested grading on every claim:
+
+[`osc-hoo.md`](docs/workflows/osc-hoo.md) · [`osc-rgb.md`](docs/workflows/osc-rgb.md) ·
+[`mono-rgb.md`](docs/workflows/mono-rgb.md) · [`mono-lrgb.md`](docs/workflows/mono-lrgb.md) ·
+[`mono-halrgb.md`](docs/workflows/mono-halrgb.md) · [`mono-sho.md`](docs/workflows/mono-sho.md)
+
+Deliberate conventions encoded there:
+
+- **Starless / SXT is an optional branch, never a baseline step.**
+- **Never fabricate numeric settings** — measure, configure, verify.
+- **Newer ≠ better** — recency traps are flagged explicitly.
+
+See [`docs/workflows/README.md`](docs/workflows/README.md) for the research method and
+verification status.
 
 ---
 
 ## Requirements
 
-- **PixInsight** (tested with 1.8.9+) with the following third-party modules installed:
-  - BlurXTerminator (BXT)
-  - NoiseXTerminator (NXT)
-  - StarXTerminator (SXT)
-- **Node.js** v22+ (tested with v22.13.1)
-- **Claude Code** with a **Max subscription** (the creative agent runs via `claude -p` subprocess -- no API key needed)
-- **Calibrated master frames** -- WBPP-stacked, debayered XISF files (R, G, B, optionally L and Ha)
-- **macOS** (tested on Darwin/arm64; Linux may work but is untested)
-- At least 20 GB free disk space (checked at startup)
+- **OS**: cross-platform by design; Windows is the only platform it has been *run* on so far —
+  see [Platform](#platform)
+- **PixInsight 1.9.4 "Lockhart"** or later (V8 scripting engine)
+- **Node.js** v18+ (v22 recommended)
+- **Claude Code** or **Claude Desktop**
+- Optional third-party process modules, if you want to use them: BlurXTerminator,
+  NoiseXTerminator, StarXTerminator
+- Calibrated master frames (WBPP-stacked XISF)
 
 ---
 
-## Quick Start
+## Quick start
+
+### 1. Add the MCP server
 
 ```bash
-# 1. Build the MCP server
-export PATH="/Users/aescaffre/.local/node-v22.13.1-darwin-arm64/bin:$PATH"
-cd /Users/aescaffre/pixinsight-mcp && npm run build
+claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp
+```
 
-# 2. Start PixInsight and load the watcher script:
-#    Script > Run Script... > pjsr/pixinsight-mcp-watcher.js
+### 2. Install the PixInsight-side watcher
 
-# 3. Verify bridge connectivity
+**Signed update repository.** In PixInsight: `Resources > Updates > Manage Repositories`, add the
+repository URL, then `Resources > Updates > Check for Updates` — PixInsight installs and registers
+the watcher automatically.
+
+> ⚠️ Not usable by others yet: the repository in `pi-repo/` is **not published at a public URL**,
+> and it is signed with a **local** identity rather than a Certified PixInsight Developer one, so
+> other machines would reject it. Build from source instead.
+
+**Build the native module from source** (needs a C++ toolchain: MSVC on Windows, g++/clang on macOS/Linux):
+
+```bash
+npm run module:pcl       # once — builds the PCL static library from PixInsight's PCL source
+npm run module:build     # regenerates embedded handlers, then compiles the module
+npm run module:sign      # prompts for password; produces MCPWatcher-pxm.xsgn (~5 s)
+npm run module:install   # needs administrator (Windows) / sudo (macOS, Linux), PixInsight closed
+```
+
+`npm run module:config` prints every path this resolves on your machine.
+(Each is just `node module/<name>.mjs` if you prefer to call it directly.)
+
+`install.mjs` copies both the module **and** its `.xsgn` signature, and refuses to install a
+signature older than the DLL. PixInsight blocks unsigned modules unless
+`AllowUnsignedModuleInstallation=true`.
+
+### 3. Start the watcher
+
+In PixInsight: `Process > Utilities > MCP Watcher > Start`. PixInsight remains usable.
+
+### 4. Verify the bridge
+
+```powershell
 node scripts/ping-watcher.mjs
-
-# 4. Create a config JSON (see Config Format below) and run the GIGA pipeline
-node agents/llm/giga-run.mjs --config /path/to/config.json
-
-# 5. Optional: add a processing intent to guide aesthetic decisions
-node agents/llm/giga-run.mjs --config /path/to/config.json --intent "push IFN hard, vivid galaxy colors"
-
-# 6. Dry run (classification + brief only, no processing)
-node agents/llm/giga-run.mjs --config /path/to/config.json --dry-run
 ```
 
-The legacy deterministic pipeline (no LLM) is still available:
+### 5. Use it
+
+Ask Claude to work on an image. The intended interaction is **goal-driven, not step-by-step**:
+
+> "Open this master, clean the gradient, tighten the stars, reduce noise — check your work as
+> you go."
+
+---
+
+## Configuration
+
+Nothing is hardcoded to one machine — every path and tuning value is a **default that an
+environment variable overrides**. Defaults are derived (`%ProgramFiles%`, `vswhere`, `$HOME`)
+rather than written as literals, so a stock install needs no configuration at all.
+
+**MCP server / Node scripts**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PIXINSIGHT_EXE` | per-platform, probed | PixInsight executable |
+| `PIXINSIGHT_MCP_BRIDGE_DIR` | `~/.pixinsight-mcp/bridge` | bridge directory |
+| `PIXINSIGHT_MCP_TIMEOUT_MS` | `300000` | per-command timeout — raise on slow machines or large frames |
+| `PIXINSIGHT_MCP_EXTENDED_TIMEOUT_MS` | `3600000` | timeout for long operations |
+| `PIXINSIGHT_MCP_POLL_INTERVAL_MS` | `200` | bridge poll cadence |
+
+**Module build/sign/install** (`module/config.mjs` — run `node module/config.mjs` to print what resolves on your machine)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PI_ROOT` | `%ProgramFiles%\PixInsight` | PixInsight install root |
+| `PI_BIN`, `PI_EXE` | derived from `PI_ROOT` | binary directory / executable |
+| `VS` | discovered via `vswhere` | Visual Studio, any edition/version (Windows only) |
+| `VCVARS`, `CMAKE`, `NINJA_DIR` | derived from `VS` | toolchain components |
+| `PCL_BUILD_OUT` | `%USERPROFILE%\pcl-build` | where `PCL-pxi.lib` is built |
+| `PCLINCDIR`, `PCLLIBDIR` | derived | PCL headers / library |
+| `PI_SIGN_KEYS` | `%USERPROFILE%\key.xssk` | signing keys file |
+| `PI_SIGN_SLOT` | `7` | instance slot for the signing process |
+
+Non-standard install? Set the variable and run normally:
+
 ```bash
-node scripts/run-pipeline.mjs --config /path/to/config.json
-node scripts/run-pipeline.mjs --config /path/to/config.json --restart-from stretch
+# Windows
+set PI_ROOT=D:\Astro\PixInsight && node module\build.mjs
+
+# macOS / Linux
+PI_ROOT=/opt/PixInsight node module/build.mjs
 ```
+
+> A single config **file** that feeds these is planned; the environment-variable layer above is
+> the mechanism it will drive.
 
 ---
 
-## Config Format
+## Platform
 
-```json
-{
-  "files": {
-    "targetName": "M81",
-    "R": "/absolute/path/to/masterLight_R.xisf",
-    "G": "/absolute/path/to/masterLight_G.xisf",
-    "B": "/absolute/path/to/masterLight_B.xisf",
-    "L": "/absolute/path/to/masterLight_L.xisf",
-    "Ha": "/absolute/path/to/masterLight_Ha.xisf",
-    "outputDir": "/absolute/path/to/output/",
-    "channelSwap": ""
-  },
-  "aestheticPreferences": {
-    "noiseLevel": "very_clean",
-    "glow": "moderate",
-    "starPresence": "prominent"
-  }
-}
-```
+**Cross-platform by design. Windows is currently the only platform it has been *run* on.**
 
-**Important notes**:
-- All file paths **must be absolute**. The pipeline does not resolve relative paths or prepend any base directory.
-- Leave channel keys as empty strings (not omitted) if that filter is not available.
-- Use `channelSwap` (e.g., `"RB,GB"` for BRV filter wheel correction) if your filter labels are incorrect.
-- The workflow (LRGB, HaLRGB, HaRGB, RGB) is auto-detected from which channels have file paths.
+Nothing in the architecture is Windows-specific — the MCP server is Node, the bridge is plain
+files, and the handlers are PJSR. The build tooling is Node too (`module/*.mjs`), with
+per-platform branches: PixInsight ships PCL project files for all three
+(`src/pcl/windows/vc17`, `src/pcl/macosx/g++`, `src/pcl/linux/g++`), and the module itself
+builds with CMake everywhere.
+
+| | Status |
+|---|---|
+| Windows | **verified** — build, sign, install all exercised |
+| macOS | written, **not yet run** — uses `make` in `src/pcl/macosx/g++`, clang |
+| Linux | written, **not yet run** — uses `make` in `src/pcl/linux/g++`, g++ |
+
+Remaining work is verification, not authoring: run it on a Mac and a Linux box, fix what
+breaks, and add CI for all three.
+
+> **Unverified ≠ unsupported.** Non-Windows instructions are present throughout the docs and
+> should be corrected when someone runs them, not deleted for being untested.
 
 ---
 
-## Project Structure
+## Repository layout
 
 ```
-agents/
-  llm/
-    giga-run.mjs               -- Main entry point (GIGA pipeline runner)
-    deterministic-prep.mjs      -- Phase 1: scripted linear processing with caching
-    engine-max.mjs              -- Claude Max subprocess engine (claude -p)
-    tools.mjs                   -- 53 MCP tool definitions and handlers
-    vision.mjs                  -- Diagnostic view generation and image messaging
-    mcp-agent-tools.mjs         -- MCP server for agent tool access
-    prompts/
-      giga-orchestrator.mjs     -- System prompt builder (generic, trait-driven)
-  ops/
-    bridge.mjs                  -- File-based IPC with PixInsight
-    quality-gates.mjs           -- Star quality, ringing, core burning checks (PJSR)
-    stats.mjs                   -- Image statistics and uniformity measurement
-    stretch.mjs                 -- Seti statistical stretch (ported from PixInsight)
-    gradient.mjs                -- Gradient correction (ABE, GC, per-channel)
-    masks.mjs                   -- Luminance mask creation and management
-    preview.mjs                 -- JPEG preview export
-    image-mgmt.mjs              -- Clone, close, purge operations
-    checkpoint.mjs              -- Checkpoint save/restore
-    index.mjs                   -- Ops module aggregator
-  memory/
-    hierarchical-memory.mjs     -- 5-level memory store with auto-promotion optimizer
-  classifier.mjs                -- Target classification and processing brief generation
-  target-taxonomy.json          -- 12 categories with 7 trait dimensions each
-  scoring.mjs                   -- 8-dimension scoring model with per-type weight profiles
-  artifact-store.mjs            -- Per-run artifact management
-  processing-profiles.json      -- Default processing parameters per target type
-scripts/
-  run-pipeline.mjs              -- Legacy deterministic pipeline (~2000 lines)
-  ping-watcher.mjs              -- Bridge connectivity test
+src/                  MCP server (TypeScript → build/)
+  tools/              tool definitions: image-management, processing, research
+  bridge/             file-bridge client
+module/               native PixInsight module — THE RUNTIME
+  src/                C++ sources; BridgeHandlersJS.h is GENERATED
+  config.mjs          resolved paths/toolchain per platform (run it to inspect)
+  gen-handlers.mjs    regenerates BridgeHandlersJS.h from the JS watcher
+  build-pcl.mjs       builds the PCL static library (once)
+  build.mjs           regenerate handlers → compile
+  sign.mjs            sign via PixInsight's native CLI (~5 s)
+  install.mjs         install module + .xsgn (admin/root)
 pjsr/
-  pixinsight-mcp-watcher.js     -- PixInsight-side watcher (ECMAScript 5)
-src/
-  -- MCP server TypeScript source (for IDE/tool integration)
-editor/
-  server.mjs                    -- Web UI backend for config editing
-  index.html                    -- Web UI frontend
-  default-config.json           -- Default pipeline configuration
-.claude/skills/
-  pixinsight-pipeline/          -- Processing knowledge base for Claude Code sessions
-    SKILL.md                    -- Pipeline overview and parameter tuning guide
-    reference/                  -- PJSR processes, gotchas, tools, stretch formulas
+  pixinsight-mcp-watcher.js   JS watcher — SOURCE OF TRUTH for handler logic
+pi-repo/              signed PixInsight update repository
+docs/
+  workflows/          per-category processing playbooks (the knowledge layer)
+  PROCESSING_GUIDE.md measure → configure → verify methodology
+  mcp-tools.md        tool reference
+  bridge-protocol.md  bridge wire format
+scripts/
+  ping-watcher.mjs    bridge round-trip test
+  build-pi-repo.ps1   rebuild the update repo zip (re-sign updates.xri after!)
 ```
 
----
+> **Handler logic lives in `pjsr/pixinsight-mcp-watcher.js` only.** `module/src/BridgeHandlersJS.h`
+> is generated from it by `gen-handlers.mjs`, which `build.mjs` runs automatically. Never edit the
+> generated header by hand.
 
-## Processing Techniques
-
-| Technique | Origin | Implementation |
-|-----------|--------|----------------|
-| Seti Statistical Stretch | [Seti Astro](https://www.setiastro.com) v2.3 (Franklin Marek) | Ported to Node.js: blackpoint rescale, MTF, normalize, Hermite HDR compress |
-| GHS Stretch | [GHS](https://ghsastro.co.uk) (Cranfield & Shelley) | PixelMath piecewise fallback (no .dylib) |
-| Screen Blend Stars | Standard technique | `~(~$T * ~(strength * stars))` -- halo-free recombination |
-| Ha Injection | Community techniques | R-channel injection + luminance boost with brightness limiting |
-| Inverted HDRMT | PixInsight community | Enhances local detail instead of compressing brights |
-| Intelligent Gradient Removal | Original | ABE vs GC comparison via corner uniformity metric, per-channel mode |
-| Hierarchical Memory | Original | 5-level knowledge store with auto-promotion across targets |
-| Bracket-Then-Critic | Adapted from photography bracketing | 4 candidates (weak/target/edge/overdone) per creative branch |
+`agents/`, `editor/`, and most of `scripts/` are **upstream's Node pipeline, which this fork does
+not execute**. They are retained pending a harvest of `agents/ops/` (battle-tested measurement and
+quality-gate code) and will otherwise be removed.
 
 ---
 
-## Astro ARO -- Remote Observatory
+## Roadmap
 
-This project is developed by a member of [**Astro ARO**](https://astrolentejo.fr), a remote observatory located in the **Alentejo Dark Sky Reserve** (Portugal) -- one of Europe's darkest sites at **Bortle 2-3**.
+The goal is **autonomous processing from a short, goal-driven prompt** — the user states an
+outcome, the agent selects and configures the processes itself.
 
-Seats are regularly available for remote observation. Visit the [Teams section](https://astrolentejo.fr/teams) for images from the observatory.
+- **M1** — one full agent-driven run on a real master, documented warts and all *(next)*
+- **M2** — first-class measurement tools (FWHM/PSF, gradient residual, noise/SNR, star count, clipping)
+- **M3** — acquisition-category detection + executable per-category step lists
+- **M4** — enforced verification gates (no-op, clipping, star-count collapse) and checkpoints
+- **M5** — a `/process <master>` entry point
+
+> ⚠️ **Category detection must not trust the FITS `FILTER` header.** Real case from our own test
+> data: a master labelled `FILTER-NoFilter` was actually shot through an Antlia ALP-T 5 nm duoband
+> — screw-in filters are commonly unlogged. Header-only detection would route it to broadband SPCC
+> and calibrate the color wrongly. Corroborate with channel statistics, the user's equipment
+> profile, or an explicit prompt. Treat headers as a hint, never as truth.
+
+`docs/ROADMAP.md` is **upstream's** pre-implementation plan and is stale — its Phase 5 prescribes
+the per-process tools this fork abandoned.
+
+---
+
+## Relationship to upstream
+
+**Shared with upstream:** the file-bridge contract, the PJSR handler bodies (ours are generated
+from a watcher descended from upstream's), and the MCP server skeleton.
+
+**New in this fork:** the native module (upstream has none), the generic
+`run_process` / `get_process_parameters` design, `docs/workflows/`, the signed update repository,
+the Windows platform layer, and npm packaging.
+
+**Removed from this fork:** upstream's `giga-run.mjs` agentic pipeline, `scripts/run-pipeline.mjs`,
+the config editor, and the sample target configs. They described a different product — a Node
+pipeline driving PixInsight via a blocking script — and were never executed here. Git history
+retains them.
+
+**Kept from upstream:** `agents/ops/`, deliberately — battle-tested measurement and quality-gate
+code (star quality, ringing, burn scanning, gradient residual) to be wrapped as MCP tools for the
+measurement and verification milestones.
 
 ---
 
 ## Credits
 
-- **Alain Escaffre** ([@aescaffre](https://github.com/aescaffre)) — original author and creator of the pipeline, agentic architecture, and PJSR watcher.
-- **Andre Couto** ([@4ndr3c0ut0](https://github.com/4ndr3c0ut0)) — V8 runtime port of the PixInsight watcher (PixInsight 1.9.4+ "Lockhart"), upstream [PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1).
+- **Alain Escaffre** ([@aescaffre](https://github.com/aescaffre)) — original author: the pipeline,
+  the agentic architecture, and the PJSR watcher this fork's handlers descend from. Developed as a
+  member of [**Astro ARO**](https://astrolentejo.fr), a remote observatory in the Alentejo Dark Sky
+  Reserve (Portugal), Bortle 2–3.
+- **Andre Couto** ([@4ndr3c0ut0](https://github.com/4ndr3c0ut0)) — V8 runtime port of the watcher
+  for PixInsight 1.9.4+ "Lockhart" (upstream
+  [PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1)).
+- **pardovot** — native PixInsight module, generic process runner, workflow knowledge base,
+  Windows port, packaging.
 
 ## License
 
