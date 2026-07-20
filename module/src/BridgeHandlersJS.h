@@ -1,5 +1,5 @@
 // Auto-generated from pjsr/pixinsight-mcp-watcher.js (handler section).
-// Regenerate with: module/gen-handlers.sh
+// Regenerate with: node module/gen-handlers.mjs
 #ifndef __BridgeHandlersJS_h
 #define __BridgeHandlersJS_h
 namespace pcl {

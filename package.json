@@ -25,7 +25,11 @@
     "start": "node build/index.js",
     "watch": "node start-watcher-instance.mjs",
     "setup-bridge": "node -e \"const fs=require('fs'),os=require('os'),p=require('path'),b=p.join(os.homedir(),'.pixinsight-mcp');['bridge/commands','bridge/results','bridge/logs','catalog/recipes'].forEach(d=>fs.mkdirSync(p.join(b,d),{recursive:true}))\"",
-    "editor": "node editor/server.mjs"
+    "module:config": "node module/config.mjs",
+    "module:pcl": "node module/build-pcl.mjs",
+    "module:build": "node module/build.mjs",
+    "module:sign": "node module/sign.mjs",
+    "module:install": "node module/install.mjs"
   },
   "keywords": [
     "pixinsight",
