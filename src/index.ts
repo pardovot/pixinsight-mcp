@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { BridgeClient } from "./bridge/client.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
 import { registerProcessingTools } from "./tools/processing.js";
+import { registerSessionTools } from "./tools/session.js";
 import { registerResearchTools } from "./tools/research.js";
 
 async function main() {
@@ -21,6 +22,7 @@ async function main() {
   // Register all tool categories
   registerImageManagementTools(server, bridge);
   registerProcessingTools(server, bridge);
+  registerSessionTools(server, bridge);
   registerResearchTools(server);
 
   // Connect via stdio transport
