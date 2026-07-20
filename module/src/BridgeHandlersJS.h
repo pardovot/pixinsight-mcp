@@ -553,6 +553,103 @@ function handleRunScript(command) {
 }
 
 // ============================================================================
+// Session / process-history: revert + checkpoint
+// ----------------------------------------------------------------------------
+// Scripted executeOn accumulates an undoable process history; ImageWindow.undo()
+// / redo() / go() and view.historyIndex / view.canGoBackward all work here and
+// persist across bridge commands. (The old "canUndo=false" was a misdiagnosis:
+// canUndo is not an ImageWindow property — the real signal is view.canGoBackward.)
+// ============================================================================
+
+function handleGetHistory(command) {
+   var viewId = command.parameters.viewId;
+   var w = findWindowByViewId(viewId);
+   if (!w) throw new Error("Image not found: " + viewId);
+   var v = w.mainView;
+   return {
+      status: "success",
+      outputs: { historyIndex: v.historyIndex, canUndo: v.canGoBackward, canRedo: v.canGoForward },
+      message: viewId + " history: index=" + v.historyIndex + " canUndo=" + v.canGoBackward + " canRedo=" + v.canGoForward
+   };
+}
+
+function handleUndo(command) {
+   var viewId = command.parameters.viewId;
+   var steps = command.parameters.steps || 1;
+   var w = findWindowByViewId(viewId);
+)MCPJS"
+R"MCPJS(
+   if (!w) throw new Error("Image not found: " + viewId);
+   var v = w.mainView;
+   var done = 0;
+   for (var i = 0; i < steps && v.canGoBackward; ++i) { w.undo(); ++done; }
+   return {
+      status: "success",
+      outputs: { undone: done, historyIndex: v.historyIndex, canUndo: v.canGoBackward, canRedo: v.canGoForward },
+      message: "Undid " + done + " step(s) on " + viewId + " (index=" + v.historyIndex + ")"
+   };
+}
+
+function handleRedo(command) {
+   var viewId = command.parameters.viewId;
+   var steps = command.parameters.steps || 1;
+   var w = findWindowByViewId(viewId);
+   if (!w) throw new Error("Image not found: " + viewId);
+   var v = w.mainView;
+   var done = 0;
+   for (var i = 0; i < steps && v.canGoForward; ++i) { w.redo(); ++done; }
+   return {
+      status: "success",
+      outputs: { redone: done, historyIndex: v.historyIndex, canUndo: v.canGoBackward, canRedo: v.canGoForward },
+      message: "Redid " + done + " step(s) on " + viewId + " (index=" + v.historyIndex + ")"
+   };
+}
+
+function handleSnapshot(command) {
+   var viewId = command.parameters.viewId;
+   var snapId = command.parameters.snapshotId || (viewId + "_snap");
+   var w = findWindowByViewId(viewId);
+   if (!w) throw new Error("Image not found: " + viewId);
+   var src = w.mainView.image;
+   var ex = ImageWindow.windowById(snapId);
+   if (!ex.isNull) ex.forceClose();   // overwrite an existing snapshot of the same id
+   var sw = new ImageWindow(src.width, src.height, src.numberOfChannels,
+                            src.bitsPerSample, src.isReal, src.isColor, snapId);
+   var sv = sw.mainView;
+   sv.beginProcess();
+   sv.image.assign(src);
+   sv.endProcess();
+   // Left hidden (not shown) — findable via windowById, no UI clutter.
+   return {
+      status: "success",
+      outputs: { snapshotId: snapId, width: src.width, height: src.height, channels: src.numberOfChannels },
+      message: "Snapshot " + snapId + " taken from " + viewId
+   };
+}
+
+function handleRestore(command) {
+   var viewId = command.parameters.viewId;
+   var snapId = command.parameters.snapshotId;
+   var w = findWindowByViewId(viewId);
+   if (!w) throw new Error("Target image not found: " + viewId);
+   var sw = ImageWindow.windowById(snapId);
+   if (sw.isNull) throw new Error("Snapshot not found: " + snapId);
+   var tv = w.mainView;
+   var ti = tv.image, si = sw.mainView.image;
+   if (ti.width !== si.width || ti.height !== si.height || ti.numberOfChannels !== si.numberOfChannels)
+      throw new Error("Geometry mismatch: target " + ti.width + "x" + ti.height + "x" + ti.numberOfChannels +
+                      " vs snapshot " + si.width + "x" + si.height + "x" + si.numberOfChannels);
+   tv.beginProcess();   // registers an undoable step
+   tv.image.assign(si);
+   tv.endProcess();
+   return {
+      status: "success",
+      outputs: { restored: true, historyIndex: tv.historyIndex },
+      message: "Restored " + viewId + " from snapshot " + snapId
+   };
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 
@@ -562,6 +659,8 @@ function findWindowByViewId(viewId) {
       if (windows[i].mainView.id === viewId) {
          return windows[i];
       }
+)MCPJS"
+R"MCPJS(
       // Check previews too
       for (var j = 0; j < windows[i].previews.length; ++j) {
          if (windows[i].previews[j].id === viewId) {
@@ -577,8 +676,6 @@ function findViewById(viewId) {
    for (var i = 0; i < windows.length; ++i) {
       if (windows[i].mainView.id === viewId) {
          return windows[i].mainView;
-)MCPJS"
-R"MCPJS(
       }
       for (var j = 0; j < windows[i].previews.length; ++j) {
          if (windows[i].previews[j].id === viewId) {
@@ -624,6 +721,13 @@ function dispatchCommand(command) {
    // Generic: run any process by name, or introspect its parameters
    if (tool === "run_process") return handleRunProcess(command);
    if (tool === "get_process_parameters") return handleGetProcessParameters(command);
+
+   // Session / process-history: revert + checkpoint
+   if (tool === "get_history") return handleGetHistory(command);
+   if (tool === "undo") return handleUndo(command);
+   if (tool === "redo") return handleRedo(command);
+   if (tool === "snapshot") return handleSnapshot(command);
+   if (tool === "restore") return handleRestore(command);
 
    // Script execution
    if (tool === "run_script") return handleRunScript(command);
