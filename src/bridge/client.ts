@@ -70,34 +70,68 @@ export class BridgeClient {
   private async waitForResult(id: string, timeoutMs: number): Promise<BridgeResult> {
     const resultPath = join(this.resultsDir, `${id}.json`);
     const startTime = Date.now();
+    // When a result file exists but won't parse, it is one of two things:
+    //   (a) a partial write we caught mid-flight → transient, retry briefly;
+    //   (b) a genuinely malformed result the watcher delivered → permanent.
+    // The old code could not tell them apart and re-polled (b) until the full
+    // timeout — the real cause of Run 1's phantom "timeouts on success": a
+    // re-entrancy bug wrote raw (non-JSON) text and we silently waited it out.
+    // Now we give a short grace for (a), then surface (b) as an error instead.
+    const MALFORMED_GRACE_MS = 2000;
+    let unparseableSince: number | null = null;
 
     while (Date.now() - startTime < timeoutMs) {
       if (existsSync(resultPath)) {
         // Small delay to ensure the file is fully written
         await sleep(50);
+        let data: string;
         try {
-          const data = await readFile(resultPath, "utf-8");
-          const result = JSON.parse(data) as BridgeResult;
-
-          // If still running, keep polling
-          if (result.status === "running") {
-            await sleep(this.config.pollIntervalMs);
-            continue;
-          }
-
-          // Clean up the result file
-          try {
-            await unlink(resultPath);
-          } catch {
-            // Ignore cleanup errors
-          }
-
-          return result;
+          data = await readFile(resultPath, "utf-8");
         } catch {
-          // File might still be written, retry
+          // File vanished / read raced — retry
           await sleep(this.config.pollIntervalMs);
           continue;
         }
+
+        let result: BridgeResult;
+        try {
+          result = JSON.parse(data) as BridgeResult;
+        } catch {
+          // Unparseable. Tolerate a brief partial-write window; past that, treat
+          // it as a delivered-but-malformed result and fail fast — never poll on.
+          if (unparseableSince === null) unparseableSince = Date.now();
+          if (Date.now() - unparseableSince < MALFORMED_GRACE_MS) {
+            await sleep(this.config.pollIntervalMs);
+            continue;
+          }
+          try { await unlink(resultPath); } catch {}
+          return {
+            id,
+            timestamp: new Date().toISOString(),
+            status: "error",
+            process: "malformed-result",
+            duration_ms: Date.now() - startTime,
+            error: {
+              message:
+                "The watcher delivered a result that is not valid JSON — the command likely " +
+                "ran but its result was corrupted (e.g. a re-entrant execution). Verify the " +
+                "image state before retrying. Raw result (truncated): " +
+                JSON.stringify(data.slice(0, 200)),
+              type: "MalformedResult",
+            },
+          };
+        }
+        unparseableSince = null;
+
+        // "running" ack: the watcher picked the command up and the process is
+        // underway. Keep polling for the terminal result.
+        if (result.status === "running") {
+          await sleep(this.config.pollIntervalMs);
+          continue;
+        }
+
+        try { await unlink(resultPath); } catch {}
+        return result;
       }
       await sleep(this.config.pollIntervalMs);
     }
