@@ -1,7 +1,8 @@
-# GHS (Generalized Hyperbolic Stretch) — Complete Reference
+# GHS (Generalized Hyperbolic Stretch), Complete Reference
 
 ## Status
-- `GeneralizedHyperbolicStretch-pxm.dylib` is **NOT installed**
+- The `GeneralizedHyperbolicStretch` module is **NOT installed** (verified: no
+  `GeneralizedHyperbolicStretch-pxm.dll` in PixInsight's `bin/`)
 - `new GeneralizedHyperbolicStretch` throws "is not defined"
 - Must use PixelMath fallback replicating the math from the GHS script
 
@@ -33,7 +34,7 @@ actual_D = exp(D) - 1
 | HP | Highlight protection | SP to 1 | Above HP: linear tangent (locks highlights) |
 | BP | Black point (Linear mode) | -1 to WP | Clips to zero below BP |
 
-## B Parameter — The Critical Control
+## B Parameter, The Critical Control
 
 B controls the **shape** and **focus** of the stretch curve:
 
@@ -56,8 +57,8 @@ to HT's MTF: `MTF(x,m) = (m-1)*x / ((2m-1)*x - m)` where `m = 0.5/(D+1)`.
 
 ### Why High B for Linear Data
 Linear astronomical data has an extremely narrow histogram peak (median ~0.001).
-- Low B (negative): spreads contrast broadly — misses the peak, wastes stretch on empty space
-- High B (10-15): concentrates ALL contrast addition at SP — perfect for boosting the narrow peak
+- Low B (negative): spreads contrast broadly, misses the peak, wastes stretch on empty space
+- High B (10-15): concentrates ALL contrast addition at SP, perfect for boosting the narrow peak
 - This is why pure GHS can replace HT: use B=10+ to focus on the histogram peak
 
 ## Piecewise Construction
@@ -68,7 +69,7 @@ The stretch is piecewise over 4 zones:
 ```
 T1(x) = slope_at_LP * (x - LP) + T2(LP)
 ```
-**A tangent line** — linear continuation with slope = derivative at LP boundary.
+**A tangent line**, linear continuation with slope = derivative at LP boundary.
 Preserves relative contrast of shadow pixels exactly.
 
 ### Zone 2: LP ≤ x < SP (Below symmetry point)
@@ -76,7 +77,7 @@ Preserves relative contrast of shadow pixels exactly.
 T2(x) = -T(SP - x)    (180° rotation of T around SP)
 ```
 
-### Zone 3: SP ≤ x < HP (Above symmetry point — main stretch)
+### Zone 3: SP ≤ x < HP (Above symmetry point, main stretch)
 ```
 T3(x) = T(x - SP)     (base transform)
 ```
@@ -146,7 +147,7 @@ Below LP, the function is a straight line (tangent at LP boundary):
 slope = T2'(LP) = derivative of stretch at LP
 T1(x) = slope * (x - LP) + T2(LP)
 ```
-All pixels below LP receive identical linear scaling — no nonlinear distortion.
+All pixels below LP receive identical linear scaling, no nonlinear distortion.
 
 ### Multi-Pass Protection Pattern
 This is the key to the 3-phase sweep technique:
@@ -163,7 +164,7 @@ re-compresses shadows further.
 
 For stretching linear astronomical data without HT:
 
-### Phase 1: "Pied de courbe" — Shadow Lift
+### Phase 1: "Pied de courbe", Shadow Lift
 ```
 D: 2.0-3.0 (slider)     B: 10-15 (super-hyperbolic, focused)
 SP: image median (~0.001-0.003)
@@ -172,7 +173,7 @@ LP: 0                    HP: 0.95
 Lifts the entire histogram off the left wall.
 Background target: ~10,000-15,000 ADU (0.15-0.23 normalized).
 
-### Phase 2: "Sommet de courbe" — Midtone Expansion
+### Phase 2: "Sommet de courbe", Midtone Expansion
 ```
 D: 1.5-2.0              B: 3-6 (broader)
 SP: new median (~0.05-0.10, auto-measured)
@@ -181,7 +182,7 @@ HP: 0.90
 ```
 LP locks the shadow region from phase 1. Midtone range expands.
 
-### Phase 3: "Fin de courbe" — Highlight Refinement
+### Phase 3: "Fin de courbe", Highlight Refinement
 ```
 D: 0.5-1.0              B: -1.0 to 0 (gentle, broad)
 SP: new median (~0.10-0.20)
@@ -237,13 +238,13 @@ The Inverse checkbox applies the inverse function. Useful workflow:
 4. Continue linear processing
 
 ## Constraints (Pipeline Validation)
-- **HP must be > SP** — otherwise negative values in formula → NaN
-- **LP must be < SP** — otherwise formula domain error
+- **HP must be > SP**, otherwise negative values in formula → NaN
+- **LP must be < SP**, otherwise formula domain error
 - **D = 0** → identity transform (no change)
 - Check built expression for NaN/Infinity before executing
 
 ## Implementation
-Full code in `scripts/run-pipeline.mjs`:
-- `computeGHSCoefficients(orgD, B, SP, LP, HP)` — all B-value cases
-- `buildGHSExpr(c)` — piecewise PixelMath expression builder
-- `ghsCode(viewId, orgD, B, SP, LP, HP)` — complete PJSR code string with validation
+Reference implementation (the original `scripts/run-pipeline.mjs` has been deleted; recover from git history if needed):
+- `computeGHSCoefficients(orgD, B, SP, LP, HP)`, all B-value cases
+- `buildGHSExpr(c)`, piecewise PixelMath expression builder
+- `ghsCode(viewId, orgD, B, SP, LP, HP)`, complete PJSR code string with validation
