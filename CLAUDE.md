@@ -55,6 +55,7 @@ Never run a process blind:
 
 ## The end goal (what we're building toward)
 **Autonomous processing from a SHORT, goal-driven prompt** — the user states an outcome ("process this master: clean the gradient, tighten stars, reduce noise"), and the agent selects and configures the processes itself. **Not** step-by-step per-process instructions.
+- ⛔ **Before processing ANY master, invoke the `process-master` skill (or, failing that, read the matching `docs/workflows/` playbook IN FULL first).** Do NOT plan a processing run from general astrophotography knowledge — that produces plausible-but-wrong choices (e.g. reaching for ABE on a nebula-filling target when the playbook prescribes MGC/GradientCorrection) and trips documented traps. The playbook is the source of truth for tool choice, order, and settings.
 - The knowledge layer is **`docs/workflows/`** — per-acquisition-category playbooks (OSC-HOO, OSC-RGB, mono-RGB, mono-LRGB, mono-HaLRGB, mono-SHO; all Tier-1 verified). They tell the agent *how* to process each data type, with confidence/consensus/contested grading. See `docs/workflows/README.md` for the research method + status.
 - Human-in-the-loop review is practical **because the module is non-blocking** — Claude pauses, you inspect live, then continue.
 - Deliberate conventions: **starless/SXT is an OPTIONAL branch, never a baseline step**; never fabricate numeric settings (measure → configure → verify); newer ≠ better (flag recency traps).
