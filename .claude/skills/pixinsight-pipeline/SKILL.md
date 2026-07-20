@@ -1,34 +1,33 @@
 ---
 name: pixinsight-pipeline
 description: |
-  Automated deep sky astrophotography processing with PixInsight. Use when processing
-  astronomical images (nebulae, galaxies, star clusters) through the full pipeline:
-  channel combination, calibration, stretching, Ha/narrowband injection, star handling,
-  and final adjustments. Covers HaRGB, HaLRGB, and LRGB workflows. Drives PixInsight's
-  PJSR scripting engine via Node.js file-based IPC bridge.
+  PixInsight processing reference: process parameters (LHE, HDRMT, MorphologicalTransformation,
+  LRGBCombination), XTerminator tool settings, the GHS PixelMath formula, and hard-won
+  equipment/quality lessons. Use as a PARAMETER REFERENCE when processing deep sky images
+  (nebulae, galaxies, clusters) through the MCP tools.
 ---
 
-# PixInsight Deep Sky Pipeline
+# PixInsight Processing Reference
 
-## Overview
+> ⚠️ **This is a parameter/knowledge reference, not a runnable pipeline.**
+> The Node pipeline this skill originally documented (`scripts/run-pipeline.mjs`, `editor/`,
+> config JSONs) has been **deleted** from this fork. Do not look for those files.
+>
+> **How processing actually happens now:** the agent drives PixInsight directly through the MCP
+> tools — `get_process_parameters` → reason → `run_process` → re-measure. See `CLAUDE.md`.
+>
+> **For *what* to do per data type, use `docs/workflows/`** (osc-hoo, osc-rgb, mono-rgb,
+> mono-lrgb, mono-halrgb, mono-sho) — those playbooks supersede the workflow guidance that used
+> to live here. This skill remains useful for the *numbers*: process parameters, tool settings,
+> and the lessons in `reference/`.
 
-Config-driven, branching pipeline that processes linear astronomical masters into
-publication-quality deep sky images. The pipeline is a Node.js script (`scripts/run-pipeline.mjs`)
-that sends PJSR commands to PixInsight via file-based IPC (`~/.pixinsight-mcp/bridge/`).
+## Method (do not skip)
 
-## Quick Start — New Target
-
-1. **Prepare data** — Stack your subs in WBPP. Place linear masters (`.xisf`) in one folder.
-2. **Create config** — Copy `editor/default-config.json`, or use the web editor (`node editor/server.mjs`).
-3. **Set file paths** — Fill in `files.R`, `files.G`, `files.B`, `files.Ha`, `files.L` (if applicable), `files.outputDir`, `files.targetName`.
-4. **Choose workflow**:
-   - **HaRGB** (no luminance): disable `l_stretch`, `l_nxt`, `l_bxt`, `lrgb_combine`
-   - **HaLRGB** (with luminance): enable lum branch steps + `lrgb_combine`
-   - **LRGB** (no Ha): set `files.Ha` to `""`, disable `ha_sxt`, `ha_stretch`, `ha_curves`, `ha_ghs`, `ha_inject`. Pipeline auto-detects `hasHa` and skips Ha file opening/cloning.
-   - **RGB only** (no Ha, no L): set `files.Ha` and `files.L` to `""`, disable Ha + lum branch steps
-5. **Open PixInsight** — Start PixInsight with the PJSR watcher script loaded.
-6. **Run** — `node scripts/run-pipeline.mjs --config path/to/config.json`
-7. **Iterate** — Review JPEG previews at each step. Adjust params in config. Re-run.
+1. `get_process_parameters` first — understand what each setting means.
+2. **Watch for no-op defaults.** `AutomaticBackgroundExtractor` defaults to `targetCorrection=0`
+   + `replaceTarget=false`: it builds a background *model* and leaves the image untouched.
+3. Choose settings by **measuring this image**, never by copying fixed numbers.
+4. Execute, then **re-measure**. Byte-identical statistics = a no-op; stop and fix it.
 
 ## Pipeline Architecture
 
@@ -100,7 +99,7 @@ stretch (HT+GHS), then SXT with `unscreen=true`. Screen blend to recombine: `~(~
 2. Luminance boost: LRGBCombination with Ha as luminance — transfers structural detail to all channels
 3. Detail layer: `$T + detailStr * (Ha - GaussianBlur(Ha, sigma=15))` — color-neutral filament enhancement
 
-**GHS via PixelMath** — The GHS process module (.dylib) is not installed. Use the PixelMath
+**GHS via PixelMath** — The GHS process module is not installed. Use the PixelMath
 fallback with `exp(exponent*ln(base))` (no `pow()` in PixelMath). See [GHS reference](reference/ghs-stretch.md).
 
 **Checkpoint system** — XISF checkpoints before heavy steps. `--restart-from <stepId>` to resume.
@@ -310,7 +309,7 @@ Update the diagram when the pipeline structure changes (new steps added/removed,
 ## Reference Files
 
 - [PJSR Process Parameters](reference/pjsr-processes.md) — LHE, HDRMT, MorphologicalTransformation, LRGBCombination, Convolution, SCNR
-- [PJSR Gotchas](reference/pjsr-gotchas.md) — File I/O, eval quirks, crop masks, ECMAScript 5 constraints
+- [PJSR Gotchas](reference/pjsr-gotchas.md) — File I/O, eval quirks, crop masks, V8 engine notes
 - [Xterminator Tools](reference/xterminator-tools.md) — SXT, NXT, BXT parameter reference
 - [GHS Stretch](reference/ghs-stretch.md) — GHS formula, PixelMath implementation, multi-pass strategy
 - [Processing Knowledge](reference/processing-knowledge.md) — Equipment settings, quality assessment, lessons learned

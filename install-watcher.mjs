@@ -25,9 +25,11 @@ const dest = destFlag !== -1 && process.argv[destFlag + 1]
   ? path.resolve(process.argv[destFlag + 1])
   : path.join(os.homedir(), 'Documents', 'PixInsight', 'scripts', 'PixInsightMCP');
 
+// The V8 watcher only. The SpiderMonkey/ES5 watcher for PixInsight 1.8.9-1.9.3
+// was removed: it hardcoded macOS-only #include paths for a plate-solving
+// library no handler used, so it failed at load on Windows and Linux.
 const watchers = [
-  'pixinsight-mcp-watcher.js',            // V8 (PixInsight 1.9.4+)
-  'pixinsight-mcp-watcher-legacy-sm.js',  // SpiderMonkey (1.8.9-1.9.3)
+  'pixinsight-mcp-watcher.js',   // V8 (PixInsight 1.9.4+)
 ];
 
 fs.mkdirSync(dest, { recursive: true });
@@ -43,5 +45,5 @@ console.log(`\nWatchers installed to:\n  ${dest}\n`);
 console.log('One-time registration (required by PixInsight, GUI only):');
 console.log('  PixInsight  >  Script  >  Feature Scripts...  >  Add  >  select the folder above  >  Done');
 console.log('\nThen each session:  Script menu  >  PixInsight MCP  >  Start Watcher');
-console.log('(V8 for PixInsight 1.9.4+, "legacy" for 1.8.9-1.9.3)\n');
+console.log('(requires PixInsight 1.9.4+ / V8)\n');
 console.log('Future updates: re-run this command — no re-registration needed.');

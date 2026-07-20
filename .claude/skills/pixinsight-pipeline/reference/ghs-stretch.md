@@ -1,7 +1,8 @@
 # GHS (Generalized Hyperbolic Stretch) — Complete Reference
 
 ## Status
-- `GeneralizedHyperbolicStretch-pxm.dylib` is **NOT installed**
+- The `GeneralizedHyperbolicStretch` module is **NOT installed** (verified: no
+  `GeneralizedHyperbolicStretch-pxm.dll` in PixInsight's `bin/`)
 - `new GeneralizedHyperbolicStretch` throws "is not defined"
 - Must use PixelMath fallback replicating the math from the GHS script
 
@@ -243,7 +244,7 @@ The Inverse checkbox applies the inverse function. Useful workflow:
 - Check built expression for NaN/Infinity before executing
 
 ## Implementation
-Full code in `scripts/run-pipeline.mjs`:
+Reference implementation (the original `scripts/run-pipeline.mjs` has been deleted; recover from git history if needed):
 - `computeGHSCoefficients(orgD, B, SP, LP, HP)` — all B-value cases
 - `buildGHSExpr(c)` — piecewise PixelMath expression builder
 - `ghsCode(viewId, orgD, B, SP, LP, HP)` — complete PJSR code string with validation
