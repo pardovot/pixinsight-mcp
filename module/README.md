@@ -152,13 +152,24 @@ PixInsight.exe -n=7 --automation-mode --no-startup-scripts --no-modules ^
   --sign-module-file="<module>.dll" --force-exit
 ```
 
-`--no-modules --no-startup-scripts` matter: they cut this to **~5 seconds**. Errors
-go to stdout (`*** Fatal Error: LoadSigningKeysFile(): wrong password ...`) and the
-exit code is non-zero on failure, so it scripts cleanly.
+`--no-modules --no-startup-scripts` cut this to **~5 seconds**. Errors go to
+stdout (`*** Fatal Error: LoadSigningKeysFile(): wrong password ...`).
+
+> ⚠️ **On Windows this MUST be launched through `cmd` with the value arguments
+> quoted** (`--xssk-password="..."`), which is what `sign.mjs` does. If you shell
+> out with `spawnSync(exe, [args])` and no shell, Node synthesises the command
+> line and leaves `--xssk-*=value` **unquoted** when the value has no spaces.
+> PixInsight then loads the key fine (a *wrong* password still errors cleanly)
+> but **crashes during the actual sign** — `STATUS_STACK_BUFFER_OVERRUN`
+> (`0xC0000409`), with no message, because a `-n --automation-mode` process has
+> no console. The quoting is the fix; this cost real debugging time.
 
 `--sign-xml-file` signs `.xri` **in place** — so the same command re-signs
 `pi-repo/updates.xri` after `scripts/build-pi-repo.ps1` rebuilds the zip, replacing
 what used to be a manual step.
+
+Success is detected by the **artifact** — a freshly written `.xsgn` — not the exit
+code, which is unreliable for this GUI process.
 
 > **Keys file is `.xssk`** ("PixInsight XML Secure Signing Keys"), not `.xkeys`.
 > It is XML holding an Ed25519 key pair, with the private key encrypted under a
