@@ -104,15 +104,21 @@ For **every** step, in this loop — never skip the measure/verify halves:
 
 ### Operational gotchas (proven in real runs — see docs/PROCESSING_JOURNAL.md)
 
-- **Long processes look like they "fail".** SPFC / SPCC / MGC do Gaia photometry and run past the
-  MCP `run_process` 300 s timeout; the wrapper then returns a timeout/no-result **even though the
-  process succeeded**. Do NOT retry blindly. **Verify by artifact:** re-measure the image, or check
-  the metadata the process writes (e.g. SPFC writes `PCL:SPFC:*` / `PCL:Signature:FluxCalibration`
-  properties). Judge success by the image changing as expected, never by the wrapper's return.
-- **There is no programmatic undo** (`canUndo=false` — the undo stack is GUI-owned). If you need to
-  revert a step, you must ask the user to press Ctrl+Z in PixInsight. So: **snapshot before risky
-  steps** by cloning the view (a `_backup` copy) rather than relying on undo, especially before the
-  stretch — that avoids the no-undo trap entirely.
+- **Long processes NO LONGER phantom-"fail"** (fixed 2026-07-21, verified on live SPCC). The old
+  "SPFC/SPCC/MGC time out at 300 s even on success" was **result corruption**, not a slow process: the
+  module read each result from `EvaluateScript`'s completion value, and these processes trigger nested
+  JS eval internally (Gaia photometry) that clobbers it → raw junk (`true\n<Gaia temp path>`) instead
+  of the JSON envelope. The process itself succeeds; only the report was corrupt. Fixed by the JS
+  wrapper writing its own result file + the client erroring fast on a malformed result. Still good
+  discipline: **verify by artifact** (re-measure, or check written metadata e.g. `PCL:SPFC:*`), never by
+  the wrapper's return alone. If you ever see a `MalformedResult` error, the process likely still ran —
+  verify, don't retry blind.
+- **Programmatic undo/snapshot EXIST — use them, never ask for GUI Ctrl+Z** (the old "canUndo=false /
+  undo is GUI-owned" was a misdiagnosis; the real signal is `view.canGoBackward`). Tools:
+  `get_history`, `undo(viewId, steps)`, `redo`, `snapshot(viewId, snapshotId?)` (hidden checkpoint),
+  `restore(viewId, snapshotId)`. To revert a step: call `undo`. Before a risky/hard-to-reverse step —
+  **especially SXT** (it also spawns a separate stars window that `undo` won't fold back) and the
+  stretch — take a `snapshot` first, then `restore` if the result is wrong.
 - **Gauge denoising with MRS noise, not stdDev.** Global stdDev and background-box stdDev are
   dominated by real signal and the star field, so they can *rise* after a correct denoise (BXT
   enhanced the stars; SPCC lifted a zero-clip). Use PixInsight's multiresolution/k-sigma noise
@@ -127,8 +133,8 @@ For **every** step, in this loop — never skip the measure/verify halves:
 The **stretch and color-shaping** steps are the least-researched and produced a poor result in
 Run 1 (dim stretch, pink background, SCNR at 100% questionable). Follow the playbook, but if the
 user says the look is wrong, treat it as a **research gap** (log it via `process-retro`), not a
-cue to invent numbers. Consider `master_lin_backup`-style snapshots before the stretch so
-iterating is cheap.
+cue to invent numbers. Take a `snapshot` before the stretch so iterating is cheap (`restore` to
+retry).
 
 ## Checkpoints & review
 

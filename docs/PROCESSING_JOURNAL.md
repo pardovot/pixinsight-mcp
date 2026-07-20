@@ -44,13 +44,41 @@ Confidence reflects real-run evidence, not just the playbook's grading.
 
 ## Tooling backlog (the M2/M4 spec, priority order)
 
-1. **Robust long-process handling** `[tooling, HIGH]` — `run_process` hits the 300 s MCP timeout on
-   SPFC/SPCC/MGC and returns no result *even on success*, so every long step looked "failed" and
-   cost a verify-by-metadata round-trip. → watcher should return async / the tool should poll a
-   completion signal, or success should be reported the instant the process ends.
-2. **Programmatic undo / snapshot** `[tooling, HIGH]` — `canUndo=false` in the watcher context; the
-   undo stack is GUI-owned. Every revert needed the user at the keyboard. → a first-class
-   snapshot-before-step + restore tool. This was the single biggest interaction cost.
+1. ~~**Robust long-process handling**~~ `[tooling, HIGH]` — **FIXED (2026-07-20). NOT a slow process —
+   a watcher re-entrancy bug.** First hypothesis (process legitimately outran 300 s → raise the
+   ceiling) was **wrong**. Evidence: 5 orphaned result files left in `bridge/results/` from Run 1,
+   several containing **raw non-JSON text** (Gaia `.xpsd` paths + a `Gaia_SP_*.bin` temp path — i.e.
+   SPCC/SPFC catalog output), never consumed.
+   - **Root cause (watcher) — the REAL one, confirmed by a live SPCC run:** the module read the
+     result from **`Module->EvaluateScript(...).ToString()`** (the script's completion value). SPCC/
+     SPFC/MGC trigger **nested JS evaluation inside the V8 engine** during Gaia photometry; that
+     clobbers the outer call's completion value, so `v.ToString()` comes back as unrelated raw text
+     (`true\n<Gaia_SP_*.bin temp path>`) instead of our JSON envelope. The process itself succeeds
+     (verified: SPCC changed the blue median); only the *reported result* was corrupted. → **Fix:
+     the JS wrapper now writes its own result file** (`File.writeTextFile`) from a local built AFTER
+     the process returns (immune to the completion-value corruption); C++ writes only a fallback if
+     JS didn't. **Proven** on the live module: a JS-written result file was clean JSON even while the
+     same command's `EvaluateScript` return was corrupted.
+   - **Also added (defensive, not the cause):** a `m_busy` re-entrancy guard in
+     `BridgePoller::ProcessPending` — `processEvents` can re-fire the poll timer mid-process; the
+     guard stops a nested tick from running a *second* command. (My first hypothesis blamed this
+     alone; the synthetic 719k-pump test passed but real SPCC still corrupted — because the real
+     bug was the completion value, above.) **Both need the module rebuild to take effect.**
+   - **Root cause (client):** on a result file that failed `JSON.parse`, the client's catch just
+     re-polled — so a *delivered-but-malformed* result was indistinguishable from "nothing yet" and
+     it waited out the full 300 s, returning a phantom timeout. Fixed in `src/bridge/client.ts`:
+     tolerate a 2 s partial-write grace, then surface a malformed result as an **immediate error**
+     (with the raw content), and consume the file. No timeout inflation.
+   - The `longRunning`/extended-ceiling/pre-flight-ping approach was **reverted** — it treated the
+     wrong cause and would have hung a genuinely stuck process for an hour.
+2. ~~**Programmatic undo / snapshot**~~ `[tooling, HIGH]` — **DONE (2026-07-20), and the premise was
+   wrong.** `canUndo=false` was a **misdiagnosis**: `canUndo` is not a property of `ImageWindow`
+   (reads `undefined`). Scripted `executeOn` **does** accumulate an undoable process history, and
+   `ImageWindow.undo()/redo()/go()` + `view.historyIndex`/`view.canGoBackward` all work from PJSR
+   **and persist across separate bridge commands** (verified live). The undo stack is NOT GUI-owned.
+   Shipped tools (`src/tools/session.ts`, delivered via `run_script` → **no module rebuild**):
+   `get_history`, `undo`, `redo`, `snapshot` (hidden duplicate window), `restore` (undoable
+   pixel-assign back). Correct revert signal is **`view.canGoBackward`**, never `canUndo`.
 3. **First-class measurement tools** `[tooling, HIGH]` — the agent hand-rolled corner-box gradient,
    MRS noise, and stretch math in `run_script`. Using the wrong metric once (stdDev instead of MRS
    for denoising) caused a false "NXT broke it" alarm and a needless undo. → `get_noise` (MRS),
