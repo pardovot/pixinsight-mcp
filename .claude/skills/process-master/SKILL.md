@@ -51,12 +51,16 @@ Only pause at the genuine aesthetic decision points the user named (and honor th
 If something is truly unspecified and consequential (e.g. output path), make a sensible default
 and mention it — a run should not block on questions the research has already settled.
 
-**Check for an existing plate solution before solving.** WBPP masters are usually already
-plate-solved, and the WCS survives stacking. Check for astrometric metadata first
-(`run_script`: `View.window.astrometricSolution()` returns null if unsolved; or look for WCS FITS
-keywords `CTYPE1`/`CTYPE2`). Only run ImageSolver if the solution is absent — re-solving a solved
-image is wasted time. (Note: BlurXTerminator strips the WCS, so if a later step needs it, copy the
-solution back after BXT — see the playbook.)
+**Detect existing state; do not blindly redo it.** WBPP masters arrive partly prepared:
+
+- **Plate solve:** usually already present, and the WCS survives stacking. Check first
+  (`run_script`: `View.window.astrometricSolution()` returns null if unsolved; or look for WCS
+  FITS keywords `CTYPE1`/`CTYPE2`). Only run ImageSolver if the solution is absent — re-solving is
+  wasted time. (BlurXTerminator strips the WCS, so copy it back after BXT if a later step needs it.)
+- **Autocrop / crop masks:** a `_autocrop` master is already cropped — do not crop it again. WBPP
+  also leaves a stray `<image>_crop_mask` view floating; list open images at the start
+  (`list_open_images`) and close any `*_crop_mask` view so it can't be picked up as a target by a
+  later step.
 
 ## Step 2 — execute, one playbook step at a time
 
