@@ -4,8 +4,8 @@
 
 The PixInsight MCP Server is a **stdio-based MCP server** (TypeScript) that bridges AI assistants with a running PixInsight instance. It has two core capabilities:
 
-1. **PixInsight automation** — Execute any PixInsight process via a file-based command bridge
-2. **Processing recipes catalog** — A searchable database of community-sourced processing workflows, indexed by astronomical object, that the AI uses to guide processing decisions
+1. **PixInsight automation**, Execute any PixInsight process via a file-based command bridge
+2. **Processing recipes catalog**, A searchable database of community-sourced processing workflows, indexed by astronomical object, that the AI uses to guide processing decisions
 
 Since PixInsight has no native socket/HTTP API, communication happens through a **file-based command bridge**. The focus is on **post-processing** (after WBPP/pre-processing).
 
@@ -26,7 +26,7 @@ Since PixInsight has no native socket/HTTP API, communication happens through a 
 - Indexed by astronomical object (M42, NGC 7000, etc.), object type, filter set
 - Every recipe has source attribution (blog URL, author, platform)
 - Optional result image references
-- Searchable and extensible — new recipes can be imported from URLs
+- Searchable and extensible, new recipes can be imported from URLs
 
 ### 3. PJSR Watcher Script
 
@@ -113,7 +113,7 @@ We evaluated several communication strategies:
 
 | Strategy | Pros | Cons | Verdict |
 |---|---|---|---|
-| **File bridge** | Works with stock PixInsight, reliable, simple | Polling latency (~500ms) | **Chosen** — best balance |
+| **File bridge** | Works with stock PixInsight, reliable, simple | Polling latency (~500ms) | **Chosen**, best balance |
 | Launch per command | No persistent watcher | PI startup is slow (seconds) | Too slow for workflows |
 | PixInsight IPC (`--start-process`) | Native mechanism | Limited to few processes, parameter constraints | Supplement later |
 | Custom PCL module (C++ socket server) | Full control, low latency | Requires C++ PI module development | Future enhancement |
@@ -122,7 +122,7 @@ The file bridge latency (~500ms) is negligible compared to actual image processi
 
 ## Scope: Post-WBPP Processing
 
-We deliberately focus on **post-processing** — everything that happens after WBPP (WeightedBatchPreprocessing) produces integrated masters:
+We deliberately focus on **post-processing**, everything that happens after WBPP (WeightedBatchPreprocessing) produces integrated masters:
 
 **In scope** (what the MCP server handles):
 - Gradient removal (ABE/DBE)
@@ -148,9 +148,17 @@ The pre-processing tools (calibrate, register, integrate) remain in the MCP tool
 
 PixInsight should run in automation mode for best results:
 
+```powershell
+# Windows (the platform this fork is tested on)
+& "C:\Program Files\PixInsight\bin\PixInsight.exe" -n --automation-mode
+```
+
 ```bash
-/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight \
-  -n --automation-mode
+# macOS
+/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight -n --automation-mode
+
+# Linux
+/opt/PixInsight/bin/PixInsight -n --automation-mode
 ```
 
 Automation mode:
@@ -168,10 +176,10 @@ PixInsight --automation-mode -n=1
 ## Security Considerations
 
 - The MCP server only has access to what the user configures (file paths, bridge directory)
-- PixInsight runs with the user's permissions — no privilege escalation
+- PixInsight runs with the user's permissions, no privilege escalation
 - Command files are deleted after execution
 - The bridge directory should be user-private (`chmod 700`)
-- Recipe source URLs are stored for attribution — no content is scraped without user action
+- Recipe source URLs are stored for attribution, no content is scraped without user action
 
 ## Future Enhancements
 

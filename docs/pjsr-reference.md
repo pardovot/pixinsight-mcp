@@ -2,7 +2,10 @@
 
 ## Overview
 
-PJSR is PixInsight's built-in scripting engine based on **Mozilla SpiderMonkey** (ECMAScript 5). Every installed PixInsight process is automatically scriptable through PJSR.
+PJSR is PixInsight's built-in scripting engine. Since **1.9.x "Lockhart" it runs Google V8 (ES6+)**;
+older releases used Mozilla SpiderMonkey (ECMAScript 5). This project targets **V8**, declare it with
+`#engine v8` at the top of a script. Every installed PixInsight process is automatically scriptable
+through PJSR.
 
 ## Key Resources
 
@@ -13,7 +16,7 @@ PJSR is PixInsight's built-in scripting engine based on **Mozilla SpiderMonkey**
 
 ## Core Objects
 
-### ProcessInstance — Execute Any Process
+### ProcessInstance, Execute Any Process
 
 ```javascript
 // Create a process and set parameters
@@ -34,7 +37,7 @@ var P = ProcessInstance.fromIcon("MyProcessIcon");
 P.executeGlobal();
 ```
 
-### ImageWindow — Access Open Images
+### ImageWindow, Access Open Images
 
 ```javascript
 // Get all open image windows
@@ -56,7 +59,7 @@ w.saveAs("/path/to/output.xisf", false, false, false, false);
 w.close();
 ```
 
-### View — Image Views
+### View, Image Views
 
 ```javascript
 var view = ImageWindow.activeWindow.currentView;
@@ -70,7 +73,7 @@ console.writeln("Channels: " + img.numberOfChannels);
 console.writeln("Color: " + img.isColor);
 ```
 
-### Image — Pixel Access
+### Image, Pixel Access
 
 ```javascript
 var img = ImageWindow.activeWindow.currentView.image;
@@ -84,7 +87,7 @@ var mean = img.mean();
 var stdDev = img.stdDev();
 ```
 
-### File — File System Operations
+### File, File System Operations
 
 ```javascript
 // Read a file
@@ -109,7 +112,7 @@ var files = searchDirectory("/path/to/dir/*.json");
 // Returns array of full paths matching the pattern
 ```
 
-### Console — Output
+### Console, Output
 
 ```javascript
 console.writeln("Message");          // Line with newline
@@ -123,10 +126,10 @@ console.show();
 console.hide();
 
 // Abort check (for long operations)
-console.abortRequested;               // Boolean — user clicked abort?
+console.abortRequested;               // Boolean, user clicked abort?
 ```
 
-### Parameters — Script Arguments
+### Parameters, Script Arguments
 
 When a script is launched with `-r=script.js,arg1,arg2`:
 
@@ -186,15 +189,17 @@ msleep(500);  // Sleep for 500 milliseconds
 ### Process Console Commands
 
 Inside PixInsight's Process Console:
-- `help` — list all available commands
-- `run script.js` — run a script
-- `.properties` — show image properties
-- `.statistics` — show image statistics
+- `help`, list all available commands
+- `run script.js`, run a script
+- `.properties`, show image properties
+- `.statistics`, show image statistics
 
 ## PJSR Limitations
 
-- ECMAScript 5 only (no `let`, `const`, arrow functions, template literals, `class`, etc.)
 - No native networking (no sockets, no HTTP, no WebSocket)
 - No native `setTimeout` / `setInterval` (use polling loops with `msleep`)
-- Documentation is incomplete — Object Explorer is the authoritative reference
-- SpiderMonkey version is old (24/38) — some modern JS features missing
+- **A running script holds the single main thread**, PixInsight is frozen for its duration, and a
+  background `Timer` does not survive the script returning. This is why the bridge watcher is a
+  native module (`module/`) rather than a script.
+- Documentation is incomplete, Object Explorer is the authoritative reference
+- On pre-1.9.x (SpiderMonkey 24/38) ES5-only rules apply; not our target.

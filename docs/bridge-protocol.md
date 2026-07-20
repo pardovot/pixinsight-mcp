@@ -196,7 +196,7 @@ Execute an arbitrary PJSR script:
   "bridgeDir": "~/.pixinsight-mcp/bridge",
   "pollIntervalMs": 200,
   "defaultTimeoutMs": 300000,
-  "pixinsightPath": "/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight",
+  "pixinsightPath": "C:\\Program Files\\PixInsight\\bin\\PixInsight.exe",
   "automationMode": true
 }
 ```

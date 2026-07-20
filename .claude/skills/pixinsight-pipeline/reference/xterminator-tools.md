@@ -1,6 +1,6 @@
-# Xterminator Tools (RC Astro) — PJSR Reference
+# Xterminator Tools (RC Astro), PJSR Reference
 
-All three are **native process modules** (.dylib), NOT scripts.
+All three are **native process modules** (`-pxm.dll` on Windows), NOT scripts.
 
 ## StarXTerminator (SXT)
 
@@ -38,7 +38,7 @@ for (var i = 0; i < after.length; i++) {
 ### Non-Linear Star Extraction (Best Practice)
 Avoids halo bloating from stretching linear stars:
 1. Save pre-SXT checkpoint
-2. Run SXT on linear main image (stars=true, no unscreen) — close linear stars
+2. Run SXT on linear main image (stars=true, no unscreen), close linear stars
 3. Stretch main image (HT + GHS)
 4. Load pre-SXT checkpoint, apply identical stretch
 5. Run SXT with `unscreen=true` on stretched pre-SXT image
@@ -71,7 +71,7 @@ plastic/waxy look, faint star loss, blurred edges, color smearing, reduced depth
 | Post-stretch RGB | After main stretch | 0.25 | 0.15 | Clean stretched color |
 | Final (optional) | After LHE/HDRMT | 0.15 | 0.15 | Light cleanup of amplified noise |
 
-Each application should be a single run at low denoise — NOT high denoise values.
+Each application should be a single run at low denoise, NOT high denoise values.
 
 ```javascript
 var P = new NoiseXTerminator;
@@ -85,22 +85,22 @@ P.executeOn(view);
 ### Parameters
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `sharpenStars` | float | — | Star sharpening amount |
-| `adjustStarHalos` | float | — | Halo adjustment (negative = reduce) |
-| `sharpenNonstellar` | float | — | Extended feature sharpening |
+| `sharpenStars` | float |, | Star sharpening amount |
+| `adjustStarHalos` | float |, | Halo adjustment (negative = reduce) |
+| `sharpenNonstellar` | float |, | Extended feature sharpening |
 | `correctOnly` | bool | false | Only aberration correction, no sharpening |
 | `autoNonstellarPSF` | bool | true | Auto-detect PSF from stars |
-| `nonstellarPSFDiameter` | float | — | Manual PSF diameter (0-8 px) |
+| `nonstellarPSFDiameter` | float |, | Manual PSF diameter (0-8 px) |
 | `luminanceOnly` | bool | false | Process luminance only |
 
 ### Two-Pass Best Practice
-1. **Pass 1 (correctOnly)** — before color calibration:
+1. **Pass 1 (correctOnly)**, before color calibration:
    ```javascript
    P.correctOnly = true;
    P.sharpenStars = 0.50;
    P.sharpenNonstellar = 0.75;
    ```
-2. **Pass 2 (sharpening)** — after color calibration:
+2. **Pass 2 (sharpening)**, after color calibration:
    ```javascript
    P.correctOnly = false;
    P.sharpenStars = 0.25;

@@ -1,11 +1,15 @@
 # PJSR Gotchas & Constraints
 
-## Language: ECMAScript 5 Only
-PJSR runs ECMAScript 5. Do NOT use:
-- `let`, `const` — use `var`
-- Arrow functions `() => {}` — use `function() {}`
-- Template literals `` `${x}` `` — use `'text' + x + 'text'`
-- Destructuring, spread, `class`, `for...of`, `Promise`
+## Language: V8 (ES6+), NOT ECMAScript 5
+PixInsight **1.9.4 "Lockhart" and later run V8**. `let`/`const`, arrow functions,
+template literals, `class ... extends`, `for...of`, destructuring and spread all work.
+Declare the engine at the top of the script:
+```javascript
+#engine v8
+```
+Legacy SpiderMonkey (ES5-only) applies to **pre-1.9.x** installs only. This project
+targets V8; the ES5 restrictions previously documented here were wrong for our
+environment and are removed.
 
 ## File I/O
 ```javascript
@@ -25,7 +29,7 @@ File.createDirectory(path, true);       // recursive mkdir
 searchDirectory(dir + '/*.json');       // glob-like listing
 ```
 
-**Do NOT use** `DataType_ByteArray` — it's not defined.
+**Do NOT use** `DataType_ByteArray`, it's not defined.
 
 ## XISF Crop Masks
 XISF files from WBPP contain embedded crop masks. Opening creates MULTIPLE windows:
@@ -48,37 +52,38 @@ for (var i = 0; i < wins.length; i++) {
 Without these: "Cannot execute instance in the global context" error.
 
 ## PixelMath Limitations
-- **No `pow()` function** — use `exp(exponent * ln(base))` instead
+- **No `pow()` function**, use `exp(exponent * ln(base))` instead
 - **`^` operator** works for fractional/negative exponents
 - Negative numbers must be wrapped: `(-1.859)` not `-1.859` in some contexts
 - `P.use64BitWorkingImage = true; P.truncate = true` for precision
 
 ## StarAlignment
-- Output directory path must have **NO SPACES** — PJSR silently fails
-- Use `/tmp/aligned/` or `~/.pixinsight-mcp/aligned/` instead
+- Output directory path must have **NO SPACES**, PJSR silently fails
+- Use `~/.pixinsight-mcp/aligned/` instead (no `/tmp` on Windows)
 - `targets` format: `[[enabled, drizzle, filepath]]`
 
 ## eval() Context
-- `#include` directives don't work inside eval — they're compile-time
+- `#include` directives don't work inside eval, they're compile-time
 - Code goes through JSON.stringify → JSON.parse → eval (beware escaping)
 - Single quotes in PJSR code work fine
-- Write long scripts to `/tmp/` files to avoid escaping issues
+- Write long scripts to a file under `~/.pixinsight-mcp/` to avoid escaping issues
 
 ## Process Module Availability
-- Not all PI processes are installed as `.dylib` modules
-- Check: `/Applications/PixInsight/bin/<ProcessName>-pxm.dylib`
-- GHS is script-only (no .dylib) — must use PixelMath fallback
+- Not all PI processes are installed as modules
+- Check (Windows): `C:\Program Files\PixInsight\bin\<ProcessName>-pxm.dll`
+  (macOS/Linux: `.dylib` / `.so` in the equivalent `bin/`)
+- GHS is not installed here at all, must use PixelMath fallback
 - SXT/NXT/BXT ARE native modules
 - Runtime check: `try { new ProcessName; } catch(e) { /* not available */ }`
 
 ## UI Responsiveness
 - `processEvents()` is CRITICAL in any loop to prevent freeze
-- `msleep(ms)` blocks completely — no UI events during sleep
+- `msleep(ms)` blocks completely, no UI events during sleep
 - Pattern: alternate `msleep(50)` with `processEvents()` in idle loops
-- During `P.executeOn(view)`, UI is blocked — unavoidable
+- During `P.executeOn(view)`, UI is blocked, unavoidable
 
 ## Memory Management
-- PixInsight accumulates undo history — each operation adds ~300MB per 6000x4000 RGB image
+- PixInsight accumulates undo history, each operation adds ~300MB per 6000x4000 RGB image
 - **Purge undo history** with `w.purge()` after mask-heavy steps (LHE, HDRMT) and merge points
 - **Close images when done**: L_work after LRGB combine, stars after star addition, masks after use
 - Check OS-level memory between heavy steps (BXT, NXT, SXT, SPCC)
@@ -88,7 +93,7 @@ Without these: "Cannot execute instance in the global context" error.
 - Without purging: 44GB observed. With purging: peak 1.3GB for same pipeline.
 - After pipeline crash: relaunch PixInsight, resume from checkpoint with `--restart-from`
 
-## ImageWindow Constructor — Dimension Bug
+## ImageWindow Constructor, Dimension Bug
 PJSR `Image.width` / `Image.height` properties don't pass cleanly as arguments to
 `new ImageWindow(width, height, ...)`. The constructor throws "invalid dimension(s)"
 even though the values appear correct.
@@ -108,7 +113,7 @@ The key is that `${dims.w}` gets interpolated by JavaScript (Node.js) into a lit
 number like `5972` BEFORE the PJSR code is sent to PixInsight. This avoids passing
 PJSR Image property values directly to the constructor.
 
-Also use `floatSample=true` (5th arg) for mask windows — `false` creates integer images
+Also use `floatSample=true` (5th arg) for mask windows, `false` creates integer images
 which behave differently for PixelMath operations.
 
 ## ImageWindow.windowById() Never Returns Null
@@ -118,7 +123,7 @@ window with that ID exists. The returned object has `.isNull === true` when not 
 **WRONG:**
 ```javascript
 var w = ImageWindow.windowById('myView');
-if (!w) throw new Error('not found');  // NEVER throws — w is always truthy!
+if (!w) throw new Error('not found');  // NEVER throws, w is always truthy!
 if (w ? 'yes' : 'no')  // ALWAYS 'yes'!
 ```
 
@@ -129,7 +134,7 @@ if (w.isNull) throw new Error('not found');  // Properly checks
 w.isNull ? 'no' : 'yes';  // Correct boolean check
 ```
 
-This is a critical PJSR gotcha — caused mask creation to silently fail for 4 iterations
+This is a critical PJSR gotcha, caused mask creation to silently fail for 4 iterations
 because the Ha_work existence check always returned 'yes'.
 
 ## Astrometry Transfer
@@ -137,4 +142,4 @@ because the Ha_work existence check always returned 'yes'.
 // Copy WCS solution from source to destination
 dstWindow.copyAstrometricSolution(srcWindow);
 ```
-Essential after creating PixelMath composites — SPCC needs WCS data.
+Essential after creating PixelMath composites, SPCC needs WCS data.

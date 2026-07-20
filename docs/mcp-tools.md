@@ -1,19 +1,24 @@
 # MCP Tools Catalog
 
+> ⚠️ **STALE, aspirational upstream design, not the implemented tool set.** Several tools
+> described here (`search_recipes`, `get_recipe`, …) do **not** exist, and the implemented
+> generic `run_process` / `get_process_parameters` pair is missing. The authoritative list is
+> `src/tools/*.ts` (or `tools/list` from the running server); see the tool table in the README.
+
 The tools the MCP server will expose to AI assistants. Organized by category.
 
 ---
 
-## Category 1 — Recipe Catalog Tools
+## Category 1, Recipe Catalog Tools
 
 ### `search_recipes`
 Search the local recipe catalog for processing workflows matching an object or criteria.
 
 **Parameters**:
-- `object` (string, optional) — astronomical object name (e.g., "M42", "NGC 7000")
-- `objectType` (string, optional) — "galaxy", "emission_nebula", "planetary_nebula", "cluster", "reflection_nebula", etc.
-- `filters` (string[], optional) — filter set used (e.g., ["L", "R", "G", "B", "Ha"])
-- `tags` (string[], optional) — additional tags to filter on
+- `object` (string, optional), astronomical object name (e.g., "M42", "NGC 7000")
+- `objectType` (string, optional), "galaxy", "emission_nebula", "planetary_nebula", "cluster", "reflection_nebula", etc.
+- `filters` (string[], optional), filter set used (e.g., ["L", "R", "G", "B", "Ha"])
+- `tags` (string[], optional), additional tags to filter on
 - `limit` (number, default: 5)
 
 **Returns**: Array of recipe summaries with `{ id, title, objects, source, resultImageUrl, stepCount, difficulty }`
@@ -34,9 +39,9 @@ Get full recipe details by ID, including all steps and parameters.
 Search the web for new processing workflows for a given object. Extracts structured recipes from found content and adds them to the catalog.
 
 **Parameters**:
-- `object` (string, required) — object name to search for
-- `filters` (string[], optional) — filter set to refine search
-- `sources` (string[], optional) — limit to specific platforms ("astrobin", "cloudynights", "webastro", "youtube", "blog")
+- `object` (string, required), object name to search for
+- `filters` (string[], optional), filter set to refine search
+- `sources` (string[], optional), limit to specific platforms ("astrobin", "cloudynights", "webastro", "youtube", "blog")
 
 **Returns**: Array of newly discovered recipe summaries
 
@@ -46,7 +51,7 @@ Search the web for new processing workflows for a given object. Extracts structu
 Add a manually crafted recipe to the catalog.
 
 **Parameters**:
-- `recipe` (object, required) — full recipe object following the schema
+- `recipe` (object, required), full recipe object following the schema
 
 **Returns**: `{ id, status: "added" }`
 
@@ -56,8 +61,8 @@ Add a manually crafted recipe to the catalog.
 AI reads a URL (blog post, forum thread, AstroBin page) and extracts a structured processing recipe from it.
 
 **Parameters**:
-- `url` (string, required) — source URL
-- `object` (string, optional) — object name hint (helps extraction)
+- `url` (string, required), source URL
+- `object` (string, optional), object name hint (helps extraction)
 
 **Returns**: Extracted recipe (user can review before saving)
 
@@ -68,9 +73,9 @@ Execute a recipe step-by-step on loaded images in PixInsight.
 
 **Parameters**:
 - `recipeId` (string, required)
-- `channelMapping` (object, required) — maps recipe channels to open views, e.g., `{ "L": "L_master", "R": "R_master", "Ha": "Ha_master" }`
-- `startFromStep` (number, default: 1) — resume from a specific step
-- `interactive` (boolean, default: true) — if true, pause after each step for user review
+- `channelMapping` (object, required), maps recipe channels to open views, e.g., `{ "L": "L_master", "R": "R_master", "Ha": "Ha_master" }`
+- `startFromStep` (number, default: 1), resume from a specific step
+- `interactive` (boolean, default: true), if true, pause after each step for user review
 
 **Returns**: Progress and result for each step
 
@@ -81,12 +86,12 @@ Rate a recipe after using it.
 
 **Parameters**:
 - `recipeId` (string, required)
-- `rating` (number, required) — 1-5
+- `rating` (number, required), 1-5
 - `notes` (string, optional)
 
 ---
 
-## Category 2 — Image Management Tools
+## Category 2, Image Management Tools
 
 ### `list_open_images`
 List all currently open image windows in PixInsight.
@@ -101,7 +106,7 @@ List all currently open image windows in PixInsight.
 Open an image file in PixInsight.
 
 **Parameters**:
-- `filePath` (string, required) — absolute path to FITS/XISF/TIFF file
+- `filePath` (string, required), absolute path to FITS/XISF/TIFF file
 
 **Returns**: `{ id, width, height, channels }`
 
@@ -111,8 +116,8 @@ Open an image file in PixInsight.
 Save an open image to disk.
 
 **Parameters**:
-- `viewId` (string, required) — the view ID of the image to save
-- `filePath` (string, required) — output path (format determined by extension: .xisf, .fits, .tiff, .png)
+- `viewId` (string, required), the view ID of the image to save
+- `filePath` (string, required), output path (format determined by extension: .xisf, .fits, .tiff, .png)
 - `overwrite` (boolean, default: false)
 
 ---
@@ -135,7 +140,7 @@ Get statistics for an open image (mean, median, stddev, min, max, per channel).
 
 ---
 
-## Category 3 — Processing Tools (Post-WBPP)
+## Category 3, Processing Tools (Post-WBPP)
 
 These are the core tools for post-processing. Recipes are composed of these steps.
 
@@ -143,12 +148,12 @@ These are the core tools for post-processing. Recipes are composed of these step
 Execute a PixelMath expression.
 
 **Parameters**:
-- `expression` (string, required) — the math expression (e.g., `"$T * 0.5"`)
-- `expression1` (string, optional) — green channel expression (if different)
-- `expression2` (string, optional) — blue channel expression (if different)
-- `targetViewId` (string, optional) — apply to this view (in-place)
+- `expression` (string, required), the math expression (e.g., `"$T * 0.5"`)
+- `expression1` (string, optional), green channel expression (if different)
+- `expression2` (string, optional), blue channel expression (if different)
+- `targetViewId` (string, optional), apply to this view (in-place)
 - `createNewImage` (boolean, default: false)
-- `newImageId` (string, optional) — ID for the new image if creating one
+- `newImageId` (string, optional), ID for the new image if creating one
 
 ---
 
@@ -157,7 +162,7 @@ Remove background gradients using ABE.
 
 **Parameters**:
 - `viewId` (string, required)
-- `polyDegree` (number, default: 4) — polynomial degree (1-6)
+- `polyDegree` (number, default: 4), polynomial degree (1-6)
 - `tolerance` (number, default: 1.0)
 
 ---
@@ -167,7 +172,7 @@ Calibrate colors using SPCC (if plate-solved) or PCC.
 
 **Parameters**:
 - `viewId` (string, required)
-- `method` (string, default: "spcc") — "spcc", "pcc", "basic"
+- `method` (string, default: "spcc"), "spcc", "pcc", "basic"
 
 ---
 
@@ -176,7 +181,7 @@ Apply SCNR to remove green cast.
 
 **Parameters**:
 - `viewId` (string, required)
-- `amount` (number, default: 1.0) — 0.0 to 1.0
+- `amount` (number, default: 1.0), 0.0 to 1.0
 
 ---
 
@@ -185,9 +190,9 @@ Apply histogram stretch (linear to non-linear).
 
 **Parameters**:
 - `viewId` (string, required)
-- `method` (string, default: "auto") — "auto" (AutoHistogram), "stf" (use STF values), "manual" (HistogramTransformation)
-- `shadowsClipping` (number, optional) — for manual method
-- `midtones` (number, optional) — for manual method
+- `method` (string, default: "auto"), "auto" (AutoHistogram), "stf" (use STF values), "manual" (HistogramTransformation)
+- `shadowsClipping` (number, optional), for manual method
+- `midtones` (number, optional), for manual method
 
 ---
 
@@ -196,8 +201,8 @@ Apply curves transformation.
 
 **Parameters**:
 - `viewId` (string, required)
-- `curvePoints` (array) — array of [x, y] control points (0.0-1.0)
-- `channel` (string, default: "rgb") — "rgb", "red", "green", "blue", "lightness", "saturation"
+- `curvePoints` (array), array of [x, y] control points (0.0-1.0)
+- `channel` (string, default: "rgb"), "rgb", "red", "green", "blue", "lightness", "saturation"
 
 ---
 
@@ -206,8 +211,8 @@ Apply noise reduction (MultiscaleLinearTransform).
 
 **Parameters**:
 - `viewId` (string, required)
-- `layers` (number, default: 4) — number of wavelet layers
-- `strength` (number[], optional) — per-layer noise reduction strength
+- `layers` (number, default: 4), number of wavelet layers
+- `strength` (number[], optional), per-layer noise reduction strength
 
 ---
 
@@ -226,7 +231,7 @@ Apply deconvolution to restore detail.
 
 **Parameters**:
 - `viewId` (string, required)
-- `psfSigma` (number, default: 2.5) — PSF sigma estimate
+- `psfSigma` (number, default: 2.5), PSF sigma estimate
 - `iterations` (number, default: 50)
 
 ---
@@ -245,15 +250,15 @@ Combine Luminance with RGB color data.
 Blend narrowband channel into broadband data using PixelMath.
 
 **Parameters**:
-- `targetViewId` (string, required) — the broadband image
-- `narrowbandViewId` (string, required) — the narrowband channel (e.g., Ha)
-- `blendMode` (string, default: "max") — "max", "screen", "add", "custom"
-- `blendStrength` (number, default: 1.0) — 0.0 to 1.0
-- `targetChannel` (string, optional) — "red", "luminance", "all"
+- `targetViewId` (string, required), the broadband image
+- `narrowbandViewId` (string, required), the narrowband channel (e.g., Ha)
+- `blendMode` (string, default: "max"), "max", "screen", "add", "custom"
+- `blendStrength` (number, default: 1.0), 0.0 to 1.0
+- `targetChannel` (string, optional), "red", "luminance", "all"
 
 ---
 
-## Category 4 — Pre-Processing Tools (Direct Use)
+## Category 4, Pre-Processing Tools (Direct Use)
 
 Available for direct use, but **not** used in post-WBPP recipes.
 
@@ -261,12 +266,12 @@ Available for direct use, but **not** used in post-WBPP recipes.
 Apply bias, dark, and flat calibration to light frames.
 
 **Parameters**:
-- `lightFrames` (string[], required) — paths to light frame files
-- `masterBias` (string, optional) — path to master bias
-- `masterDark` (string, optional) — path to master dark
-- `masterFlat` (string, optional) — path to master flat
+- `lightFrames` (string[], required), paths to light frame files
+- `masterBias` (string, optional), path to master bias
+- `masterDark` (string, optional), path to master dark
+- `masterFlat` (string, optional), path to master flat
 - `outputDirectory` (string, required)
-- `enableCFA` (boolean, default: false) — for OSC/DSLR cameras
+- `enableCFA` (boolean, default: false), for OSC/DSLR cameras
 
 ---
 
@@ -274,7 +279,7 @@ Apply bias, dark, and flat calibration to light frames.
 Align frames to a reference using StarAlignment.
 
 **Parameters**:
-- `referenceImage` (string, required) — path to reference frame
+- `referenceImage` (string, required), path to reference frame
 - `targetFrames` (string[], required)
 - `outputDirectory` (string, required)
 - `distortionCorrection` (boolean, default: false)
@@ -285,9 +290,9 @@ Align frames to a reference using StarAlignment.
 Stack registered frames using ImageIntegration.
 
 **Parameters**:
-- `frames` (string[], required) — paths to registered frames
-- `combination` (string, default: "average") — "average", "median", "min", "max"
-- `rejection` (string, default: "sigma_clip") — "sigma_clip", "winsorized", "linear_fit", "percentile", "none"
+- `frames` (string[], required), paths to registered frames
+- `combination` (string, default: "average"), "average", "median", "min", "max"
+- `rejection` (string, default: "sigma_clip"), "sigma_clip", "winsorized", "linear_fit", "percentile", "none"
 - `sigmaLow` (number, default: 4.0)
 - `sigmaHigh` (number, default: 3.0)
 - `outputFilePath` (string, optional)
@@ -296,15 +301,15 @@ Stack registered frames using ImageIntegration.
 
 ---
 
-## Category 5 — Advanced / Utility Tools
+## Category 5, Advanced / Utility Tools
 
 ### `plate_solve`
 Solve astrometry for an image (ImageSolver).
 
 **Parameters**:
 - `viewId` (string, required)
-- `ra` (number, optional) — approximate RA in degrees (hint)
-- `dec` (number, optional) — approximate Dec in degrees (hint)
+- `ra` (number, optional), approximate RA in degrees (hint)
+- `dec` (number, optional), approximate Dec in degrees (hint)
 
 ---
 
@@ -313,7 +318,7 @@ Separate an image into individual channels.
 
 **Parameters**:
 - `viewId` (string, required)
-- `colorSpace` (string, default: "RGB") — "RGB", "HSV", "HSI", "CIE Lab"
+- `colorSpace` (string, default: "RGB"), "RGB", "HSV", "HSI", "CIE Lab"
 
 ---
 
@@ -321,7 +326,7 @@ Separate an image into individual channels.
 Combine separate channel images into a color image.
 
 **Parameters**:
-- `channels` (object, required) — `{ red: "viewId", green: "viewId", blue: "viewId" }`
+- `channels` (object, required), `{ red: "viewId", green: "viewId", blue: "viewId" }`
 
 ---
 
@@ -329,7 +334,7 @@ Combine separate channel images into a color image.
 Execute arbitrary PJSR code inside PixInsight. Escape hatch for anything not covered by specific tools.
 
 **Parameters**:
-- `code` (string, required) — PJSR JavaScript code to execute
+- `code` (string, required), PJSR JavaScript code to execute
 
 **Returns**: Console output captured during execution
 
