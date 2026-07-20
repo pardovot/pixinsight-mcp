@@ -1,11 +1,15 @@
 # PJSR Gotchas & Constraints
 
-## Language: ECMAScript 5 Only
-PJSR runs ECMAScript 5. Do NOT use:
-- `let`, `const` — use `var`
-- Arrow functions `() => {}` — use `function() {}`
-- Template literals `` `${x}` `` — use `'text' + x + 'text'`
-- Destructuring, spread, `class`, `for...of`, `Promise`
+## Language: V8 (ES6+), NOT ECMAScript 5
+PixInsight **1.9.4 "Lockhart" and later run V8**. `let`/`const`, arrow functions,
+template literals, `class ... extends`, `for...of`, destructuring and spread all work.
+Declare the engine at the top of the script:
+```javascript
+#engine v8
+```
+Legacy SpiderMonkey (ES5-only) applies to **pre-1.9.x** installs only. This project
+targets V8; the ES5 restrictions previously documented here were wrong for our
+environment and are removed.
 
 ## File I/O
 ```javascript
@@ -55,19 +59,20 @@ Without these: "Cannot execute instance in the global context" error.
 
 ## StarAlignment
 - Output directory path must have **NO SPACES** — PJSR silently fails
-- Use `/tmp/aligned/` or `~/.pixinsight-mcp/aligned/` instead
+- Use `~/.pixinsight-mcp/aligned/` instead (no `/tmp` on Windows)
 - `targets` format: `[[enabled, drizzle, filepath]]`
 
 ## eval() Context
 - `#include` directives don't work inside eval — they're compile-time
 - Code goes through JSON.stringify → JSON.parse → eval (beware escaping)
 - Single quotes in PJSR code work fine
-- Write long scripts to `/tmp/` files to avoid escaping issues
+- Write long scripts to a file under `~/.pixinsight-mcp/` to avoid escaping issues
 
 ## Process Module Availability
-- Not all PI processes are installed as `.dylib` modules
-- Check: `/Applications/PixInsight/bin/<ProcessName>-pxm.dylib`
-- GHS is script-only (no .dylib) — must use PixelMath fallback
+- Not all PI processes are installed as modules
+- Check (Windows): `C:\Program Files\PixInsight\bin\<ProcessName>-pxm.dll`
+  (macOS/Linux: `.dylib` / `.so` in the equivalent `bin/`)
+- GHS is not installed here at all — must use PixelMath fallback
 - SXT/NXT/BXT ARE native modules
 - Runtime check: `try { new ProcessName; } catch(e) { /* not available */ }`
 

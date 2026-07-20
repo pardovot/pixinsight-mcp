@@ -2,7 +2,10 @@
 
 ## Overview
 
-PJSR is PixInsight's built-in scripting engine based on **Mozilla SpiderMonkey** (ECMAScript 5). Every installed PixInsight process is automatically scriptable through PJSR.
+PJSR is PixInsight's built-in scripting engine. Since **1.9.x "Lockhart" it runs Google V8 (ES6+)**;
+older releases used Mozilla SpiderMonkey (ECMAScript 5). This project targets **V8** — declare it with
+`#engine v8` at the top of a script. Every installed PixInsight process is automatically scriptable
+through PJSR.
 
 ## Key Resources
 
@@ -193,8 +196,10 @@ Inside PixInsight's Process Console:
 
 ## PJSR Limitations
 
-- ECMAScript 5 only (no `let`, `const`, arrow functions, template literals, `class`, etc.)
 - No native networking (no sockets, no HTTP, no WebSocket)
 - No native `setTimeout` / `setInterval` (use polling loops with `msleep`)
+- **A running script holds the single main thread** — PixInsight is frozen for its duration, and a
+  background `Timer` does not survive the script returning. This is why the bridge watcher is a
+  native module (`module/`) rather than a script.
 - Documentation is incomplete — Object Explorer is the authoritative reference
-- SpiderMonkey version is old (24/38) — some modern JS features missing
+- On pre-1.9.x (SpiderMonkey 24/38) ES5-only rules apply; not our target.

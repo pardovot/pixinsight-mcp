@@ -1,6 +1,6 @@
 # Xterminator Tools (RC Astro) — PJSR Reference
 
-All three are **native process modules** (.dylib), NOT scripts.
+All three are **native process modules** (`-pxm.dll` on Windows), NOT scripts.
 
 ## StarXTerminator (SXT)
 

@@ -1,5 +1,10 @@
 # MCP Tools Catalog
 
+> ⚠️ **STALE — aspirational upstream design, not the implemented tool set.** Several tools
+> described here (`search_recipes`, `get_recipe`, …) do **not** exist, and the implemented
+> generic `run_process` / `get_process_parameters` pair is missing. The authoritative list is
+> `src/tools/*.ts` (or `tools/list` from the running server); see the tool table in the README.
+
 The tools the MCP server will expose to AI assistants. Organized by category.
 
 ---

@@ -148,9 +148,17 @@ The pre-processing tools (calibrate, register, integrate) remain in the MCP tool
 
 PixInsight should run in automation mode for best results:
 
+```powershell
+# Windows (the platform this fork is tested on)
+& "C:\Program Files\PixInsight\bin\PixInsight.exe" -n --automation-mode
+```
+
 ```bash
-/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight \
-  -n --automation-mode
+# macOS
+/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight -n --automation-mode
+
+# Linux
+/opt/PixInsight/bin/PixInsight -n --automation-mode
 ```
 
 Automation mode:

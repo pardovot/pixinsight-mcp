@@ -5,7 +5,11 @@
 - **Node.js** >= 18
 - **PixInsight** >= 1.8.9 (with scripting support)
 - **Claude Desktop** or **Claude Code** (for testing the MCP server)
-- **macOS** (primary development platform; Linux/Windows adaptations noted where different)
+- **OS**: cross-platform is the goal; **Windows 11 is currently the only tested platform**.
+  Nothing in the design is Windows-specific. The build tooling is cross-platform Node
+  (`module/*.mjs`) with per-platform branches; PixInsight ships PCL project files for all three
+  (`src/pcl/{windows/vc17,macosx/g++,linux/g++}`). The macOS/Linux paths are written but have
+  not been run yet. Commands below cover all three platforms; only the Windows ones are verified.
 
 ## PixInsight Path
 
@@ -36,14 +40,22 @@ mkdir -p ~/.pixinsight-mcp/bridge/{commands,results,logs}
 
 ## Running PixInsight in Automation Mode
 
-```bash
-# macOS
-/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight \
-  -n --automation-mode
+```powershell
+# Windows
+& "C:\Program Files\PixInsight\bin\PixInsight.exe" -n --automation-mode
 
 # With a slot number (for IPC)
-/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight \
-  -n=1 --automation-mode
+& "C:\Program Files\PixInsight\bin\PixInsight.exe" -n=1 --automation-mode
+```
+
+```bash
+# macOS
+/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight -n --automation-mode
+/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight -n=1 --automation-mode
+
+# Linux
+/opt/PixInsight/bin/PixInsight -n --automation-mode
+/opt/PixInsight/bin/PixInsight -n=1 --automation-mode
 ```
 
 ## Loading the Watcher Script
@@ -56,11 +68,21 @@ mkdir -p ~/.pixinsight-mcp/bridge/{commands,results,logs}
 
 Alternatively, auto-load on startup:
 
-```bash
-/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight \
-  -n --automation-mode \
-  -r="/path/to/pixinsight-mcp/pjsr/pixinsight-mcp-watcher.js"
+```powershell
+# Windows
+& "C:\Program Files\PixInsight\bin\PixInsight.exe" -n --automation-mode `
+  -r="<repo>\pjsr\pixinsight-mcp-watcher.js"
 ```
+
+```bash
+# macOS / Linux
+<PixInsight> -n --automation-mode \
+  -r="<repo>/pjsr/pixinsight-mcp-watcher.js"
+```
+
+> With the native module installed (see `module/`), the watcher **script is not needed** —
+> the module polls the bridge on PixInsight's own event loop and leaves the app interactive.
+> The script is an emergency fallback only, and it freezes PixInsight while it runs.
 
 ## Configuring Claude Desktop
 
