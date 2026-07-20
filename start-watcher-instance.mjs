@@ -31,10 +31,25 @@ const slot = arg('--slot');   // optional explicit instance number
 function findPixInsight() {
   const explicit = arg('--pi') || process.env.PIXINSIGHT_EXE;
   if (explicit) return explicit;
-  if (isWin) return 'C:/Program Files/PixInsight/bin/PixInsight.exe';
-  if (process.platform === 'darwin')
-    return '/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight';
-  return '/opt/PixInsight/bin/PixInsight';
+
+  // Probe conventional locations. Astro rigs commonly install to a second
+  // drive, and non-English Windows uses a localized Program Files name, so
+  // never assume a literal "C:\Program Files".
+  const candidates = isWin
+    ? [
+        process.env.ProgramFiles,
+        process.env.ProgramW6432,
+        process.env['ProgramFiles(x86)'],
+        'C:/Program Files',
+        'D:/Program Files',
+      ]
+        .filter(Boolean)
+        .map((base) => path.join(base, 'PixInsight', 'bin', 'PixInsight.exe'))
+    : process.platform === 'darwin'
+      ? ['/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight']
+      : ['/opt/PixInsight/bin/PixInsight', '/usr/local/PixInsight/bin/PixInsight'];
+
+  return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
 }
 
 const pi = findPixInsight();
