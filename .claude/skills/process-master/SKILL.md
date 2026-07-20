@@ -44,6 +44,20 @@ the correct process choices (e.g. gradient via MGC/GradientCorrection, *not* ABE
 nebula-filling targets), the exact order, and per-step settings with confidence grades. Present
 your plan as the playbook's step order, with your intended stop/checkpoint points.
 
+**Decide; do not interview.** The playbook already answers the routine choices — gradient tool,
+SPCC narrowband wavelengths, BXT nonstellar strength, NXT strength, HOO mapping. Do NOT ask the
+user to pick these; choose per the playbook, **state your assumption in one line**, and proceed.
+Only pause at the genuine aesthetic decision points the user named (and honor their checkpoints).
+If something is truly unspecified and consequential (e.g. output path), make a sensible default
+and mention it — a run should not block on questions the research has already settled.
+
+**Check for an existing plate solution before solving.** WBPP masters are usually already
+plate-solved, and the WCS survives stacking. Check for astrometric metadata first
+(`run_script`: `View.window.astrometricSolution()` returns null if unsolved; or look for WCS FITS
+keywords `CTYPE1`/`CTYPE2`). Only run ImageSolver if the solution is absent — re-solving a solved
+image is wasted time. (Note: BlurXTerminator strips the WCS, so if a later step needs it, copy the
+solution back after BXT — see the playbook.)
+
 ## Step 2 — execute, one playbook step at a time
 
 For **every** step, in this loop — never skip the measure/verify halves:
