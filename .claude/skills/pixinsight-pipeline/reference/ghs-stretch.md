@@ -1,10 +1,15 @@
 # GHS (Generalized Hyperbolic Stretch) — Complete Reference
 
-## Status
-- The `GeneralizedHyperbolicStretch` module is **NOT installed** (verified: no
-  `GeneralizedHyperbolicStretch-pxm.dll` in PixInsight's `bin/`)
-- `new GeneralizedHyperbolicStretch` throws "is not defined"
-- Must use PixelMath fallback replicating the math from the GHS script
+## Status — CORRECTED 2026-07-21 (Run 3)
+- **GHS IS installed as a native process.** `GeneralizedHyperbolicStretch-pxm.dll` (+ `.xsgn`
+  signature) IS present in PixInsight's `bin/`. The old "NOT installed" claim was wrong/stale.
+- **Prefer the native process:** `run_process("GeneralizedHyperbolicStretch", viewId, settings)`;
+  introspect with `get_process_parameters("GeneralizedHyperbolicStretch")`.
+- If `new GeneralizedHyperbolicStretch` is `undefined` in the watcher (Run 3 hit this), the running
+  PixInsight instance hadn't loaded the module (installed after launch) → **restart PixInsight**, then
+  use it natively. If still undefined after restart, check Process Explorer that the module loaded.
+- The PixelMath fallback below remains valid **only as a fallback** (harder to fine-tune; Run 3's
+  result came out slightly dim partly because of it).
 
 ## Origins
 GHS was proposed by **Dave Payne** (September 2021) as a unified framework for astronomical

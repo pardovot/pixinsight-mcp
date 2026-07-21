@@ -118,7 +118,10 @@ For **every** step, in this loop — never skip the measure/verify halves:
   `get_history`, `undo(viewId, steps)`, `redo`, `snapshot(viewId, snapshotId?)` (hidden checkpoint),
   `restore(viewId, snapshotId)`. To revert a step: call `undo`. Before a risky/hard-to-reverse step —
   **especially SXT** (it also spawns a separate stars window that `undo` won't fold back) and the
-  stretch — take a `snapshot` first, then `restore` if the result is wrong.
+  stretch — take a `snapshot` first, then `restore` if the result is wrong. **`snapshot`/`restore`
+  worked reliably in Run 5** (named `snapshotId`s, `restore` succeeded, used to iterate the stretch and the
+  star layer cheaply) — contradicting the Run-3 "unreliable" note. Use it before SXT and the stretch;
+  `undo(steps=N)`/`get_history` remain solid fallbacks.
 - **Gauge denoising with MRS noise, not stdDev.** Global stdDev and background-box stdDev are
   dominated by real signal and the star field, so they can *rise* after a correct denoise (BXT
   enhanced the stars; SPCC lifted a zero-clip). Use PixInsight's multiresolution/k-sigma noise
@@ -126,15 +129,110 @@ For **every** step, in this loop — never skip the measure/verify halves:
   wrong metric.
 - **SPFC needs filter curves supplied explicitly** on OSC — its defaults ship empty and it errors
   `Parsing CSV spectrum parameter ... At least 5 items are required`. Give it the sensor's actual
-  R/G/B curves (the same Sony/IMX curves SPCC uses) + Ideal QE.
+  R/G/B curves (the same Sony/IMX curves SPCC uses) + Ideal QE. Reuse `scripts/spcc-curves.mjs`
+  (materialize to a file, read in PJSR with `File.readTextFile`). SPCC-NB has these built in; SPFC
+  does not.
+- **SCNR is NOT a default step.** SCNR green / Average Neutral / amount 1.0 has cast the background
+  in **both runs** (Run 1 pink, Run 2 blacks→blue). Apply it ONLY if the measured decision rule
+  actually fires (green median ≥ BOTH red and blue in the nebula), and even then don't assume 100% —
+  the correct amount/alternative is an **open research gap**. Do not apply it "to be safe": equal
+  medians do NOT mean neutral, and 100% SCNR on already-balanced data introduces the cast it's
+  meant to remove.
+- **After SXT with `stars=true`, `undo` on the starless restores the stars but leaves the spawned
+  `*_stars` window open** — close it yourself. (Also why you `snapshot` before SXT.)
+- **PJSR API notes:** use `System.getEnvironmentVariable(name)` — the bare global
+  `getEnvironmentVariable` is deprecated and warns. `view.properties` is an array of
+  property-**id strings** (index them directly, e.g. `props[i]` / `.filter(s=>/SPFC/.test(s))`),
+  NOT `[id, type]` tuples. **Named enum constants are NOT loaded in the watcher's bare context**
+  (`UndoFlag_NoSwapFile`, `ColorSaturation.AkimaSubsplines`, … are `undefined` → throw) — use the
+  numeric value (`HSt=2` for Akima) and call `view.beginProcess()` with **no arg**.
+- **MCP tool param names (easy to get wrong):** `open_image` takes **`filePath`** (not `path`);
+  `run_script` takes **`code`** (not `script`); `save_image` needs **`overwrite:true`** to replace an
+  existing file.
 
 ### Where the quality is currently weak (flag, don't wing it)
 
-The **stretch and color-shaping** steps are the least-researched and produced a poor result in
-Run 1 (dim stretch, pink background, SCNR at 100% questionable). Follow the playbook, but if the
-user says the look is wrong, treat it as a **research gap** (log it via `process-retro`), not a
-cue to invent numbers. Take a `snapshot` before the stretch so iterating is cheap (`restore` to
-retry).
+The nonlinear half failed in **both** Run 1 and Run 2 (dim/washed stretch, pink→blue background,
+soft stars). **Deep research (2026-07-21) rewrote `osc-hoo.md` steps 10–12 — follow them exactly:**
+- **Stretch = GHS, not HistogramTransformation** (HT was the root cause). Params are measurement-
+  driven (SP via 15×15/mean readout "Send to SP"; b 5–10→2–6; D until histogram peak ≈ 0.2–0.25);
+  it's **iterative** and the black point is a **separate linear step**.
+  - **GHS IS a native process — use it (`run_process("GeneralizedHyperbolicStretch", …)`).** ✅ Run 4
+    drove it natively (param map: `stretchType:0`=GH, `stretchFactor`=D entered directly, `localIntensity`=b,
+    `symmetryPoint`=SP, `stretchChannel:3`=linked RGB). If `new GeneralizedHyperbolicStretch` is `undefined`
+    (Run 3), the module loaded after PI launched → **restart PixInsight**, then introspect and drive it. Do
+    NOT settle for the PixelMath fallback.
+  - **⛔ DIM STRETCH = OVER-BLACK-POINTING. This is the #1 recurring failure (R1–R4, every run).** The
+    playbook target is **histogram peak ≈ 0.20–0.25** — you must END there. Run 4 lifted the peak to 0.15
+    then black-pointed it to 0.07, lifted to 0.17, black-pointed to 0.09 → **final peak 0.09, less than
+    half the target = dim.** The black point is a **gentle true-black set** (shave only the few % of empty
+    sky below the histogram rise), **NOT a background crush.** On a nebula-filling target the faint nebula
+    sits just above the sky, so a hard black point kills the faint signal → the whole thing reads dim.
+    **Hard gate: after your LAST step, measure the histogram peak; if it is < ~0.18 you over-black-pointed —
+    undo the black point(s) and redo them gently.** Prefer more D / a second GHS pass to reach 0.20–0.25
+    over any black point beyond a minimal one. Do NOT crush to a "clean 0.09 background." (Fallback, if ever truly needed: port `computeGHSCoefficients`/`buildGHSExpr`
+    from `git show 2b5482a^:scripts/run-pipeline.mjs`; median is preserved under a monotonic map, so
+    solve D analytically for the target peak, then apply. Each GHS pass re-lifts shadows → pair it with
+    a separate linear black point `($T-BP)/(1-BP)`.)
+  - **⚠ The target is a BAND, not an edge — R5 & R6 bracket it [quality/method].** R5 went too bright
+    (milky); R6 corrected too far dark → **"nebulosity too dim; fainter nebulosity vanished with the
+    background."** Darkening the background to make the object pop **sinks the faint outer nebula with it**
+    if you overshoot. **Before accepting the nonlinear result, run a FAINT-NEBULA-SURVIVAL check** — sample/
+    inspect known faint outer regions (e.g. the Pelican's diffuse edge) on the RENDER and confirm they read
+    clearly above the background. **"No clipping (min>0)" is NOT preservation** — R6's mins were >0 yet the
+    faint nebula was visually gone. And **do NOT trade object brightness for a darker background.** This is a
+    *self-critique loop* discipline: render (full + faint-region crop) → judge object-pop AND faint-survival
+    AND not-milky → iterate. The loop mechanism works; the **judgment quality** is the current gap.
+  - **Saturation — RESTRAINT [R6].** R6's starless S-curve `[[0,0],[0.35,0.5],[0.7,0.83],[1,1]]` was
+    **"way too much"** on an already-saturated SPCC result. Keep any saturation gentle + verify on the render;
+    never a fixed aggressive curve. (Star-layer ColorSaturation in step 12 is separate/lighter.)
+- **Background neutrality is a LINEAR pre-stretch step** — **equal channel medians do NOT prove
+  neutrality** (that false check caused Runs 1–2 casts), and on a nebula-filling target **neither do
+  the darkest N% pixels** (those are dark-nebula dust lanes where Hα is truly absent → a huge fake
+  "cast" that is really correct OIII-teal; this tripped Run 3's first measurements). **Measure the
+  DIFFUSE-SKY BAND: per-channel median of pixels within ±8% of the luminance median (the histogram
+  peak).** That's the real sky. Verified there, ≤~1% spread = neutral; teal dark lanes are correct.
+  - **Do NOT use the `BackgroundNeutralization` process for a small pedestal fix** — Run 3 it blew up
+    (median ×100, R clipped to 1.0) with a narrow `backgroundHigh`. Null the residual yourself:
+    per-channel additive PixelMath (`useSingleExpression:false`; `$T`, `$T-offsetG`, `$T-offsetB`),
+    offsets = each background-population channel median minus the min channel. Tiny (~5e-6) but it
+    compounds through GHS+black-point (0.7%→1.4%→3.6%), so do it while linear. Never fix a cast after
+    the stretch or with SCNR.
+- **Stars — RESEARCHED (Run 4, primary sources). NEVER GHS/arcsinh on the star layer — the wash is
+  INHERENT.** RC-Astro (SXT author): GHS/arcsinh make stars *"indistinguishable from small elliptical
+  galaxies"* (tiny core + broad halo = the Run-4 wash, and the real cause of Run-3's "combine artifacts",
+  NOT SXT residual). On an isolated star layer the faint wings sit at the near-black GHS symmetry point →
+  high-`b` puts max slope on the wings. No `b` fixes it. Also never STF-autostretch the stars.
+  - **Stretch stars with a single MTF/midtones curve.** `PixelMath` MTF ≡ `HistogramTransformation`
+    midtones ≡ SetiAstro's transfer — **the tool is cosmetic; don't relitigate PixelMath-vs-script**
+    (R5: the user's "why PixelMath not SetiAstro" was answered by *the amount and the color step*, not the
+    curve). **SetiAstro Star Stretch IS installed** (`C:\Program Files\PixInsight\src\scripts\star_stretch.js`,
+    Marek v2.6); its dialog is modal so it can't be clicked via the watcher — **replay its exact Execute path**
+    in `run_script` (no `#include`): (1) `PixelMath ((3^a)*$T)/((3^a-1)*$T+1)` (default `a=5`); (2) **`ColorSaturation`
+    `HS=[[0,0.4],[0.5,0.7],[1,0.4]]*satAmount`, `HSt=2`, `hueShift=0` (default `satAmount=1`) — this color step
+    is part of EVERY Execute, and omitting it is exactly what made R1–R5's first star attempts look flat/wrong**;
+    (3) optional SCNR-green (default OFF).
+  - **Amount by MEASUREMENT — measure the star PIXELS [R5, corrected].** The star layer is ~99.9% black, so
+    its overall median ≈ 0 and the formula degenerates. Measure `M` = **median of star pixels only**
+    (grid-sample, median of samples `> ~0.005`; R5 `M≈0.01`), then `a = ln(T*(1-M)/(M*(1-T)))/ln 3`.
+    **Target `T ≈ 0.35–0.45` is a STARTING POINT, NOT 0.10–0.20** [R5] — the low target buried stars (screen
+    onto a ~0.24 nebula adds nothing) = the "barely-there" failure R1–R5. **Amount is per-target and usually
+    wants to go HARDER:** R5 `a≈4.5`; **R6 (darker background) the user wanted `amount=6, satAmount=1.3` for
+    NAN/Pelican** (my `a=4.0/sat=1.0` read too soft). ⚠ **Per-object datapoint, NOT a universal default** —
+    user was explicit "other targets might not be as good." Start near measured `a`, push harder + more sat,
+    confirm at 1:1; a darker background tolerates a harder star stretch. Never the nebula's black points on stars.
+  - **VERIFY STARS AT 1:1 — global stats lie [R5].** Star-layer median ≈ 0, so `get_image_statistics` cannot
+    reveal too-dim stars. **Render a true 1:1 crop** (`Crop` `mode=1`, negative margins, ~900×640, centered on a
+    grid-scanned bright star `max(r,g,b)>0.5`) and LOOK before calling the star step done. Only this caught R5.
+- **SXT extraction: `unscreen=false` on a LINEAR image [primary: RC-Astro]** — unscreen is for nonlinear
+  extraction; on linear use simple subtraction (best star color). Run 4 wrongly used `unscreen=true`.
+- **Recombine `starless*~stars + stars`** (house formula ≡ screen). Formula is correct — the artifact fix
+  is a natural MTF-stretched star layer, not a different combine.
+- **SCNR is not a default 100% step** (see traps above).
+
+Still genuinely open (treat as research gaps, `process-retro` them — do NOT invent numbers): the
+in-place OSC **gold/teal (Foraxx)** recipe and **natural duoband star color**. Snapshot before the
+stretch so iterating is cheap (`restore` to retry).
 
 ## Checkpoints & review
 
