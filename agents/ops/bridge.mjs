@@ -1,5 +1,9 @@
 // ============================================================================
 // Bridge communication with PixInsight via file-based IPC
+// ⚠️ DORMANT harvest-target code (never executed in this fork). It expects the
+// pre-0.8.0 bridge key `consoleOutput` in run_script results; the watcher now
+// returns `returnValue` — remap when harvesting (JSON.parse(...||'{}') call
+// sites would otherwise silently parse {}).
 // ============================================================================
 import fs from 'fs';
 import path from 'path';

@@ -78,8 +78,8 @@ process, this fork exposes:
 - **`run_script(...)`** — raw PJSR escape hatch
 
 One generic pair covers every process with zero per-process maintenance. **Adding
-`run_bxt`-style tools is the anti-pattern this fork deliberately moved past.** The remaining
-per-process tools are legacy convenience wrappers, kept for compatibility and not extended.
+`run_bxt`-style tools is the anti-pattern this fork deliberately moved past.** The legacy
+per-process wrappers (`run_bxt`, `sharpen`, `stretch_image`, …) were removed 2026-07-22.
 
 ### Never run a process blind
 
@@ -99,14 +99,13 @@ The methodology is baked into the tool descriptions and
 
 ## Tools
 
-23 tools. The ones that matter are in bold.
+14 tools. The ones that matter are in bold.
 
 | Category | Tools |
 |---|---|
 | Generic execution | **`run_process`**, **`get_process_parameters`**, **`run_script`**, `run_pixelmath` |
 | Image management | `list_open_images`, `open_image`, `save_image`, `close_image`, **`get_image_statistics`** |
-| Legacy wrappers | `remove_gradient`, `color_calibrate`, `remove_green_cast`, `stretch_image`, `apply_curves`, `denoise`, `sharpen`, `deconvolve`, `run_bxt`, `run_nxt`, `run_sxt`, `combine_lrgb`, `blend_narrowband` |
-| Research | `search_processing_recommendations` |
+| Session / history | `get_history`, `undo`, `redo`, `snapshot`, `restore` |
 
 Authoritative definitions live in `src/tools/*.ts`. (`docs/mcp-tools.md` is upstream's
 aspirational catalog and is marked stale.)

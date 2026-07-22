@@ -9,7 +9,7 @@ each kind of data). This README lets a fresh session continue the series at full
 > Two things that are easy to regress on and are NOT in this file:
 > 1. **Use the generic `run_process(processId, viewId, settings)` + `get_process_parameters`.
 >    NEVER add per-process MCP tools** — that anti-pattern was deliberately abandoned.
->    Existing `run_bxt`/`sharpen`/etc. are legacy wrappers only.
+>    The old `run_bxt`/`sharpen`/etc. legacy wrappers were removed 2026-07-22.
 > 2. **The end goal is autonomous processing from a SHORT goal-driven prompt** (state the
 >    outcome; the agent picks + configures processes, measures, and verifies) — not
 >    step-by-step per-process instructions. These playbooks are that agent's knowledge layer.

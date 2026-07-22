@@ -44,7 +44,7 @@ baseline requirement, not a later "port" and not a nice-to-have.
 - **`run_process(processId, viewId?, settings?)`** — runs ANY PixInsight process by class name (`BlurXTerminator`, `AutomaticBackgroundExtractor`, `PixelMath`, anything).
 - **`get_process_parameters(processId)`** — introspects that process's settable params + current defaults.
 - Rationale: every PixInsight process is `new X; set params; executeOn(view)`. One generic tool covers all of them with zero per-process maintenance. Adding `run_bxt`-style tools is the **anti-pattern we deliberately moved past**.
-- The existing per-process tools (`run_bxt`, `run_nxt`, `run_sxt`, `sharpen`, `denoise`, `stretch_image`, `remove_gradient`, …) are **legacy convenience wrappers only**. Don't extend them; don't add new ones. `run_script` remains the raw PJSR escape hatch.
+- The per-process tools (`run_bxt`, `run_nxt`, `run_sxt`, `sharpen`, `denoise`, `stretch_image`, `remove_gradient`, …) were **legacy convenience wrappers and were removed 2026-07-22** (along with `search_processing_recommendations`). Don't re-add them. `run_script` remains the raw PJSR escape hatch.
 
 ## Processing methodology (baked into the `run_process` tool description + `docs/PROCESSING_GUIDE.md`)
 Never run a process blind:

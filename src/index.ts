@@ -6,7 +6,6 @@ import { BridgeClient } from "./bridge/client.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
 import { registerProcessingTools } from "./tools/processing.js";
 import { registerSessionTools } from "./tools/session.js";
-import { registerResearchTools } from "./tools/research.js";
 
 async function main() {
   const server = new McpServer({
@@ -23,7 +22,6 @@ async function main() {
   registerImageManagementTools(server, bridge);
   registerProcessingTools(server, bridge);
   registerSessionTools(server, bridge);
-  registerResearchTools(server);
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();

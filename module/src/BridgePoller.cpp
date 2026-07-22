@@ -124,6 +124,7 @@ void BridgePoller::HandleCommandFile( const String& fileName )
    script += rawJson;
    script += ";"
              "var __resPath=File.homeDirectory+\"/.pixinsight-mcp/bridge/results/\"+__cmd.id+\".json\";"
+             "var __tmpPath=File.homeDirectory+\"/.pixinsight-mcp/bridge/results/\"+__cmd.id+\".tmp\";"
              "var __out;"
              "try{"
                "var __r=dispatchCommand(__cmd);"
@@ -135,7 +136,7 @@ void BridgePoller::HandleCommandFile( const String& fileName )
                  "status:\"error\",process:__cmd.process,duration_ms:Date.now()-__start,"
                  "error:{message:String((e&&e.message)||e),type:(e&&e.name)||\"Error\"}});"
              "}"
-             "try{File.writeTextFile(__resPath,__out);}catch(e2){}"
+             "try{File.writeTextFile(__tmpPath,__out);File.move(__tmpPath,__resPath);}catch(e2){}"
              "return __out;"
              "})()";
 
@@ -161,8 +162,14 @@ void BridgePoller::HandleCommandFile( const String& fileName )
    // parse-level failure, or File.writeTextFile threw). Otherwise the JS-written
    // file stands — writing v.ToString() here would risk clobbering it with the
    // corrupted completion value described above.
+   // Atomic: write "<id>.tmp" (outside the *.json glob) then rename, so the MCP
+   // client never sees a partial result file.
    if ( !jsWroteResult )
-      File::WriteTextFile( resPath, resultJson.ToUTF8() );
+   {
+      String resTmpPath = File::ChangeExtension( resPath, ".tmp" );
+      File::WriteTextFile( resTmpPath, resultJson.ToUTF8() );
+      File::Move( resTmpPath, resPath );
+   }
 
    if ( File::Exists( cmdPath ) )
       File::Remove( cmdPath );

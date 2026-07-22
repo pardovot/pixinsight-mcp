@@ -221,309 +221,10 @@ function handleRunPixelMath(command) {
    };
 }
 
-function handleRemoveGradient(command) {
-   var P = new AutomaticBackgroundExtractor;
-   P.polyDegree = command.parameters.polyDegree || 4;
-   P.tolerance = command.parameters.tolerance || 1.0;
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Gradient removed from " + command.targetView + " (ABE, degree " + P.polyDegree + ")"
-   };
-}
-
-function handleColorCalibrate(command) {
-   var method = command.parameters.method || "spcc";
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-
-   if (method === "spcc") {
-      var P = new SpectrophotometricColorCalibration;
-      P.executeOn(view);
-   } else if (method === "pcc") {
-      var P = new PhotometricColorCalibration;
-      P.executeOn(view);
-   } else {
-      var P = new ColorCalibration;
-      P.executeOn(view);
-   }
-   return {
-      status: "success",
-      outputs: {},
-      message: "Color calibrated " + command.targetView + " using " + method.toUpperCase()
-   };
-}
-
-function handleRemoveGreenCast(command) {
-   var P = new SCNR;
-   P.colorToRemove = SCNR.Green;
-   P.amount = command.parameters.amount !== undefined ? command.parameters.amount : 1.0;
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Green cast removed from " + command.targetView
-   };
-}
-
-function handleStretchImage(command) {
-   var method = command.parameters.method || "auto";
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-
-   if (method === "auto") {
-      var P = new AutoHistogram;
-      P.executeOn(view);
-   } else if (method === "stf") {
-      // Apply STF auto-stretch then apply permanently via HistogramTransformation
-      var stf = new ScreenTransferFunction;
-      stf.executeOn(view);
-      // Read STF values and apply as permanent HT
-      // For now, just apply STF (non-destructive preview)
-      return {
-         status: "success",
-         outputs: {},
-         message: "STF auto-stretch applied to " + command.targetView + " (preview only, non-destructive)"
-      };
-   } else {
-      // Manual HistogramTransformation
-      var P = new HistogramTransformation;
-      var sc = command.parameters.shadowsClipping || 0.0;
-      var mt = command.parameters.midtones || 0.5;
-      P.H = [
-         [0, 0.5, 0.5, 0.5, 1.0],
-         [0, 0.5, 0.5, 0.5, 1.0],
-         [0, 0.5, 0.5, 0.5, 1.0],
-         [sc, 0.5, mt, 0.5, 1.0],
-         [0, 0.5, 0.5, 0.5, 1.0]
-      ];
-      P.executeOn(view);
-   }
-   return {
-      status: "success",
-      outputs: {},
-      message: "Stretched " + command.targetView + " using " + method + " method"
-   };
-}
-
-function handleApplyCurves(command) {
-   var P = new CurvesTransformation;
-   var curvePoints = command.parameters.curvePoints || [[0, 0], [1, 1]];
-   var channel = command.parameters.channel || "rgb";
-
-   // CurvesTransformation uses arrays like: [ [x0,y0], [x1,y1], ... ]
-   // Channel mapping: R=0, G=1, B=2, RGB/K=3, alpha=4, L=5, a=6, b=7, c=8, H=9, S=10
-   var channelMap = {
-      "red": "R", "green": "G", "blue": "B", "rgb": "K",
-      "lightness": "L", "saturation": "S"
-   };
-
-   // Set the curve for the selected channel
-   var ch = channelMap[channel] || "K";
-   P[ch] = curvePoints;
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Curves applied to " + command.targetView + " (" + channel + " channel)"
-   };
-}
-
-function handleDenoise(command) {
-   var P = new MultiscaleLinearTransform;
-   var layers = command.parameters.layers || 4;
-   // MLT uses an array of layer configurations
-   // Default: enable noise reduction on first N layers
-   var layerConfig = [];
-   for (var i = 0; i < layers; ++i) {
-      // [enabled, biasEnabled, bias, noiseReductionEnabled, noiseReductionThreshold, noiseReductionAmount, ...]
-      layerConfig.push([true, true, 0.000, true, 3.000, 1.00, false]);
-   }
-   // Add the residual layer (no noise reduction)
-   layerConfig.push([true, true, 0.000, false, 3.000, 1.00, false]);
-   P.layers = layerConfig;
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Denoised " + command.targetView + " (MLT, " + layers + " layers)"
-   };
-}
-
-function handleSharpen(command) {
-   var P = new UnsharpMask;
-   P.sigma = command.parameters.sigma || 2.0;
-   P.amount = command.parameters.amount || 0.8;
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Sharpened " + command.targetView + " (sigma: " + P.sigma + ", amount: " + P.amount + ")"
-   };
-}
-
-function handleDeconvolve(command) {
-   var P = new Deconvolution;
-   // Use a Gaussian PSF
-   P.algorithm = Deconvolution.RichardsonLucy;
-   P.psfMode = Deconvolution.Gaussian;
-   P.psfGaussianSigma = command.parameters.psfSigma || 2.5;
-   P.iterations = [
-      [command.parameters.iterations || 50, false, 0, 0, 0, false, 0, 0]
-   ];
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Deconvolved " + command.targetView
-   };
-}
-
-function handleCombineLRGB(command) {
-   var P = new LRGBCombination;
-   P.channelL = [true, command.parameters.luminanceViewId];
-   P.channelR = [false, ""];
-   P.channelG = [false, ""];
-   P.channelB = [false, ""];
-   P.luminanceWeight = command.parameters.luminanceWeight || 1.0;
-
-   // Execute on the RGB image
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "LRGB combined onto " + command.targetView
-   };
-}
-
-function handleBlendNarrowband(command) {
-   var P = new PixelMath;
-   var nbView = command.parameters.narrowbandViewId;
-   var strength = command.parameters.blendStrength || 1.0;
-   var mode = command.parameters.blendMode || "max";
-   var channel = command.parameters.targetChannel || "red";
-
-   // Build PixelMath expression based on blend mode
-   var expr;
-   if (mode === "max") {
-      expr = "max($T, " + nbView + " * " + strength + ")";
-   } else if (mode === "screen") {
-      expr = "~(~$T * ~(" + nbView + " * " + strength + "))";
-   } else if (mode === "add") {
-      expr = "$T + " + nbView + " * " + strength;
-   } else {
-      // Custom fallback: simple max
-      expr = "max($T, " + nbView + " * " + strength + ")";
-   }
-
-   if (channel === "red") {
-      P.expression = expr;
-      P.expression1 = "$T";
-      P.expression2 = "$T";
-      P.useSingleExpression = false;
-   } else if (channel === "all" || channel === "luminance") {
-      P.expression = expr;
-      P.useSingleExpression = true;
-   } else {
-      P.expression = expr;
-      P.useSingleExpression = true;
-   }
-   P.createNewImage = false;
-
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "Blended " + nbView + " into " + command.targetView + " (" + mode + ", strength: " + strength + ")"
-   };
-}
-
-// ============================================================================
-// XTerminator suite (BlurXTerminator / NoiseXTerminator / StarXTerminator)
-// ============================================================================
-
-function handleRunBXT(command) {
-   var p = command.parameters || {};
-   var P = new BlurXTerminator;
-   if (p.correctOnly !== undefined) P.correct_only = !!p.correctOnly;
-   if (p.sharpenStars !== undefined) P.sharpen_stars = p.sharpenStars;
-   if (p.sharpenNonstellar !== undefined) P.sharpen_nonstellar = p.sharpenNonstellar;
-   if (p.adjustHalos !== undefined) P.adjust_halos = p.adjustHalos;
-   if (p.lumOnly !== undefined) P.lum_only = !!p.lumOnly;
-   if (p.nonstellarPsfDiameter !== undefined) {
-      P.auto_nonstellar_psf = false;
-      P.nonstellar_psf_diameter = p.nonstellarPsfDiameter;
-   }
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "BlurXTerminator applied to " + command.targetView + (p.correctOnly ? " (correct only)" : "")
-   };
-}
-
-function handleRunNXT(command) {
-   var p = command.parameters || {};
-   var P = new NoiseXTerminator;
-   if (p.denoise !== undefined) P.denoise = p.denoise;
-   if (p.detail !== undefined) P.detail = p.detail;
-   if (p.iterations !== undefined) P.iterations = p.iterations;
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "NoiseXTerminator applied to " + command.targetView
-   };
-}
-
-function handleRunSXT(command) {
-   var p = command.parameters || {};
-   var P = new StarXTerminator;
-   // stars=true generates a separate stars image; result view becomes starless.
-   if (p.generateStars !== undefined) P.stars = !!p.generateStars;
-   if (p.unscreen !== undefined) P.unscreen = !!p.unscreen;
-   if (p.overlap !== undefined) P.overlap = p.overlap;
-   var view = findViewById(command.targetView);
-   if (!view) throw new Error("View not found: " + command.targetView);
-   P.executeOn(view);
-   return {
-      status: "success",
-      outputs: {},
-      message: "StarXTerminator applied to " + command.targetView
-   };
-}
-
 // ============================================================================
 // Generic process runner — run ANY PixInsight process by name.
-// This is the primary mechanism; the process-specific handlers above are just
-// convenience wrappers.
+// This is the primary mechanism (legacy per-process wrappers were removed
+// 2026-07-22; use run_process, or run_script for anything exotic).
 // ============================================================================
 
 function instantiateProcess(processId) {
@@ -545,10 +246,17 @@ function handleRunProcess(command) {
    var P = instantiateProcess(processId);
 
    // Apply settings: { paramName: value, ... } assigned directly on the instance.
+   // Reject unknown names — a typo would otherwise create a plain JS property,
+   // run the process with defaults, and still report the setting as applied.
+   var known = {};
+   for (var q in P) if (typeof P[q] !== "function") known[q] = true;   // same filter as handleGetProcessParameters — else executeOn etc. would pass validation
    var settings = p.settings || {};
    var applied = [];
    for (var k in settings) {
       if (settings.hasOwnProperty(k)) {
+         if (!known.hasOwnProperty(k))
+            throw new Error("Unknown parameter '" + k + "' for " + processId +
+                            " — check get_process_parameters(\"" + processId + "\")");
          P[k] = settings[k];
          applied.push(k);
       }
@@ -594,14 +302,13 @@ function handleGetProcessParameters(command) {
 
 function handleRunScript(command) {
    var code = command.parameters.code;
-   // Capture console output
-   var consoleOutput = "";
    try {
-      // Execute the code
+      // returnValue is the script's final expression value (String(eval(code))),
+      // NOT captured console output.
       var result = eval(code);
       return {
          status: "success",
-         outputs: { consoleOutput: String(result !== undefined ? result : "Script executed.") },
+         outputs: { returnValue: String(result !== undefined ? result : "Script executed.") },
          message: "Script executed successfully"
       };
    } catch (e) {
@@ -755,21 +462,6 @@ function dispatchCommand(command) {
 
    // Processing commands
    if (tool === "run_pixelmath") return handleRunPixelMath(command);
-   if (tool === "remove_gradient") return handleRemoveGradient(command);
-   if (tool === "color_calibrate") return handleColorCalibrate(command);
-   if (tool === "remove_green_cast") return handleRemoveGreenCast(command);
-   if (tool === "stretch_image") return handleStretchImage(command);
-   if (tool === "apply_curves") return handleApplyCurves(command);
-   if (tool === "denoise") return handleDenoise(command);
-   if (tool === "sharpen") return handleSharpen(command);
-   if (tool === "deconvolve") return handleDeconvolve(command);
-   if (tool === "combine_lrgb") return handleCombineLRGB(command);
-   if (tool === "blend_narrowband") return handleBlendNarrowband(command);
-
-   // XTerminator suite (convenience wrappers)
-   if (tool === "run_bxt") return handleRunBXT(command);
-   if (tool === "run_nxt") return handleRunNXT(command);
-   if (tool === "run_sxt") return handleRunSXT(command);
 
    // Generic: run any process by name, or introspect its parameters
    if (tool === "run_process") return handleRunProcess(command);
@@ -799,7 +491,8 @@ function processNextCommand() {
       return false;
    }
 
-   // Sort by filename (timestamp-based UUIDs give roughly chronological order)
+   // Sort by filename. UUIDv4 names — order is arbitrary; fine because the MCP
+   // client is serial (one in-flight command).
    files.sort();
 
    // Process the first command
@@ -846,10 +539,14 @@ function processNextCommand() {
       };
    }
 
-   // Write result
+   // Write result atomically: tmp then rename, so the MCP client (polling the
+   // exact <id>.json name) never sees a partial file. Tmp is "<id>.tmp" — no
+   // .json suffix — so it stays outside every *.json glob.
    var resultPath = RESULTS_DIR + "/" + command.id + ".json";
+   var tmpPath = RESULTS_DIR + "/" + command.id + ".tmp";
    try {
-      writeTextFile(resultPath, JSON.stringify(resultObj));
+      writeTextFile(tmpPath, JSON.stringify(resultObj));
+      File.move(tmpPath, resultPath);
       console.writeln("[MCP Watcher] Result written: " + resultObj.status +
          " (" + resultObj.duration_ms + "ms)");
    } catch (e) {

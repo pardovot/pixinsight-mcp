@@ -45,288 +45,6 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     }
   );
 
-  // remove_gradient
-  server.tool(
-    "remove_gradient",
-    "Remove background gradients using AutomaticBackgroundExtractor (ABE)",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      polyDegree: z.number().min(1).max(6).default(4).describe("Polynomial degree (1-6)"),
-      tolerance: z.number().default(1.0).describe("Sample rejection tolerance"),
-    },
-    async ({ viewId, polyDegree, tolerance }) => {
-      const result = await bridge.sendCommand("remove_gradient", "AutomaticBackgroundExtractor", {
-        polyDegree,
-        tolerance,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Gradient removed from **${viewId}** (ABE, degree ${polyDegree})`);
-    }
-  );
-
-  // color_calibrate
-  server.tool(
-    "color_calibrate",
-    "Calibrate colors using SPCC, PCC, or basic ColorCalibration",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      method: z.enum(["spcc", "pcc", "basic"]).default("spcc").describe("Calibration method"),
-    },
-    async ({ viewId, method }) => {
-      const processMap: Record<string, string> = {
-        spcc: "SpectrophotometricColorCalibration",
-        pcc: "PhotometricColorCalibration",
-        basic: "ColorCalibration",
-      };
-      const result = await bridge.sendCommand("color_calibrate", processMap[method], {
-        method,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Color calibrated **${viewId}** using ${method.toUpperCase()}`);
-    }
-  );
-
-  // remove_green_cast
-  server.tool(
-    "remove_green_cast",
-    "Apply SCNR to remove green cast from an image",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      amount: z.number().min(0).max(1).default(1.0).describe("Removal amount (0-1)"),
-    },
-    async ({ viewId, amount }) => {
-      const result = await bridge.sendCommand("remove_green_cast", "SCNR", {
-        colorToRemove: 1, // Green
-        amount,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Green cast removed from **${viewId}** (amount: ${amount})`);
-    }
-  );
-
-  // stretch_image
-  server.tool(
-    "stretch_image",
-    "Apply histogram stretch (linear to non-linear)",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      method: z.enum(["auto", "stf", "manual"]).default("auto").describe("Stretch method"),
-      shadowsClipping: z.number().optional().describe("Shadows clipping (for manual)"),
-      midtones: z.number().optional().describe("Midtones balance (for manual)"),
-    },
-    async ({ viewId, method, shadowsClipping, midtones }) => {
-      const processMap: Record<string, string> = {
-        auto: "AutoHistogram",
-        stf: "ScreenTransferFunction",
-        manual: "HistogramTransformation",
-      };
-      const result = await bridge.sendCommand("stretch_image", processMap[method], {
-        method,
-        shadowsClipping,
-        midtones,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Stretched **${viewId}** using ${method} method`);
-    }
-  );
-
-  // apply_curves
-  server.tool(
-    "apply_curves",
-    "Apply curves transformation to an image",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      curvePoints: z.array(z.tuple([z.number(), z.number()])).describe("Array of [x, y] control points (0-1)"),
-      channel: z.enum(["rgb", "red", "green", "blue", "lightness", "saturation"]).default("rgb").describe("Target channel"),
-    },
-    async ({ viewId, curvePoints, channel }) => {
-      const result = await bridge.sendCommand("apply_curves", "CurvesTransformation", {
-        curvePoints,
-        channel,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Curves applied to **${viewId}** (${channel} channel, ${curvePoints.length} points)`);
-    }
-  );
-
-  // denoise
-  server.tool(
-    "denoise",
-    "Apply noise reduction using MultiscaleLinearTransform (MLT)",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      layers: z.number().min(1).max(8).default(4).describe("Number of wavelet layers"),
-      strength: z.array(z.number()).optional().describe("Per-layer noise reduction strength"),
-    },
-    async ({ viewId, layers, strength }) => {
-      const result = await bridge.sendCommand("denoise", "MultiscaleLinearTransform", {
-        layers,
-        strength: strength ?? [],
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Denoised **${viewId}** (MLT, ${layers} layers)`);
-    }
-  );
-
-  // sharpen
-  server.tool(
-    "sharpen",
-    "Apply UnsharpMask sharpening to an image",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      sigma: z.number().default(2.0).describe("Gaussian sigma"),
-      amount: z.number().default(0.8).describe("Sharpening amount"),
-    },
-    async ({ viewId, sigma, amount }) => {
-      const result = await bridge.sendCommand("sharpen", "UnsharpMask", {
-        sigma,
-        amount,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Sharpened **${viewId}** (sigma: ${sigma}, amount: ${amount})`);
-    }
-  );
-
-  // deconvolve
-  server.tool(
-    "deconvolve",
-    "Apply deconvolution to restore image detail",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      psfSigma: z.number().default(2.5).describe("PSF sigma estimate"),
-      iterations: z.number().default(50).describe("Number of iterations"),
-    },
-    async ({ viewId, psfSigma, iterations }) => {
-      const result = await bridge.sendCommand("deconvolve", "Deconvolution", {
-        psfSigma,
-        iterations,
-      }, {
-        executeMethod: "executeOn",
-        targetView: viewId,
-      });
-      return processResult(result, `Deconvolved **${viewId}** (PSF sigma: ${psfSigma}, ${iterations} iterations)`);
-    }
-  );
-
-  // run_bxt (BlurXTerminator)
-  server.tool(
-    "run_bxt",
-    "Run BlurXTerminator (deconvolution/sharpening) on a linear image",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      correctOnly: z.boolean().default(false).describe("Only correct PSF, no sharpening"),
-      sharpenStars: z.number().optional().describe("Stellar sharpening 0..1 (default ~0.25)"),
-      sharpenNonstellar: z.number().optional().describe("Non-stellar sharpening 0..1 (default ~0.90)"),
-      adjustHalos: z.number().optional().describe("Halo adjustment -0.5..0.5"),
-      lumOnly: z.boolean().optional().describe("Apply to luminance only"),
-    },
-    async ({ viewId, correctOnly, sharpenStars, sharpenNonstellar, adjustHalos, lumOnly }) => {
-      const result = await bridge.sendCommand("run_bxt", "BlurXTerminator", {
-        correctOnly, sharpenStars, sharpenNonstellar, adjustHalos, lumOnly,
-      }, { executeMethod: "executeOn", targetView: viewId });
-      return processResult(result, `BlurXTerminator applied to **${viewId}**${correctOnly ? " (correct only)" : ""}`);
-    }
-  );
-
-  // run_nxt (NoiseXTerminator)
-  server.tool(
-    "run_nxt",
-    "Run NoiseXTerminator (AI denoise) on an image",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      denoise: z.number().optional().describe("Denoise amount 0..1"),
-      detail: z.number().optional().describe("Detail retention 0..1"),
-      iterations: z.number().optional().describe("Iterations"),
-    },
-    async ({ viewId, denoise, detail, iterations }) => {
-      const result = await bridge.sendCommand("run_nxt", "NoiseXTerminator", {
-        denoise, detail, iterations,
-      }, { executeMethod: "executeOn", targetView: viewId });
-      return processResult(result, `NoiseXTerminator applied to **${viewId}**`);
-    }
-  );
-
-  // run_sxt (StarXTerminator)
-  server.tool(
-    "run_sxt",
-    "Run StarXTerminator (star removal) on an image",
-    {
-      viewId: z.string().describe("View ID of the image"),
-      generateStars: z.boolean().optional().describe("Also produce a stars-only image (result becomes starless)"),
-      unscreen: z.boolean().optional().describe("Use unscreen star extraction"),
-      overlap: z.number().optional().describe("Tile overlap 0..0.5"),
-    },
-    async ({ viewId, generateStars, unscreen, overlap }) => {
-      const result = await bridge.sendCommand("run_sxt", "StarXTerminator", {
-        generateStars, unscreen, overlap,
-      }, { executeMethod: "executeOn", targetView: viewId });
-      return processResult(result, `StarXTerminator applied to **${viewId}**`);
-    }
-  );
-
-  // combine_lrgb
-  server.tool(
-    "combine_lrgb",
-    "Combine Luminance with RGB color data",
-    {
-      luminanceViewId: z.string().describe("View ID of the luminance image"),
-      rgbViewId: z.string().describe("View ID of the RGB image"),
-      luminanceWeight: z.number().default(1.0).describe("Luminance weight"),
-    },
-    async ({ luminanceViewId, rgbViewId, luminanceWeight }) => {
-      const result = await bridge.sendCommand("combine_lrgb", "LRGBCombination", {
-        luminanceViewId,
-        rgbViewId,
-        luminanceWeight,
-      }, {
-        executeMethod: "executeOn",
-        targetView: rgbViewId,
-      });
-      return processResult(result, `Combined LRGB: L=${luminanceViewId} + RGB=${rgbViewId}`);
-    }
-  );
-
-  // blend_narrowband
-  server.tool(
-    "blend_narrowband",
-    "Blend narrowband channel (e.g., Ha) into broadband data using PixelMath",
-    {
-      targetViewId: z.string().describe("View ID of the broadband image"),
-      narrowbandViewId: z.string().describe("View ID of the narrowband channel"),
-      blendMode: z.enum(["max", "screen", "add", "custom"]).default("max").describe("Blending mode"),
-      blendStrength: z.number().min(0).max(1).default(1.0).describe("Blend strength (0-1)"),
-      targetChannel: z.string().optional().describe("Target channel: red, luminance, all"),
-    },
-    async ({ targetViewId, narrowbandViewId, blendMode, blendStrength, targetChannel }) => {
-      const result = await bridge.sendCommand("blend_narrowband", "PixelMath", {
-        narrowbandViewId,
-        blendMode,
-        blendStrength,
-        targetChannel: targetChannel ?? "red",
-      }, {
-        executeMethod: "executeOn",
-        targetView: targetViewId,
-      });
-      return processResult(result,
-        `Blended ${narrowbandViewId} into ${targetViewId} (${blendMode}, strength: ${blendStrength})`
-      );
-    }
-  );
-
   // run_process — generic: run ANY PixInsight process by name
   server.tool(
     "run_process",
@@ -341,7 +59,8 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       "(no correction) — to actually correct the image pass { targetCorrection: 1, replaceTarget: true }.\n" +
       "3. Pick settings from measuring THIS image (get_image_statistics / run_script), not fixed defaults.\n" +
       "4. After running, ALWAYS re-measure. If stats are byte-identical to before, it was a no-op — " +
-      "stop and fix the output config; do not build the next step on it.",
+      "stop and fix the output config; do not build the next step on it.\n" +
+      "Unknown setting names are rejected (checked against get_process_parameters).",
     {
       processId: z.string().describe("Process class name, e.g. 'BlurXTerminator'"),
       viewId: z.string().optional().describe("Target view id (omit for a global process)"),
@@ -378,7 +97,8 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
   // run_script
   server.tool(
     "run_script",
-    "Execute arbitrary PJSR code inside PixInsight (escape hatch for anything not covered by specific tools)",
+    "Execute arbitrary PJSR code inside PixInsight (escape hatch for anything not covered by " +
+      "specific tools). Returns the script's final expression value (not console output).",
     {
       code: z.string().describe("PJSR JavaScript code to execute"),
     },
@@ -390,7 +110,7 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
           isError: true,
         };
       }
-      const output = (result as any).outputs?.consoleOutput ?? (result as any).message ?? "Script executed.";
+      const output = (result as any).outputs?.returnValue ?? (result as any).message ?? "Script executed.";
       return {
         content: [{ type: "text" as const, text: output }],
       };
