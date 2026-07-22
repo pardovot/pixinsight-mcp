@@ -9,3 +9,5 @@ dist/
 .claude/plans/
 
 result-tests/*.xisf
+# Generated per-build by module/build.mjs
+module/src/BuildTimestamp.h
