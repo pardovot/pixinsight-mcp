@@ -57,11 +57,16 @@ logic lives in **one** place — the JS — and C++ only provides the non-blocki
 There is no socket or HTTP API into PixInsight; the file bridge is the only mechanism.
 Round-trip latency is roughly the poll interval (default 300 ms).
 
+**Trust boundary:** any local process that can write to `~/.pixinsight-mcp/bridge/commands` can
+execute arbitrary code inside PixInsight — that is the bridge's job. Keep the directory
+user-private; do not point it at a shared or synced location.
+
 ### Three delivery channels
 
 1. **MCP server** (npm) — `@pardovot/pixinsight-mcp`
-2. **Signed PixInsight update repo** (`pi-repo/`) — users add one URL; PixInsight auto-installs
-   and auto-registers the watcher
+2. **Signed PixInsight update repo** (`pi-repo/`) — **legacy, script-only**: ships the blocking
+   JS watcher, not the native module; superseded by building the module (channel 3). Kept until
+   CPD registration enables real distribution
 3. **Native C++ module** (`module/`) — **the runtime**
 
 ---
@@ -289,7 +294,7 @@ docs/
   bridge-protocol.md  bridge wire format
 scripts/
   ping-watcher.mjs    bridge round-trip test
-  build-pi-repo.ps1   rebuild the update repo zip (re-sign updates.xri after!)
+  build-pi-repo.mjs   rebuild the update repo zip (re-sign updates.xri after!)
 ```
 
 > **Handler logic lives in `pjsr/pixinsight-mcp-watcher.js` only.** `module/src/BridgeHandlersJS.h`
@@ -319,7 +324,7 @@ outcome, the agent selects and configures the processes itself.
 > and calibrate the color wrongly. Corroborate with channel statistics, the user's equipment
 > profile, or an explicit prompt. Treat headers as a hint, never as truth.
 
-`docs/ROADMAP.md` is **upstream's** pre-implementation plan and is stale — its Phase 5 prescribes
+`docs/roadmap.md` is **upstream's** pre-implementation plan and is stale — its Phase 5 prescribes
 the per-process tools this fork abandoned.
 
 ---

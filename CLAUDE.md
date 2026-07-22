@@ -26,7 +26,7 @@ baseline requirement, not a later "port" and not a nice-to-have.
 
 ## Architecture — three delivery channels
 1. **MCP server** (npm): `claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp`. TypeScript in `src/`, builds to `build/`.
-2. **Signed PixInsight update repo** (`pi-repo/`): users add one URL; PixInsight auto-installs + auto-registers the watcher. Rebuild with `scripts/build-pi-repo.ps1` (reproducible zip), then re-sign `updates.xri` — use `node module/sign.mjs pi-repo/updates.xri` (native `--sign-xml-file`, ~5 s).
+2. **Signed PixInsight update repo** (`pi-repo/`): users add one URL; PixInsight auto-installs + auto-registers the watcher. Rebuild with `npm run repo:build` (reproducible zip, pure Node), then re-sign `updates.xri` — use `node module/sign.mjs pi-repo/updates.xri` (native `--sign-xml-file`, ~5 s).
    - ⚠️ **The current signing identity is LOCAL, not CPD** [verified]: `key.xssk` has `developerId="0104952866723499"` and `Security.getModuleSignature()` reports *"Unknown code signing identity"*, while real CPDs resolve by name (`PTeam`, …). A local identity is only trusted **on machines where this PixInsight license is activated** — so this channel works for our own installs but **cannot distribute to other users** until the owner registers as a Certified PixInsight Developer.
 3. **Native C++ module** (`module/`) — **this is the runtime.**
 
