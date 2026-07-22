@@ -8,7 +8,7 @@
       </p>
    </description>
    <platform os="all" arch="noarch" version="1.9.4:1.9.9">
-      <package fileName="pixinsight-mcp-watcher.zip" sha1="c1a1e077684c8087601cc63c6b7b9f193ae7469f" type="script" releaseDate="20260719">
+      <package fileName="pixinsight-mcp-watcher.zip" sha1="4705ee9539bbc2fc81de83c67cb14edd919e6030" type="script" releaseDate="20260719">
          <title>
             PixInsight MCP Watcher (V8) 0.1.0
          </title>
