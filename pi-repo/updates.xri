@@ -2,26 +2,25 @@
 <xri version="1.0">
    <description>
       <p>
-         PixInsight MCP Watcher - bridge script that lets AI assistants (via the
-         @pardovot/pixinsight-mcp MCP server) drive PixInsight. Installs into
-         src/scripts/PixInsightMCP and registers under Script &gt; PixInsight MCP.
+         PixInsight MCP Watcher - installs the non-blocking native module
+         (MCPWatcher-pxm) that lets AI assistants drive PixInsight via the
+         @pardovot/pixinsight-mcp MCP server. https://github.com/pardovot/pixinsight-mcp
       </p>
    </description>
-   <platform os="all" arch="noarch" version="1.9.4:1.9.9">
-      <package fileName="pixinsight-mcp-watcher.zip" sha1="4705ee9539bbc2fc81de83c67cb14edd919e6030" type="script" releaseDate="20260719">
-         <title>
-            PixInsight MCP Watcher (V8) 0.1.0
-         </title>
-         <description>
-            <p>
-               Polls ~/.pixinsight-mcp/bridge for commands from the MCP server and
-               executes them inside PixInsight. V8 runtime, PixInsight 1.9.4+.
-            </p>
-            <p>
-               https://github.com/pardovot/pixinsight-mcp
-            </p>
-         </description>
-      </package>
+   <metadata id="20260722-mcpwatcher-module" releaseDate="20260722">
+      <title>
+         PixInsight MCP Watcher Module 1.2.0
+      </title>
+      <description>
+         <p>
+            Non-blocking bridge module: a pcl::Timer on PixInsight's event loop
+            polls ~/.pixinsight-mcp/bridge for commands from the MCP server and
+            runs them while PixInsight stays fully interactive. Open it under
+            Process &gt; Utilities &gt; MCP Watcher.
+         </p>
+      </description>
+   </metadata>
+   <platform os="windows" arch="x64" version="1.9.4:1.9.99">
+      <package fileName="mcpwatcher-module-windows.zip" sha1="f3a8c72dece792059f5686a949b86a2c1a0bceb1" type="module" metadata="20260722-mcpwatcher-module"/>
    </platform>
 </xri>
-<Signature developerId="0104952866723499" timestamp="2026-07-19T11:23:09.724Z" encoding="Base64">MkSX7yfPtQ2mhLaw34gxQ0iUOdRZsMlz0HQIY3nnNw4mG/GWK8h2j0fXm4BYtTCiJ+bYCXMT4XBFwTcNi5a1BA==</Signature>
