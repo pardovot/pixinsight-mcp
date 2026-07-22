@@ -5,15 +5,10 @@
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "pixinsight-mcp": "build/index.js",
-    "pixinsight-mcp-install": "install-watcher.mjs",
-    "pixinsight-mcp-watch": "start-watcher-instance.mjs"
+    "pixinsight-mcp": "build/index.js"
   },
   "files": [
     "build",
-    "pjsr",
-    "install-watcher.mjs",
-    "start-watcher-instance.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -28,8 +23,7 @@
     "test": "tsc && node --test",
     "dev": "tsc --watch",
     "start": "node build/index.js",
-    "watch": "node start-watcher-instance.mjs",
-    "setup-bridge": "node -e \"const fs=require('fs'),os=require('os'),p=require('path'),b=p.join(os.homedir(),'.pixinsight-mcp');['bridge/commands','bridge/results','bridge/logs','catalog/recipes'].forEach(d=>fs.mkdirSync(p.join(b,d),{recursive:true}))\"",
+    "setup-bridge": "node -e \"const fs=require('fs'),os=require('os'),p=require('path'),b=p.join(os.homedir(),'.pixinsight-mcp');['bridge/commands','bridge/results','bridge/logs'].forEach(d=>fs.mkdirSync(p.join(b,d),{recursive:true}))\"",
     "module:config": "node module/config.mjs",
     "module:pcl": "node module/build-pcl.mjs",
     "module:build": "node module/build.mjs",
