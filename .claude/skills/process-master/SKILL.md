@@ -86,8 +86,10 @@ no-ops (the gate catches it) or errors: report clearly and fall back to Gradient
 - **SPCC NB wavelengths (if ever used):** G and B identical wavelength AND bandwidth; physical
   emission lines (Hα 656.3, OIII 500.7), not filter marketing centers.
 - **SPFC needs filter curves supplied explicitly on OSC** — defaults ship empty and error
-  (`Parsing CSV spectrum parameter … At least 5 items are required`). Same Sony/IMX curves +
-  Ideal QE; reuse `scripts/spcc-curves.mjs`. (SPCC-NB ships curves built in; SPFC does not.)
+  (`Parsing CSV spectrum parameter … At least 5 items are required`). Supply the sensor's curves
+  the same way the broadband-SPCC step does: extract them from `filters.xspd` in PJSR (device QE
+  `Sony IMX...`, per-channel filter transmission) + Ideal QE. (SPCC-NB ships curves built in; SPFC
+  does not.)
 - **Gauge denoising with the MRS noise estimator, not stdDev** — stdDev is signal/star-dominated
   and can rise after a correct denoise [R1 false alarm].
 - **Background neutrality is a LINEAR pre-stretch step.** Equal channel medians do NOT prove
