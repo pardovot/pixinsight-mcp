@@ -29,11 +29,11 @@ Confidence reflects real-run evidence, not just the playbook's grading.
 | Plate solve | (usually already present) | ✅ detect with `window.hasAstrometricSolution`, don't re-solve |
 | Flux cal | SPFC | ⚠️ works, but needs filter curves supplied explicitly (empty by default → parse error) |
 | Gradient | MGC + MARS DR2 | ✅ **excellent** (−93/94/94% corner spread) — needs `marsDatabaseFiles` passed explicitly |
-| Color cal | SPCC narrowband | ✅ neutralized R≈G≈B; ⚠️ clipped blue min to 0 (bg-neutralization) |
+| Color cal | SPCC **broadband** + duoband curves | ⛔ **R7: SPCC narrowband mode HARD-DEADLOCKED PI 3×** (force-restarts). **Use broadband** (`narrowbandMode=false`) + per-channel `Sony CMOS X-UVIRcut / Antlia-ALP-T` curves (from `library/filters.xspd`) + `Sony IMX411/…/571` QE — runs clean via `executeOn`. Contradicts R1–R6 (NB worked then); cause unknown. |
 | Sharpen | BXT nonstellar | ✅ works; 0.60 read soft, 0.75 accepted (aesthetic) |
 | Denoise | NXT | ✅ works; gauge with **MRS noise, not stdDev** |
 | Star split | SXT linear | ✅ mechanically clean. ⚠ **`unscreen=false` on linear** (R4 wrongly used true; unscreen is for nonlinear extraction — RC-Astro). |
-| **Bg neutrality** | linear per-channel additive offset | ✅ **R3 VALIDATED** — measure the **diffuse-sky band** (±8% of luminance median), NOT darkest-N% (= dark lanes, fake cast). Null residual with additive-offset PixelMath; held neutral through the whole stretch (0.7%→0.4%). ⚠️ the `BackgroundNeutralization` *process* blew up (×100, R clip) — don't use it. |
+| **Bg neutrality** | linear additive offset (primary) **+ post-stretch background work** | ✅ **R3 VALIDATED (linear)** — diffuse-sky band (±8% of lum median), NOT darkest-N%. Null residual with additive-offset PixelMath. Don't use the `BackgroundNeutralization` *process* (blew up ×100). **R7: post-stretch neutralization is a legit supplement** (doctrine softened) → `docs/background-work.md`: luminance-dependent curves leveling + teal-toward-own-luminance gated to `rex<0` (gray not black, red preserved). ⚠️ **the ±8% spread metric LIES post-stretch** — judge on the render. |
 | **Stretch** | **native GHS** + a pinned lift-curve (measurement-driven, iterative) | ⚠️ **R5=too bright/milky, R6=too dark/faint-crushed — the two bracket the target (it's a BAND).** R6 fix for R5 milkiness: SP just *above* the bg peak (bg compresses down, dark) + a `CurvesTransformation` pinned at the bg rising above it → decoupled bg-darkness from object-lift, killed the milkiness. **But overshot:** user "nebulosity too dim; fainter nebulosity VANISHED with the background." **Method gap:** "no clipping (min>0)" ≠ faint-nebula preserved (R6 mins>0 yet faint gone) → add an explicit **faint-nebula-survival check** on the render. Don't trade object brightness for a dark bg. Exact levels = OPEN (objective function). |
 | **Star stretch** | **single MTF + ColorSaturation** (SetiAstro Execute, replayed) | ✅ **method solid (R5–R6): star-PIXEL median (`>~0.005`) not layer median (≈0); include the `ColorSaturation` pass; verify at 1:1.** ⚠ **amount is per-target and wants to go HARDER than first guess:** R5 `a≈4.5`; **R6 user: `amount=6, satAmount=1.3` for NAN/Pelican** (my `a=4.0/sat=1.0` too soft). T≈0.35–0.45 is a *starting point*, push harder + confirm 1:1; darker bg tolerates harder stretch. **Per-object datapoint, NOT a default** (user: "other targets might not be as good"). SetiAstro installed (`star_stretch.js`); replay ops, don't `#include`. |
 | **Color shaping** | gated SCNR, gentle saturation | ⚠️ **SCNR correctly skipped R3–R6** (rule never fired). **R6: saturation "way too much"** — a strong S-curve `[[0,0],[0.35,0.5],[0.7,0.83],[1,1]]` over-cooks an already-saturated SPCC result → keep gentle + verify on render. gold/teal recipe + duoband star color still OPEN. |
@@ -148,6 +148,15 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     window missing). **Run 5 it worked reliably** (named `snapshotId`s created + restored, used to iterate the
     stretch and star layer). Either already fixed or the R3 failure was intermittent → downgraded; keep an eye
     out, no active fix needed unless it recurs.
+13. **Background-work + visual-QA tooling** `[tooling, HIGH — Run 7]` — the whole background session was
+    hand-rolled in `run_script` (curves fit, gated teal→luminance, ~10 render-downsample-and-Read cycles).
+    → (a) **`background_neutralize(viewId, {signalHue, w, ...})`** wrapping the validated 2-stage recipe
+    (`docs/background-work.md`); (b) **`render_view(viewId, factor)`** → returns a downsampled JPEG for
+    visual QA (every judgment this session needed one; I built it inline each time); (c) **`get_background_neutrality`
+    that reports background CHROMA of the near-neutral population** (not the ±8% sky-band spread — that metric
+    LIES post-stretch) + faint/bright preservation ratio. (d) SPCC **broadband** OSC-duoband curve
+    auto-provisioning from `library/filters.xspd` (the `Sony CMOS X-UVIRcut / <filter>` + IMX QE lookup), since
+    NB mode is now off-limits.
 
 ---
 
@@ -219,6 +228,13 @@ playbook `osc-hoo.md` steps 10–12 rewritten. Summary of what landed:
   vs GHS; GHS won by default. User wants them available as quick engines (see tooling backlog #10).
 - **SPCC blue clipping** — background neutralization clipped blue min to 0; acceptable or defer? (Now
   lower priority given the linear-BN reframe.)
+- **SPCC narrowband deadlock — root cause `[correctness/tooling, R7, OPEN]`.** NB mode hard-froze PI 3× this
+  session but worked R1–R6. PI version bump? A specific data/state trigger? Broadband is the working path
+  regardless, but the discrepancy is unexplained — investigate before trusting NB again.
+- **Background-method generalization `[quality, R7, OPEN]`.** The 2-stage recipe (`docs/background-work.md`) is
+  validated for **Hα-dominant HOO** (protect red / gate `rex<0`). The per-target signal-hue re-keying for
+  **OIII-rich HOO, SHO, and RGB** is designed but **untested** — needs a live demo on each palette to confirm the
+  hue axis and dose transfer. Do NOT assume it transfers unverified.
 
 ---
 
@@ -478,3 +494,62 @@ score its own render (faint-nebula survival, saturation ceiling, object brightne
 blocker to autonomous nonlinear processing, and R5+R6 give the two failure bounds to calibrate against. In
 parallel, cheap tooling win: transcribe **SetiAstro Statistical Stretch** (backlog #12) to make the nebula
 stretch closer to one-shot. Color (gold/teal, star color) still deferred.
+
+### Run 7 — 2026-07-22 — OSC-HOO — North Sadr region / IC 1318 (FMA180 Pro, ATR3CMOS26000KPA / IMX571, Antlia ALP-T 5nm)
+**Outcome:** full autonomous linear+nonlinear run to a saved `NorthSadr_HOO_final.xisf` (mediocre stretch, complete),
+then the session pivoted to a **deep-research + live-demo cycle on BACKGROUND WORK** (user-driven training iteration).
+Two big results: (1) SPCC narrowband mode **hard-deadlocked** → broadband is the OSC path; (2) a researched +
+user-validated **background-neutralization method** (`docs/background-work.md`), including a rich failure-mode catalog.
+
+**Findings**
+- `[correctness]`+`[tooling]` **SPCC NARROWBAND MODE HARD-DEADLOCKED PixInsight — 3× force-restarts.**
+  `narrowbandMode=true` froze the app dead (user confirmed: no console progress), not the old slow-process
+  corruption. **Broadband** (`narrowbandMode=false`) + per-channel `Sony CMOS X-UVIRcut / Antlia-ALP-T` curves
+  (from `library/filters.xspd`) + `Sony IMX411/…/571` QE ran clean via `executeOn` (same code path as SPFC).
+  **Contradicts R1–R6** where NB worked — cause unknown (PI version/state). → skill + playbook + pipeline table +
+  memory updated: use broadband for OSC duoband; don't fight NB; checkpoint-save so a restart is free.
+- `[correctness]` Process icons are PJSR-readable/writable: `ProcessInstance.fromIcon(id)` / `writeIcon(id)`
+  (writes only to an **existing** icon). OSC duoband filter + QE curves live in `library/filters.xspd` (greppable);
+  my `scripts/spcc-curves.mjs` IMX571 QE is byte-identical to PI's built-in.
+- `[quality]` **Background-work method — RESEARCHED (deep-research `wf_bb8b080b`) + LIVE-DEMO validated.** Goal =
+  true bg neutral **gray** (color-neutral AND brightness-preserved) with faint signal intact. Winning recipe
+  (OSC-HOO): **(1) luminance-dependent per-channel curves leveling** (single offset can't fix a brightness-dependent
+  cast → dark lanes stay teal); **(2) teal→own-luminance, gated to `rex=R−(G+B)/2 < 0`** (preserves brightness =
+  gray not black; red untouched by construction, ~100% faint-red preserved, no mask). Signal-hue is the per-target
+  knob. Written up in `docs/background-work.md` with the full **failure-mode catalog** below. User verdict on the
+  final: "preserves details, not too black, pretty decent."
+- `[method]` **The ±8% diffuse-sky-band spread metric LIES post-stretch** — read 2–3% "non-neutral" on
+  visually-perfect gray backgrounds (catches protected nebula-edge pixels). Valid only for *linear* pre-stretch
+  neutrality. → use background-chroma of the near-neutral population + faint/bright preservation ratio + **the render**.
+- `[correctness/behavior]` **I over-indexed on metrics and over-claimed** — declared the SCNR+mask result "the
+  answer" on a 99.98% metric; user: **"worst result so far"** (SCNR flattened reds, mask blotched transitions).
+  Classic "user's eyes beat statistics." → judge-by-render + don't-stack-ops rules added to skill.
+- `[quality]` **Failure-mode catalog (all rejected by eye, same image):** desat-toward-luminance-under-mask kills
+  faint red (wrong *symmetric* op — no mask fixes it) + darkens to gray; **SCNR@100%+mask** = dead reds + blotchy
+  (worst); single additive offset can't fix a brightness-dependent cast; **teal-shrink toward R** preserves red but
+  crushes teal to **black** (right idea, wrong target); per-pixel redness mask alone can't fix the R-cast.
+- `[method]` **Perceptual:** removing chroma makes darks read *blacker* at equal luminance → neutralize by
+  **preserving brightness** (toward luminance), and never fix "too dark" by global brightening (washes the neutral).
+- `[correctness]` PixelMath `createNewImage` via `executeGlobal` throws "cannot execute in global context" —
+  build derived images by cloning a window + in-place PixelMath, or reference source channels inline.
+- `[quality]` **Doctrine softened (research-confirmed):** "never fix a cast post-stretch / never SCNR" was too
+  broad (blind-SCNR@100% failures). Post-stretch neutralization is a legit *supplement*; SCNR is a *conditional*
+  (green/blue-dominant cast only, dosed, mask only if highlights contain the removed channel), not "refuted."
+
+**Changed this entry:** created `docs/background-work.md` (method + failure catalog + SCNR conditional + metric
+caveat + doctrine correction); `process-master` skill (SPCC-NB-deadlock→broadband gotcha, filters.xspd/process-icon
+notes, background-work pointer, judge-by-render + don't-stack + metric-lies rules, SCNR-not-refuted); `osc-hoo.md`
+step 10 (post-stretch supplement + metric caveat) + step 11 (SCNR conditional not refuted); pipeline-state table
+(SPCC→broadband, Bg-neutrality→+post-stretch); backlog + research questions below.
+
+**Still open — highest value next [user-corrected roadmap]:** ⚠️ **NOT the stretch.** User: *"stretching is
+good enough for now; stretching can only do so much — the POST-STRETCH work is the real, hard job."* The frontier
+is the **post-stretch aesthetic fine-tuning phase**, of which **background neutralization was the first step
+(now solved for Hα-HOO)**. The rest, each a per-object eye-driven refinement that can get the same
+research→demo→validate treatment we gave background work:
+- **Curves work** (tone/contrast shaping), **blacks/brightness** fine-tune
+- **Highlights** / **HDR** (e.g. HDRMultiscaleTransform to tame bright cores + pull structure)
+- **Details** (local contrast / sharpening on the nonlinear)
+- **Saturation**, **Hue**, and the **CIE c\*** (chroma) component specifically — color fine-tuning in LCh/Lab, not just RGB
+Treat these as the M-next research/demo backlog. **Do the same measure→render→judge-by-eye loop; don't hardcode.**
+Also open: background-method generalization (OIII/SHO signal-hue, untested) and the SPCC-NB-vs-broadband root cause.

@@ -114,7 +114,14 @@ pink/blue). Neutrality is set *before* the stretch, measured on the true sky.
   offset** in PixelMath (`useSingleExpression:false`; `$T`, `$T-offsetG`, `$T-offsetB`) where each
   offset = that channel's diffuse-sky median minus the min channel's. It's tiny (~5e-6) but it
   **compounds** through GHS + black-point (Run 3: 0.7%→1.4%→3.6%), so it must be nulled while linear.
-- **Do NOT try to fix a background cast after stretching, and do NOT use SCNR to fix it.**
+- **Linear pre-stretch neutralization is PRIMARY.** But post-stretch background work is a **legitimate
+  supplement** [Run-7 research + validated], not forbidden — the old blanket "never fix a cast after
+  stretch / never SCNR" came from *blind* SCNR@100% failures. When a residual cast survives the stretch,
+  neutralize it **measured and gated** per **`docs/background-work.md`** (OSC-HOO: luminance-dependent
+  per-channel curves leveling → teal-toward-own-luminance gated to `rex<0`; preserves brightness = gray
+  not black, red untouched by construction). ⚠ **Judge on the render**, not the ±8% sky-band spread
+  metric — that metric is valid for *linear* neutrality but **LIES post-stretch** (reads 2–3% on a
+  visually-neutral gray bg). Never stack SCNR + a mask (Run 7: flattened reds, worst result).
 
 **Use the NATIVE GHS process** — `run_process("GeneralizedHyperbolicStretch", …)`. ✅ Run 4 drove it
 natively (param map: `stretchType:0`=GH, `stretchFactor`=D entered directly, `localIntensity`=b,
@@ -183,8 +190,13 @@ agreed-inferior option.
   cast (both runs). **Fix the cast in the LINEAR stage (Step 10 pre-stretch BN), not with SCNR.** If
   green genuinely remains *after* correct BN, apply SCNR green at a **reduced, measured amount**
   (e.g. ~0.5), gated by actually measuring green > (R,B) in the nebula — never 100% "to be safe."
-- **Refuted — do NOT use:** SCNR *after* the stretch (verifier 1-2); the per-channel PixelMath
-  `R=T(0)/G=T(1)/B=T(2)` "magenta-star fix" (0-3).
+- **SCNR *after* the stretch — CONDITIONAL, not refuted [Run-7 research correction].** Earlier graded
+  "refuted," but that was blind SCNR@100%. It's mechanically sound (direction-symmetric; Average Neutral
+  clamps the target channel to the other-two average; amount IS operative) and a valid **background**
+  tool *when the cast is genuinely green/blue-dominant* and dosed/gated — see `docs/background-work.md`.
+  On an R-dominant or mixed cast it under-neutralizes, and **stacked with a mask it flattens the reds**
+  (Run 7, worst result). `invert→SCNR-green→invert` removes magenta (complement) — valid for magenta
+  star fringing. Still refuted: the per-channel PixelMath `R=T(0)/G=T(1)/B=T(2)` "magenta-star fix" (0-3).
 - **⚠ Saturation — RESTRAINT [R6, quality].** R6 applied a `CurvesTransformation` S-curve
   `S=[[0,0],[0.35,0.5],[0.7,0.83],[1,1]]` on the starless → user: **"way too much."** A strong saturation
   curve on an already-saturated SPCC result over-cooks it. Keep any saturation boost **gentle and measured**,
