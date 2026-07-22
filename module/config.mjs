@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 export const platform = process.platform; // 'win32' | 'darwin' | 'linux'
@@ -60,7 +61,7 @@ export const piExe = env(
 export const moduleExt = isWindows ? ".dll" : isMac ? ".dylib" : ".so";
 export const moduleName = `MCPWatcher-pxm${moduleExt}`;
 
-export const moduleDir = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+export const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(moduleDir, "..");
 export const buildDir = env("MCP_BUILD_DIR", path.join(moduleDir, "build"));
 export const modulePath = path.join(buildDir, moduleName);

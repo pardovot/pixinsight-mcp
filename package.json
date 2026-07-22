@@ -1,6 +1,6 @@
 {
   "name": "@pardovot/pixinsight-mcp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "MCP server bridging AI assistants with PixInsight for astrophotography processing",
   "type": "module",
   "main": "build/index.js",
@@ -18,7 +18,11 @@
     "LICENSE"
   ],
   "author": "Alain Escaffre (original); packaged by pardovot",
-  "homepage": "https://github.com/aescaffre/pixinsight-mcp",
+  "homepage": "https://github.com/pardovot/pixinsight-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pardovot/pixinsight-mcp.git"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test",
@@ -40,11 +44,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
-    "@google/generative-ai": "^0.24.1",
-    "@mistralai/mistralai": "^1.15.1",
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "cross-spawn": "^7.0.6",
     "zod": "^3.25.0"
   },
   "devDependencies": {
