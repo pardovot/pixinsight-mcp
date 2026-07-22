@@ -105,10 +105,6 @@ void MCPWatcherInterface::e_Timer( Timer& sender )
    int n = m_poller.ProcessPending( /*maxPerTick=*/10 );
    if ( n > 0 )
       UpdateStatus();
-
-   // TODO(js-delegation): to reuse the existing JS handlers instead of the
-   // native C++ dispatch, run the JS watcher's non-looping processPendingCommands()
-   // here once per tick, via the core script-execution API.
 }
 
 // ----------------------------------------------------------------------------
