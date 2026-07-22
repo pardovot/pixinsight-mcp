@@ -180,6 +180,11 @@ bool MCPWatcherInterface::Launch( const MetaProcess& P, const ProcessImplementat
    {
       GUI = new GUIData( *this );
       SetWindowTitle( "MCP Watcher" );
+      // Auto-start on first open: opening the panel means you want the bridge
+      // up. (Safe here — we are long past module-install time, so the deferred
+      // Timer construction in StartWatcher is allowed.) A later manual Stop is
+      // respected: this only runs when the GUI is first created.
+      StartWatcher();
       UpdateStatus();
    }
    dynamic = false;
