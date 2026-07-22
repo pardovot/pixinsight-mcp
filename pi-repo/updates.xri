@@ -7,7 +7,7 @@
          @pardovot/pixinsight-mcp MCP server. https://github.com/pardovot/pixinsight-mcp
       </p>
    </description>
-   <metadata id="20260722-mcpwatcher-module" releaseDate="20260722">
+   <metadata id="20260723-mcpwatcher-module" releaseDate="20260723">
       <title>
          PixInsight MCP Watcher Module 1.2.0
       </title>
@@ -21,7 +21,7 @@
       </description>
    </metadata>
    <platform os="windows" arch="x64" version="1.9.4:1.9.99">
-      <package fileName="mcpwatcher-module-windows.zip" sha1="f3a8c72dece792059f5686a949b86a2c1a0bceb1" type="module" metadata="20260722-mcpwatcher-module"/>
+      <package fileName="mcpwatcher-module-windows.zip" sha1="34139e7683f58154c0a4a4c387f0bf4f73e84244" type="module" metadata="20260723-mcpwatcher-module"/>
    </platform>
 </xri>
-<Signature developerId="0104952866723499" timestamp="2026-07-22T21:08:49.565Z" encoding="Base64">oJfM8pCfc8Mgg7fFoGxyOzxLStVDQbhOZMb1gJa1I+2JdUYELwH20o0rGZdp1gjokGKHKqzaqqmJotfUsND+BQ==</Signature>
+<Signature developerId="0104952866723499" timestamp="2026-07-22T23:27:37.721Z" encoding="Base64">Ox5pcSoSt0j0ZDHF62iRXpIOQQeARD4PFMrlN92DGLYFDh67EfTSmCBVwZ4gcNo/Ok8hkyLY9dSCFJk4fmG7CQ==</Signature>
