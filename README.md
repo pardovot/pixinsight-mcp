@@ -209,7 +209,6 @@ rather than written as literals, so a stock install needs no configuration at al
 | Variable | Default | Purpose |
 |---|---|---|
 | `PIXINSIGHT_EXE` | per-platform, probed | PixInsight executable |
-| `PIXINSIGHT_MCP_BRIDGE_DIR` | `~/.pixinsight-mcp/bridge` | bridge directory |
 | `PIXINSIGHT_MCP_TIMEOUT_MS` | `300000` | per-command timeout — raise on slow machines or large frames |
 | `PIXINSIGHT_MCP_EXTENDED_TIMEOUT_MS` | `3600000` | timeout for long operations |
 | `PIXINSIGHT_MCP_POLL_INTERVAL_MS` | `200` | bridge poll cadence |

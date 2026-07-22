@@ -105,7 +105,9 @@ const envInt = (name: string, fallback: number): number => {
 };
 
 export const DEFAULT_CONFIG: BridgeConfig = {
-  bridgeDir: process.env.PIXINSIGHT_MCP_BRIDGE_DIR ?? "~/.pixinsight-mcp/bridge",
+  // Single canonical location — the C++ module and watcher hardcode it, so a
+  // server-only override would silently break the bridge.
+  bridgeDir: "~/.pixinsight-mcp/bridge",
   pollIntervalMs: envInt("PIXINSIGHT_MCP_POLL_INTERVAL_MS", 200),
   // Timeouts are hardware- and framesize-dependent; a slow machine or very
   // large frames legitimately need more than these defaults.

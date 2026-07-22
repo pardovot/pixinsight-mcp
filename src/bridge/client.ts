@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, readFile, unlink, readdir } from "node:fs/promises";
+import { mkdir, writeFile, readFile, unlink, readdir, rename, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -60,8 +60,12 @@ export class BridgeClient {
       targetView: options?.targetView ?? null,
     };
 
+    // Atomic write: "<id>.tmp" (outside the watcher's *.json glob) then rename,
+    // so the watcher never picks up a partially written command file.
     const commandPath = join(this.commandsDir, `${id}.json`);
-    await writeFile(commandPath, JSON.stringify(command, null, 2), "utf-8");
+    const tmpPath = join(this.commandsDir, `${id}.tmp`);
+    await writeFile(tmpPath, JSON.stringify(command, null, 2), "utf-8");
+    await rename(tmpPath, commandPath);
 
     const timeoutMs = options?.timeoutMs ?? this.config.defaultTimeoutMs;
     return this.waitForResult(id, timeoutMs);
@@ -169,8 +173,8 @@ export class BridgeClient {
       const files = await readdir(this.commandsDir);
       let cleaned = 0;
       for (const file of files) {
+        const filePath = join(this.commandsDir, file);
         if (file.endsWith(".json")) {
-          const filePath = join(this.commandsDir, file);
           try {
             const data = await readFile(filePath, "utf-8");
             const cmd = JSON.parse(data) as BridgeCommand;
@@ -185,6 +189,16 @@ export class BridgeClient {
             await unlink(filePath);
             cleaned++;
           }
+        } else if (file.endsWith(".tmp")) {
+          // Orphan from a crash between write and rename. No parseable
+          // timestamp inside — use mtime, same 10-minute threshold.
+          try {
+            const { mtimeMs } = await stat(filePath);
+            if (Date.now() - mtimeMs > 600_000) {
+              await unlink(filePath);
+              cleaned++;
+            }
+          } catch {}
         }
       }
       return cleaned;
