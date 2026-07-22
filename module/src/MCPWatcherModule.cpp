@@ -4,6 +4,7 @@
 #include "MCPWatcherModule.h"
 #include "MCPWatcherProcess.h"
 #include "MCPWatcherInterface.h"
+#include "Version.h"
 
 namespace pcl
 {
@@ -16,8 +17,12 @@ const char* MCPWatcherModule::Version() const
 {
    // Must use the macro: PixInsight validates the encoded
    // "PIXINSIGHT_MODULE_VERSION_MM.mm.rr.bbbb.lan" form. A plain "1.0.0" is
-   // rejected as "Invalid module version information".
-   return PCL_MODULE_VERSION( 1, 0, 0, 0, eng );
+   // rejected as "Invalid module version information". Numbers come from
+   // Version.h so the platform-reported version can never drift from the one
+   // shown in the dialog (they previously disagreed: 1.0.0 vs 1.2.0).
+   return PCL_MODULE_VERSION( MCPWATCHER_VERSION_MAJOR,
+                              MCPWATCHER_VERSION_MINOR,
+                              MCPWATCHER_VERSION_RELEASE, 0, eng );
 }
 
 IsoString MCPWatcherModule::Name() const
@@ -68,9 +73,9 @@ String MCPWatcherModule::OriginalFileName() const
 
 void MCPWatcherModule::GetReleaseDate( int& year, int& month, int& day ) const
 {
-   year  = 2026;
-   month = 7;
-   day   = 19;
+   year  = MCPWATCHER_RELEASE_YEAR;
+   month = MCPWATCHER_RELEASE_MONTH;
+   day   = MCPWATCHER_RELEASE_DAY;
 }
 
 } // namespace pcl

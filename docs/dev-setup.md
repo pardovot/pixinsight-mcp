@@ -3,7 +3,9 @@
 ## Prerequisites
 
 - **Node.js** >= 18
-- **PixInsight** >= 1.8.9 (with scripting support)
+- **PixInsight** >= 1.9.4 "Lockhart" (V8 PJSR engine — the watcher enforces this
+  via `CoreApplication.ensureMinimumVersion(1, 9, 4)`; older ES5-engine versions
+  are not supported)
 - **Claude Desktop** or **Claude Code** (for testing the MCP server)
 - **OS**: cross-platform is the goal; **Windows 11 is currently the only tested platform**.
   Nothing in the design is Windows-specific. The build tooling is cross-platform Node
@@ -28,7 +30,7 @@ Default installation paths:
 git clone https://github.com/pardovot/pixinsight-mcp.git
 cd pixinsight-mcp
 
-# Install dependencies (once package.json exists)
+# Install dependencies
 npm install
 
 # Build
@@ -157,6 +159,5 @@ playbooks), `pi-repo/` (the update-repo channel), `scripts/`, `test/`.
 - Ensure file permissions allow both processes to read/write
 
 ### PixInsight process errors
-- Check `~/.pixinsight-mcp/bridge/logs/` for detailed logs
 - Open PixInsight's Process Console for script errors
 - Verify file paths are absolute and files exist

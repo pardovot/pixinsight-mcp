@@ -2,7 +2,7 @@
 
 ## Overview
 
-The bridge protocol defines how the MCP server and the PJSR watcher script communicate through the filesystem. It uses JSON files in a shared directory.
+The bridge protocol defines how the MCP server and the watcher (native module, or the fallback PJSR watcher script) communicate through the filesystem. It uses JSON files in a shared directory.
 
 ## Directory Structure
 
@@ -11,36 +11,33 @@ The bridge protocol defines how the MCP server and the PJSR watcher script commu
   bridge/
     commands/     # MCP server writes here, watcher reads + deletes
     results/      # Watcher writes here, MCP server reads + deletes
-    logs/         # Watcher writes execution logs
-  config.json     # Bridge configuration
+    logs/         # Reserved (created but currently unused)
 ```
+
+Both sides write files atomically: content goes to `<id>.tmp` (outside every
+`*.json` glob) and is then renamed to `<id>.json`, so a reader never sees a
+partial file.
 
 ## Command File Format
 
-Written by the MCP server to `bridge/commands/{id}.json`:
+Written by the MCP server to `bridge/commands/{id}.json`. Example — `run_process`
+applying AutomaticBackgroundExtractor to an open view:
 
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "timestamp": "2025-01-15T10:30:00.000Z",
-  "tool": "calibrate_frames",
-  "process": "ImageCalibration",
+  "timestamp": "2026-01-15T10:30:00.000Z",
+  "tool": "run_process",
+  "process": "AutomaticBackgroundExtractor",
   "parameters": {
-    "targetFrames": [
-      [true, "/data/lights/light_001.xisf"],
-      [true, "/data/lights/light_002.xisf"]
-    ],
-    "masterBiasEnabled": true,
-    "masterBias": "/data/masters/master_bias.xisf",
-    "masterDarkEnabled": true,
-    "masterDark": "/data/masters/master_dark.xisf",
-    "masterFlatEnabled": true,
-    "masterFlat": "/data/masters/master_flat.xisf",
-    "outputDirectory": "/data/calibrated/",
-    "outputPrefix": "cal_"
+    "processId": "AutomaticBackgroundExtractor",
+    "settings": {
+      "targetCorrection": 1,
+      "replaceTarget": true
+    }
   },
-  "executeMethod": "executeGlobal",
-  "targetView": null
+  "executeMethod": "executeOn",
+  "targetView": "master_hoo"
 }
 ```
 
@@ -58,23 +55,20 @@ Written by the MCP server to `bridge/commands/{id}.json`:
 
 ## Result File Format
 
-Written by the PJSR watcher to `bridge/results/{id}.json`:
+Written by the watcher to `bridge/results/{id}.json`:
 
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "timestamp": "2025-01-15T10:30:05.000Z",
+  "timestamp": "2026-01-15T10:30:05.000Z",
   "status": "success",
-  "process": "ImageCalibration",
+  "process": "AutomaticBackgroundExtractor",
   "duration_ms": 4523,
   "outputs": {
-    "files": [
-      "/data/calibrated/cal_light_001.xisf",
-      "/data/calibrated/cal_light_002.xisf"
-    ],
-    "imageWindows": ["cal_light_001", "cal_light_002"]
+    "processId": "AutomaticBackgroundExtractor",
+    "applied": ["targetCorrection", "replaceTarget"]
   },
-  "message": "Calibrated 2 frames successfully"
+  "message": "AutomaticBackgroundExtractor executed on master_hoo [targetCorrection, replaceTarget]"
 }
 ```
 
@@ -83,13 +77,13 @@ Written by the PJSR watcher to `bridge/results/{id}.json`:
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "timestamp": "2025-01-15T10:30:02.000Z",
+  "timestamp": "2026-01-15T10:30:02.000Z",
   "status": "error",
-  "process": "ImageCalibration",
+  "process": "AutomaticBackgroundExtractor",
   "duration_ms": 150,
   "error": {
-    "message": "Master bias file not found: /data/masters/master_bias.xisf",
-    "type": "FileNotFound",
+    "message": "View not found: master_hoo",
+    "type": "Error",
     "stack": "..."
   }
 }
@@ -101,7 +95,7 @@ Written by the PJSR watcher to `bridge/results/{id}.json`:
 |---|---|
 | `success` | Process completed successfully |
 | `error` | Process failed with an error |
-| `running` | Process is currently executing (for progress tracking) |
+| `running` | Reserved: an in-progress ack. The client handles it (keeps polling), but no current watcher emits it |
 
 ## Special Commands
 
@@ -170,33 +164,41 @@ Execute an arbitrary PJSR script:
 ## Polling & Timeouts
 
 ### MCP Server Side
-- Poll `bridge/results/{id}.json` every **200ms**
-- Default timeout: **300 seconds** (5 minutes) for image processing operations
-- Extended timeout: **3600 seconds** (1 hour) for integration/stacking operations
-- On timeout: return error to the MCP host
+- Poll `bridge/results/{id}.json` every **200 ms** (`PIXINSIGHT_MCP_POLL_INTERVAL_MS`)
+- Default timeout: **300 seconds** (5 minutes) — `PIXINSIGHT_MCP_TIMEOUT_MS`
+- On timeout: return an error to the MCP host (the command may still complete
+  in PixInsight; its late result file is reaped by the stale cleanup below)
+- A result file that stays unparseable past a ~2 s grace window is surfaced as
+  a `MalformedResult` error instead of being polled until timeout
 
-### PJSR Watcher Side
-- Poll `bridge/commands/` every **500ms**
-- Process commands in FIFO order (sorted by timestamp)
-- Write result immediately after process completes (or fails)
-- Delete command file after writing result
+### Watcher Side
+- Native module: a `pcl::Timer` polls `bridge/commands/` every **300 ms**
+- JS watcher (fallback): effective idle cadence ~**500 ms** (25 × 20 ms sleeps)
+- Write result immediately after the process completes (or fails)
+- Delete the command file after writing the result
+
+### Stale commands
+Both sides enforce a **10-minute** age limit:
+- The MCP server deletes leftover command files older than 10 minutes at
+  startup, and reaps orphaned result files the same way.
+- The watcher refuses to execute a command whose `timestamp` is older than
+  10 minutes (writes an error result instead), so commands queued by a dead
+  session never fire late with surprising side effects.
 
 ## Concurrency
 
 - The watcher processes **one command at a time** (PixInsight is single-threaded for most operations)
 - The MCP server should queue commands and wait for each to complete before sending the next
-- Future enhancement: support parallel execution for independent operations on different images
 
 ## Configuration
 
-`~/.pixinsight-mcp/config.json`:
+The bridge directory is fixed at `~/.pixinsight-mcp/bridge` — the module and the
+watcher hardcode it, so a server-only override would silently break the bridge.
+The MCP server reads these environment variables (see `src/types.ts`):
 
-```json
-{
-  "bridgeDir": "~/.pixinsight-mcp/bridge",
-  "pollIntervalMs": 200,
-  "defaultTimeoutMs": 300000,
-  "pixinsightPath": "C:\\Program Files\\PixInsight\\bin\\PixInsight.exe",
-  "automationMode": true
-}
-```
+| Variable | Default | Meaning |
+|---|---|---|
+| `PIXINSIGHT_MCP_POLL_INTERVAL_MS` | `200` | Result-poll interval |
+| `PIXINSIGHT_MCP_TIMEOUT_MS` | `300000` | Per-command timeout |
+| `PIXINSIGHT_MCP_EXTENDED_TIMEOUT_MS` | `3600000` | Reserved for long operations (not currently used by any tool) |
+| `PIXINSIGHT_EXE` | per-platform default | PixInsight executable path |

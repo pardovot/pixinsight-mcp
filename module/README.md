@@ -177,6 +177,11 @@ code, which is unreliable for this GUI process.
 > ~5 s the process lives. Pleiades' own guidance is to use it only on a trusted
 > machine. Omitting it makes PixInsight prompt interactively instead.
 
+> **Password characters (Windows):** the sign command goes through `cmd`, which
+> expands `%PI_SIGN_PASSWORD%` — a password containing `"` or `%` will be
+> mangled by cmd's quoting/expansion and fail. If yours does, sign on
+> macOS/Linux (argv is passed verbatim there) or change the key's password.
+
 ### Why signing cannot be done outside PixInsight
 
 Worth recording, because it looks tractable and is not:
