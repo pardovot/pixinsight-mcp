@@ -37,10 +37,8 @@ The module is a **thin non-blocking shell around the JS handlers**. It:
 
 Full command coverage (delegated, not reimplemented in C++): `list_open_images`,
 `open_image`, `save_image`, `close_image`, `get_image_statistics`,
-`run_pixelmath`, `remove_gradient`, `color_calibrate`, `remove_green_cast`,
-`stretch_image`, `apply_curves`, `denoise`, `sharpen`, `deconvolve`, `run_bxt`,
-`run_nxt`, `run_sxt`, `combine_lrgb`, `blend_narrowband`, `run_process`,
-`get_process_parameters`, `run_script`.
+`run_pixelmath`, `run_process`, `get_process_parameters`, `run_script`,
+`get_history`, `undo`, `redo`, `snapshot`, `restore`.
 
 ### Handler logic lives in ONE place
 
