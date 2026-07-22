@@ -149,3 +149,18 @@ test("cleanStaleCommands: reaps old/malformed json and old .tmp, keeps fresh", a
   const remaining = (await fs.readdir(commands)).sort();
   assert.deepEqual(remaining, ["fresh.json", "fresh.tmp"]);
 });
+
+test("cleanStaleCommands: reaps orphaned results (post-timeout leftovers) by mtime", async (t) => {
+  const { client, results } = await freshBridge(t);
+  const old = new Date(Date.now() - 20 * 60_000);
+  // A result the watcher wrote after its client timed out and stopped reading.
+  await fs.writeFile(path.join(results, "orphan.json"), JSON.stringify({ id: "orphan" }));
+  await fs.utimes(path.join(results, "orphan.json"), old, old);
+  await fs.writeFile(path.join(results, "orphan.tmp"), "{}");
+  await fs.utimes(path.join(results, "orphan.tmp"), old, old);
+  await fs.writeFile(path.join(results, "fresh.json"), JSON.stringify({ id: "fresh" }));
+
+  const cleaned = await client.cleanStaleCommands();
+  assert.equal(cleaned, 2);
+  assert.deepEqual((await fs.readdir(results)).sort(), ["fresh.json"]);
+});

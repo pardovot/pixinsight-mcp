@@ -389,8 +389,23 @@ function findViewById(viewId) {
 // Command Router
 // ============================================================================
 
+// Commands older than this are refused. Rationale: the MCP client abandons a
+// command after its timeout (default 5 min); anything older is a leftover from
+// a dead session, and executing it minutes/days later (e.g. a queued save or
+// close firing on watcher start) would be a surprising side effect. Matches the
+// client-side cleanStaleCommands threshold.
+var STALE_COMMAND_MS = 10 * 60 * 1000;
+
 function dispatchCommand(command) {
    var tool = command.tool;
+
+   if (command.timestamp) {
+      var age = Date.now() - Date.parse(command.timestamp);
+      if (isFinite(age) && age > STALE_COMMAND_MS)
+         throw new Error("Stale command refused (queued " + Math.round(age / 60000) +
+                         " min ago, limit " + (STALE_COMMAND_MS / 60000) + ") — " +
+                         "its client is gone; re-issue the command if still wanted.");
+   }
 
    // Internal commands
    if (tool === "list_open_images") return handleListOpenImages(command);
@@ -398,6 +413,8 @@ function dispatchCommand(command) {
    if (tool === "save_image") return handleSaveImage(command);
    if (tool === "close_image") return handleCloseImage(command);
    if (tool === "get_image_statistics") return handleGetImageStatistics(command);
+)MCPJS"
+R"MCPJS(
 
    // Processing commands
    if (tool === "run_pixelmath") return handleRunPixelMath(command);
@@ -413,8 +430,6 @@ function dispatchCommand(command) {
    if (tool === "snapshot") return handleSnapshot(command);
    if (tool === "restore") return handleRestore(command);
 
-)MCPJS"
-R"MCPJS(
    // Script execution
    if (tool === "run_script") return handleRunScript(command);
 

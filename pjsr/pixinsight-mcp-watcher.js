@@ -32,7 +32,12 @@ var BRIDGE_DIR = File.homeDirectory + "/.pixinsight-mcp/bridge";
 var COMMANDS_DIR = BRIDGE_DIR + "/commands";
 var RESULTS_DIR = BRIDGE_DIR + "/results";
 var LOGS_DIR = BRIDGE_DIR + "/logs";
-var POLL_INTERVAL_MS = 1000;
+// Effective idle poll cadence: the main loop sleeps 25 x 20 ms between
+// directory checks (see runWatcher). This constant is informational (banner).
+var POLL_INTERVAL_MS = 500;
+// Version of this standalone JS watcher (dev fallback channel). The native
+// module has its own version in module/src/Version.h; the MCP server reports
+// package.json's. They ship independently and are versioned independently.
 var WATCHER_VERSION = "0.1.0";
 
 // ============================================================================
@@ -450,8 +455,23 @@ function findViewById(viewId) {
 // Command Router
 // ============================================================================
 
+// Commands older than this are refused. Rationale: the MCP client abandons a
+// command after its timeout (default 5 min); anything older is a leftover from
+// a dead session, and executing it minutes/days later (e.g. a queued save or
+// close firing on watcher start) would be a surprising side effect. Matches the
+// client-side cleanStaleCommands threshold.
+var STALE_COMMAND_MS = 10 * 60 * 1000;
+
 function dispatchCommand(command) {
    var tool = command.tool;
+
+   if (command.timestamp) {
+      var age = Date.now() - Date.parse(command.timestamp);
+      if (isFinite(age) && age > STALE_COMMAND_MS)
+         throw new Error("Stale command refused (queued " + Math.round(age / 60000) +
+                         " min ago, limit " + (STALE_COMMAND_MS / 60000) + ") — " +
+                         "its client is gone; re-issue the command if still wanted.");
+   }
 
    // Internal commands
    if (tool === "list_open_images") return handleListOpenImages(command);
@@ -553,7 +573,10 @@ function processNextCommand() {
       console.criticalln("[MCP Watcher] Failed to write result: " + e.message);
    }
 
-   // Delete command file
+   // Delete command file. Note the crash window: the command was already
+   // executed, so a crash between execution and this delete means the command
+   // re-runs on restart (non-idempotent processes apply twice). Accepted —
+   // deleting first would instead lose commands on a crash mid-execution.
    deleteFile(filePath);
 
    return true;

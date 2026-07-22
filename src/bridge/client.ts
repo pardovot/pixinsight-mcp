@@ -169,9 +169,9 @@ export class BridgeClient {
   }
 
   async cleanStaleCommands(): Promise<number> {
+    let cleaned = 0;
     try {
       const files = await readdir(this.commandsDir);
-      let cleaned = 0;
       for (const file of files) {
         const filePath = join(this.commandsDir, file);
         if (file.endsWith(".json")) {
@@ -201,10 +201,28 @@ export class BridgeClient {
           } catch {}
         }
       }
-      return cleaned;
     } catch {
-      return 0;
+      // commandsDir unreadable — still try the results side below.
     }
+    // Results side: a result written after its client timed out (or died) has
+    // no reader and would otherwise accumulate forever. Same 10-minute
+    // threshold, by mtime — result files carry the watcher's timestamp, but
+    // mtime works for .tmp orphans too and one rule covers both.
+    try {
+      const files = await readdir(this.resultsDir);
+      for (const file of files) {
+        if (!file.endsWith(".json") && !file.endsWith(".tmp")) continue;
+        const filePath = join(this.resultsDir, file);
+        try {
+          const { mtimeMs } = await stat(filePath);
+          if (Date.now() - mtimeMs > 600_000) {
+            await unlink(filePath);
+            cleaned++;
+          }
+        } catch {}
+      }
+    } catch {}
+    return cleaned;
   }
 
   getConfig(): BridgeConfig {

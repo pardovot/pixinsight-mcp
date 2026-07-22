@@ -76,10 +76,23 @@ int BridgePoller::ProcessPending( int maxPerTick )
          try
          {
             HandleCommandFile( name );
+            m_failCounts.erase( name );
          }
          catch ( ... )
          {
-            // Never let one bad command break the tick.
+            // Never let one bad command break the tick. But don't retry it
+            // forever either: a file that keeps failing before its delete (e.g.
+            // unreadable) would otherwise be re-attempted every tick for the
+            // life of the session. Give it a few tries, then drop it.
+            if ( ++m_failCounts[name] >= 3 )
+            {
+               try
+               {
+                  File::Remove( m_commandsDir + '/' + name );
+               }
+               catch ( ... ) {}
+               m_failCounts.erase( name );
+            }
          }
          ++processed;
          ++m_totalProcessed;
@@ -154,8 +167,18 @@ void BridgePoller::HandleCommandFile( const String& fileName )
    catch ( ... )
    {
       // Only reached on a parse-level failure; the wrapper catches JS runtime
-      // errors internally and returns an error result.
-      resultJson = "{\"status\":\"error\",\"message\":\"module EvaluateScript failed\"}";
+      // errors internally and returns an error result. Must conform to the
+      // BridgeResult error shape (id + error.message) — the MCP client's tools
+      // read result.error.message unconditionally on status "error".
+      String id = File::ExtractName( fileName ); // "<id>.json" -> "<id>"
+      resultJson = "{\"id\":\"" + id + "\","
+                   "\"timestamp\":\"\","
+                   "\"status\":\"error\","
+                   "\"process\":\"__module__\","
+                   "\"duration_ms\":0,"
+                   "\"error\":{\"message\":\"module EvaluateScript failed "
+                   "(script-level failure; the command may not have run)\","
+                   "\"type\":\"EvaluateScriptError\"}}";
    }
 
    // Fallback ONLY if the JS wrapper failed to write the result itself (e.g. a

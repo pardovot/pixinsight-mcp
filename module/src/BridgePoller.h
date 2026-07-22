@@ -14,6 +14,8 @@
 
 #include <pcl/String.h>
 
+#include <map>
+
 namespace pcl
 {
 
@@ -44,6 +46,9 @@ private:
    // Re-entrancy guard: true while a command is executing. A long process pumps
    // the event loop, which can re-fire the poll timer; nested ticks must no-op.
    bool      m_busy = false;
+   // Consecutive failures per command file; a file failing repeatedly is
+   // deleted instead of being retried every tick forever.
+   std::map<String, int> m_failCounts;
 
    // Execute one command file (by name, e.g. "<id>.json") and write its result.
    void HandleCommandFile( const String& fileName );
