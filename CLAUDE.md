@@ -65,12 +65,12 @@ Never run a process blind:
 ## Upstream lineage
 
 Forked from [aescaffre/pixinsight-mcp](https://github.com/aescaffre/pixinsight-mcp). Upstream's
-Node "giga-run" pipeline (`agents/llm/`, `scripts/run-pipeline.mjs`, `editor/`) and its sample
+Node "giga-run" pipeline (`agents/`, `scripts/run-pipeline.mjs`, `editor/`) and its sample
 configs **have been removed** from this fork — they were never executed here and documented a
-different product. Recover from git history if ever needed.
+different product. (`agents/ops/` lingered as a measurement/quality-gate harvest target, then was
+removed 2026-07-22 — M2 measurement tools get built fresh.) Recover from git history if ever needed.
 
 **Kept from upstream:** the file-bridge contract, the PJSR handler bodies the V8 watcher descends
-from, the MCP server skeleton in `src/`, and `agents/ops/` — retained deliberately as a *harvest
-target*: battle-tested measurement and quality-gate code to wrap as MCP tools for M2/M4.
+from, and the MCP server skeleton in `src/`.
 
 Credits: **Alain Escaffre** (original author), **Andre Couto** (V8 port). MIT.

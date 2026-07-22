@@ -112,8 +112,7 @@ The methodology is baked into the tool descriptions and
 | Image management | `list_open_images`, `open_image`, `save_image`, `close_image`, **`get_image_statistics`** |
 | Session / history | `get_history`, `undo`, `redo`, `snapshot`, `restore` |
 
-Authoritative definitions live in `src/tools/*.ts`. (`docs/mcp-tools.md` is upstream's
-aspirational catalog and is marked stale.)
+Authoritative definitions live in `src/tools/*.ts`.
 
 ---
 
@@ -290,7 +289,6 @@ pi-repo/              signed PixInsight update repository
 docs/
   workflows/          per-category processing playbooks (the knowledge layer)
   PROCESSING_GUIDE.md measure → configure → verify methodology
-  mcp-tools.md        tool reference
   bridge-protocol.md  bridge wire format
 scripts/
   ping-watcher.mjs    bridge round-trip test
@@ -300,10 +298,6 @@ scripts/
 > **Handler logic lives in `pjsr/pixinsight-mcp-watcher.js` only.** `module/src/BridgeHandlersJS.h`
 > is generated from it by `gen-handlers.mjs`, which `build.mjs` runs automatically. Never edit the
 > generated header by hand.
-
-`agents/`, `editor/`, and most of `scripts/` are **upstream's Node pipeline, which this fork does
-not execute**. They are retained pending a harvest of `agents/ops/` (battle-tested measurement and
-quality-gate code) and will otherwise be removed.
 
 ---
 
@@ -324,9 +318,6 @@ outcome, the agent selects and configures the processes itself.
 > and calibrate the color wrongly. Corroborate with channel statistics, the user's equipment
 > profile, or an explicit prompt. Treat headers as a hint, never as truth.
 
-`docs/roadmap.md` is **upstream's** pre-implementation plan and is stale — its Phase 5 prescribes
-the per-process tools this fork abandoned.
-
 ---
 
 ## Relationship to upstream
@@ -339,13 +330,10 @@ from a watcher descended from upstream's), and the MCP server skeleton.
 the Windows platform layer, and npm packaging.
 
 **Removed from this fork:** upstream's `giga-run.mjs` agentic pipeline, `scripts/run-pipeline.mjs`,
-the config editor, and the sample target configs. They described a different product — a Node
-pipeline driving PixInsight via a blocking script — and were never executed here. Git history
-retains them.
-
-**Kept from upstream:** `agents/ops/`, deliberately — battle-tested measurement and quality-gate
-code (star quality, ringing, burn scanning, gradient residual) to be wrapped as MCP tools for the
-measurement and verification milestones.
+the config editor, the sample target configs, and `agents/` (its measurement/quality-gate code was
+kept for a while as a harvest target, then removed 2026-07-22 — the M2 measurement tools will be
+built fresh). They described a different product — a Node pipeline driving PixInsight via a
+blocking script — and were never executed here. Git history retains them.
 
 ---
 
