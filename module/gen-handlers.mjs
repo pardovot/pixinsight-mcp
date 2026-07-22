@@ -21,7 +21,7 @@ const CHUNK_LINES = 80;
 const source = path.join(repoRoot, "pjsr", "pixinsight-mcp-watcher.js");
 const output = path.join(moduleDir, "src", "BridgeHandlersJS.h");
 
-export function generate() {
+export function generate(outputPath = output) {
   const lines = fs.readFileSync(source, "utf8").split(/\r?\n/);
 
   const start = lines.findIndex((l) => l.includes(BEGIN));
@@ -56,8 +56,8 @@ export function generate() {
   // Trailing newline, LF line endings — matches the previous shell version and
   // keeps the file stable across platforms.
   const text = out.join("\n") + "\n";
-  fs.writeFileSync(output, text, "utf8");
-  return { output, lines: out.length };
+  fs.writeFileSync(outputPath, text, "utf8");
+  return { output: outputPath, lines: out.length };
 }
 
 if (process.argv[1] && process.argv[1].endsWith("gen-handlers.mjs")) {

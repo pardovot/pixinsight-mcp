@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      # Stale-handler guard (PLAN.md decision 7): the checked-in generated
+      # header must match the watcher JS. Linux only — the generator emits LF
+      # and Windows runners' autocrlf would make the diff flaky.
+      - name: Stale-handler guard
+        if: runner.os == 'Linux'
+        run: |
+          node module/gen-handlers.mjs
+          git diff --exit-code module/src/BridgeHandlersJS.h
