@@ -78,7 +78,7 @@ A shared filesystem directory (e.g., `~/.pixinsight-mcp/bridge/`) with this stru
 
 6. Claude executes the recipe step-by-step:
    For each step:
-     a. Claude calls the appropriate MCP tool (remove_gradient, color_calibrate, etc.)
+     a. Claude calls the appropriate MCP tool (run_process, run_pixelmath, etc.)
      b. MCP server writes command JSON to bridge/commands/
      c. PJSR watcher picks up command, executes in PixInsight
      d. Watcher writes result to bridge/results/
@@ -90,7 +90,7 @@ A shared filesystem directory (e.g., `~/.pixinsight-mcp/bridge/`) with this stru
 
 ```
 1. User asks Claude: "Remove gradients from the luminance master"
-2. Claude calls MCP tool: remove_gradient({ viewId: "L_master", polyDegree: 4 })
+2. Claude calls MCP tool: run_process({ processId: "AutomaticBackgroundExtractor", viewId: "L_master", settings: {...} })
 3. MCP Server:
    a. Generates a unique command ID (UUID)
    b. Writes command JSON to bridge/commands/{id}.json
