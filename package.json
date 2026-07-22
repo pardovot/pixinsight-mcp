@@ -21,6 +21,7 @@
   "homepage": "https://github.com/aescaffre/pixinsight-mcp",
   "scripts": {
     "build": "tsc",
+    "test": "tsc && node --test",
     "dev": "tsc --watch",
     "start": "node build/index.js",
     "watch": "node start-watcher-instance.mjs",
