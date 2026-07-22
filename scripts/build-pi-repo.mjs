@@ -1,18 +1,30 @@
-// Builds the PixInsight update package zip and syncs the updates.xri sha1.
-// Bundles the watcher .js and, if present, its .xsgn signature — both under
-// src/scripts/PixInsightMCP/ (paths extract relative to the PixInsight install).
+// Builds the PixInsight update-repository packages for the native MCP Watcher
+// MODULE and generates pi-repo/updates.xri.
 //
-// Cross-platform replacement for the former build-pi-repo.ps1. Pure Node: the
-// zip is written directly (local headers + central directory + EOCD, raw
-// deflate via node:zlib) — no dependencies.
+// The repo channel ships the compiled non-blocking module (MCPWatcher-pxm.*),
+// NOT the old blocking JS watcher — so users install/update it straight from
+// PixInsight's Resources > Updates. Format per the PixInsight Repository
+// Reference (type="module"; the archive's internal directory layout is the
+// install path relative to the PixInsight root):
+//   Windows / Linux / FreeBSD :  bin/MCPWatcher-pxm.{dll,so}   (+ .xsgn)
+//   macOS                      :  MacOS/MCPWatcher-pxm.dylib    (+ .xsgn)
 //
-// Reproducible: fixed entry order and a fixed timestamp, so identical inputs
-// produce a byte-identical zip (stable sha1) on the same Node/zlib version.
+// Cross-platform + pure Node (zip written directly via node:zlib; no deps).
+// Reproducible: fixed zip entry order + timestamps, so identical module
+// binaries produce a byte-identical package (stable sha1).
+//
+// Packages WHAT EXISTS: it probes module/build/ for each platform's binary and
+// emits a <platform>/<package> only for those present (+ a signed .xsgn). On a
+// given machine you build+sign one platform; collect the others' builds into
+// module/build/ (or run this on each) to publish all three.
 //
 // Usage:  node scripts/build-pi-repo.mjs   (npm run repo:build)
 //
-// NOTE: updates.xri is code-signed. After this script changes its sha1, you
-// MUST re-sign it:  node module/sign.mjs pi-repo/updates.xri
+// ⚠ SIGNING (do LAST, once everything is clean): the module .xsgn must already
+// exist (module:sign), and updates.xri itself must be signed AFTER this runs:
+//   node module/sign.mjs pi-repo/updates.xri
+// Our signing identity is LOCAL (not a Certified PixInsight Developer), so the
+// repo validates only on machines where this PixInsight license is activated.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -21,16 +33,28 @@ import { deflateRawSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const srcJs = path.join(repo, "pjsr", "pixinsight-mcp-watcher.js");
-const srcSgn = path.join(repo, "pjsr", "pixinsight-mcp-watcher.xsgn"); // optional
-const zipPath = path.join(repo, "pi-repo", "pixinsight-mcp-watcher.zip");
-const xriPath = path.join(repo, "pi-repo", "updates.xri");
-const base = "src/scripts/PixInsightMCP/";
+const buildDir = path.join(repo, "module", "build");
+const piRepoDir = path.join(repo, "pi-repo");
+const xriPath = path.join(piRepoDir, "updates.xri");
+const versionHeader = path.join(repo, "module", "src", "Version.h");
 
-// Fixed timestamp (2026-01-01 00:00:00 UTC) in MS-DOS format, same as the .ps1
-// used. Without this, every build stamps the current time → new sha1 each run.
-const DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1; // yyyy-mm-dd
-const DOS_TIME = 0; // 00:00:00
+const MODULE_BASE = "MCPWatcher-pxm"; // module Id + "-pxm" (see module/config.mjs)
+
+// os/arch values and install directory per the PixInsight Repository Reference.
+// arch "x64" == "x86_64". macOS binaries live in MacOS/, not bin/.
+const PLATFORMS = [
+  { os: "windows", arch: "x64", ext: ".dll", dir: "bin" },
+  { os: "linux", arch: "x64", ext: ".so", dir: "bin" },
+  { os: "macosx", arch: "x64", ext: ".dylib", dir: "MacOS" },
+];
+const PI_VERSION_RANGE = "1.9.4:1.9.99";
+
+// ---------------------------------------------------------------------------
+// Reproducible zip writer (raw deflate; fixed DOS timestamp so the sha1 depends
+// only on the entry names + contents).
+// ---------------------------------------------------------------------------
+const DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1; // 2026-01-01
+const DOS_TIME = 0;
 
 const CRC_TABLE = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
@@ -44,44 +68,41 @@ function crc32(buf) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-/** Zip writer: fixed order, deflate, no extra fields — deterministic output. */
 function buildZip(entries) {
   const chunks = [];
   const central = [];
   let offset = 0;
-
   for (const { name, data } of entries) {
     const nameBuf = Buffer.from(name, "ascii");
     const crc = crc32(data);
     const compressed = deflateRawSync(data, { level: 9 });
 
     const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0); // local file header signature
-    local.writeUInt16LE(20, 4); // version needed
-    local.writeUInt16LE(0, 6); // flags
-    local.writeUInt16LE(8, 8); // method: deflate
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(8, 8);
     local.writeUInt16LE(DOS_TIME, 10);
     local.writeUInt16LE(DOS_DATE, 12);
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(compressed.length, 18);
     local.writeUInt32LE(data.length, 22);
     local.writeUInt16LE(nameBuf.length, 26);
-    local.writeUInt16LE(0, 28); // extra length
+    local.writeUInt16LE(0, 28);
 
     const cen = Buffer.alloc(46);
-    cen.writeUInt32LE(0x02014b50, 0); // central directory signature
-    cen.writeUInt16LE(20, 4); // version made by
-    cen.writeUInt16LE(20, 6); // version needed
-    cen.writeUInt16LE(0, 8); // flags
-    cen.writeUInt16LE(8, 10); // method
+    cen.writeUInt32LE(0x02014b50, 0);
+    cen.writeUInt16LE(20, 4);
+    cen.writeUInt16LE(20, 6);
+    cen.writeUInt16LE(0, 8);
+    cen.writeUInt16LE(8, 10);
     cen.writeUInt16LE(DOS_TIME, 12);
     cen.writeUInt16LE(DOS_DATE, 14);
     cen.writeUInt32LE(crc, 16);
     cen.writeUInt32LE(compressed.length, 20);
     cen.writeUInt32LE(data.length, 24);
     cen.writeUInt16LE(nameBuf.length, 28);
-    // extra/comment/disk/attrs all zero (offsets 30-37)
-    cen.writeUInt32LE(offset, 42); // local header offset
+    cen.writeUInt32LE(offset, 42);
     central.push(Buffer.concat([cen, nameBuf]));
 
     chunks.push(local, nameBuf, compressed);
@@ -90,34 +111,109 @@ function buildZip(entries) {
 
   const centralBuf = Buffer.concat(central);
   const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(0x06054b50, 0); // EOCD signature
-  eocd.writeUInt16LE(entries.length, 8); // entries on this disk
-  eocd.writeUInt16LE(entries.length, 10); // total entries
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
   eocd.writeUInt32LE(centralBuf.length, 12);
-  eocd.writeUInt32LE(offset, 16); // central directory offset
+  eocd.writeUInt32LE(offset, 16);
   return Buffer.concat([...chunks, centralBuf, eocd]);
 }
 
-const entries = [{ name: base + "pixinsight-mcp-watcher.js", data: fs.readFileSync(srcJs) }];
-console.log(`  + ${entries[0].name}`);
-if (fs.existsSync(srcSgn)) {
-  entries.push({ name: base + "pixinsight-mcp-watcher.xsgn", data: fs.readFileSync(srcSgn) });
-  console.log(`  + ${entries[1].name}`);
-  console.log("signature: INCLUDED");
-} else {
-  console.log("signature: none (unsigned package)");
+// ---------------------------------------------------------------------------
+function readVersion() {
+  const src = fs.readFileSync(versionHeader, "utf8");
+  const m = src.match(/MCPWATCHER_VERSION_STR\s+"([^"]+)"/);
+  return m ? m[1] : "0.0.0";
+}
+function fmtDate(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 }
 
-const zip = buildZip(entries);
-fs.writeFileSync(zipPath, zip);
+// Build one package per platform whose signed binary is present in module/build/.
+const version = readVersion();
+const built = [];
+let newestMtime = 0;
 
-const sha1 = createHash("sha1").update(zip).digest("hex");
-console.log(`sha1: ${sha1}`);
+for (const plat of PLATFORMS) {
+  const binPath = path.join(buildDir, MODULE_BASE + plat.ext);
+  const sgnPath = path.join(buildDir, MODULE_BASE + ".xsgn");
+  if (!fs.existsSync(binPath)) {
+    console.log(`  - ${plat.os}: no ${MODULE_BASE}${plat.ext} in module/build/ — skipped`);
+    continue;
+  }
+  if (!fs.existsSync(sgnPath)) {
+    console.log(`  ! ${plat.os}: ${MODULE_BASE}${plat.ext} present but UNSIGNED (no .xsgn) — skipped (run module:sign)`);
+    continue;
+  }
+  const entries = [
+    { name: `${plat.dir}/${MODULE_BASE}${plat.ext}`, data: fs.readFileSync(binPath) },
+    { name: `${plat.dir}/${MODULE_BASE}.xsgn`, data: fs.readFileSync(sgnPath) },
+  ];
+  const zip = buildZip(entries);
+  const fileName = `mcpwatcher-module-${plat.os}.zip`;
+  fs.writeFileSync(path.join(piRepoDir, fileName), zip);
+  const sha1 = createHash("sha1").update(zip).digest("hex");
+  newestMtime = Math.max(newestMtime, fs.statSync(binPath).mtimeMs);
+  built.push({ plat, fileName, sha1 });
+  console.log(`  + ${plat.os}/${plat.arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext} + .xsgn)  sha1=${sha1}`);
+}
 
-// Patch the sha1 attribute in updates.xri. Keep it ASCII-only, UTF-8 no BOM —
-// the file gets code-signed, so re-encoding it would invalidate the signature.
-const content = fs.readFileSync(xriPath, "utf8");
-const patched = content.replace(/sha1="[0-9a-f]{40}"/, `sha1="${sha1}"`);
-fs.writeFileSync(xriPath, patched, "utf8");
-console.log(`updated ${xriPath}`);
-console.log("REMINDER: updates.xri must be re-signed: node module/sign.mjs pi-repo/updates.xri");
+if (built.length === 0) {
+  console.error("\n[ERROR] No signed module binary found in module/build/.");
+  console.error("        Run: npm run module:build && npm run module:sign, then retry.");
+  process.exit(1);
+}
+
+// Remove the retired JS-watcher package if it is still lying around.
+const oldZip = path.join(piRepoDir, "pixinsight-mcp-watcher.zip");
+if (fs.existsSync(oldZip)) {
+  fs.rmSync(oldZip);
+  console.log("  - removed stale pixinsight-mcp-watcher.zip (JS-watcher package retired)");
+}
+
+// ---------------------------------------------------------------------------
+// Generate updates.xri (unsigned — sign.mjs appends the <Signature> block).
+// <metadata> is declared once and referenced by every platform's <package>.
+// ---------------------------------------------------------------------------
+const releaseDate = fmtDate(new Date(newestMtime));
+const metaId = `${releaseDate}-mcpwatcher-module`;
+
+const platformBlocks = built
+  .map(
+    ({ plat, fileName, sha1 }) =>
+      `   <platform os="${plat.os}" arch="${plat.arch}" version="${PI_VERSION_RANGE}">\n` +
+      `      <package fileName="${fileName}" sha1="${sha1}" type="module" metadata="${metaId}"/>\n` +
+      `   </platform>`,
+  )
+  .join("\n");
+
+const xri =
+  `<?xml version="1.0" encoding="UTF-8"?>\n` +
+  `<xri version="1.0">\n` +
+  `   <description>\n` +
+  `      <p>\n` +
+  `         PixInsight MCP Watcher - installs the non-blocking native module\n` +
+  `         (MCPWatcher-pxm) that lets AI assistants drive PixInsight via the\n` +
+  `         @pardovot/pixinsight-mcp MCP server. https://github.com/pardovot/pixinsight-mcp\n` +
+  `      </p>\n` +
+  `   </description>\n` +
+  `   <metadata id="${metaId}" releaseDate="${releaseDate}">\n` +
+  `      <title>\n` +
+  `         PixInsight MCP Watcher Module ${version}\n` +
+  `      </title>\n` +
+  `      <description>\n` +
+  `         <p>\n` +
+  `            Non-blocking bridge module: a pcl::Timer on PixInsight's event loop\n` +
+  `            polls ~/.pixinsight-mcp/bridge for commands from the MCP server and\n` +
+  `            runs them while PixInsight stays fully interactive. Open it under\n` +
+  `            Process &gt; Utilities &gt; MCP Watcher.\n` +
+  `         </p>\n` +
+  `      </description>\n` +
+  `   </metadata>\n` +
+  platformBlocks +
+  `\n</xri>\n`;
+
+fs.writeFileSync(xriPath, xri, "utf8");
+console.log(`\nwrote ${xriPath}  (version ${version}, releaseDate ${releaseDate}, ${built.length} platform(s))`);
+console.log("REMINDER: sign updates.xri before publishing:  node module/sign.mjs pi-repo/updates.xri");

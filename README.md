@@ -64,9 +64,10 @@ user-private; do not point it at a shared or synced location.
 ### Three delivery channels
 
 1. **MCP server** (npm) — `@pardovot/pixinsight-mcp`
-2. **Signed PixInsight update repo** (`pi-repo/`) — **legacy, script-only**: ships the blocking
-   JS watcher, not the native module; superseded by building the module (channel 3). Kept until
-   CPD registration enables real distribution
+2. **Signed PixInsight update repo** (`pi-repo/`) — ships the **native module** (`type="module"`,
+   installed into `bin/`) via PixInsight's own updates mechanism, so no source build is needed.
+   Local-identity-signed, so it validates only on machines where this PixInsight license is
+   activated until CPD registration enables public distribution
 3. **Native C++ module** (`module/`) — **the runtime**
 
 ---
@@ -160,8 +161,8 @@ claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp
 ### 2. Install the PixInsight-side watcher
 
 **Signed update repository.** In PixInsight: `Resources > Updates > Manage Repositories`, add the
-repository URL, then `Resources > Updates > Check for Updates` — PixInsight installs and registers
-the watcher automatically.
+repository URL, then `Resources > Updates > Check for Updates` — PixInsight installs the native
+module into `bin/` and auto-loads it (no source build, no compiler).
 
 > ⚠️ Not usable by others yet: the repository in `pi-repo/` is **not published at a public URL**,
 > and it is signed with a **local** identity rather than a Certified PixInsight Developer one, so
