@@ -25,7 +25,7 @@ Default installation paths:
 
 ```bash
 # Clone
-git clone https://github.com/aescaffre/pixinsight-mcp.git
+git clone https://github.com/pardovot/pixinsight-mcp.git
 cd pixinsight-mcp
 
 # Install dependencies (once package.json exists)
@@ -58,15 +58,23 @@ mkdir -p ~/.pixinsight-mcp/bridge/{commands,results,logs}
 /opt/PixInsight/bin/PixInsight -n=1 --automation-mode
 ```
 
-## Loading the Watcher Script
+## Running the Watcher
+
+**Primary — the native module (non-blocking).** Build, sign and install it
+(`npm run module:build` → `module:sign` → `module:install`; see the README quick start), then in
+PixInsight open `Process > Utilities > MCP Watcher`. It opens already running (auto-start) and
+leaves the app fully interactive while it polls the bridge on PixInsight's own event loop.
+
+**Fallback — the JS watcher script (dev-only; freezes PixInsight while it runs).** Useful for a
+quick handler-logic change without rebuilding the module, but it blocks the UI the whole time:
 
 1. Open PixInsight
 2. Open the Script Editor (Script > Script Editor)
 3. Open `pjsr/pixinsight-mcp-watcher.js` from this repo
 4. Click **Run** (F9)
-5. The watcher will start polling for commands in the Process Console
+5. The watcher polls for commands in the Process Console
 
-Alternatively, auto-load on startup:
+Or auto-load the script on startup:
 
 ```powershell
 # Windows
@@ -79,10 +87,6 @@ Alternatively, auto-load on startup:
 <PixInsight> -n --automation-mode \
   -r="<repo>/pjsr/pixinsight-mcp-watcher.js"
 ```
-
-> With the native module installed (see `module/`), the watcher **script is not needed** —
-> the module polls the bridge on PixInsight's own event loop and leaves the app interactive.
-> The script is an emergency fallback only, and it freezes PixInsight while it runs.
 
 ## Configuring Claude Desktop
 
@@ -133,23 +137,12 @@ sleep 1
 cat ~/.pixinsight-mcp/bridge/results/test-001.json
 ```
 
-## Project Structure (Planned)
+## Project Structure
 
-```
-pixinsight-mcp/
-  docs/                    # Knowledge base (you are here)
-  src/
-    index.ts               # MCP server entry point
-    tools/                 # Tool implementations
-    bridge/                # File bridge client (write commands, read results)
-    types.ts               # Shared type definitions
-  pjsr/
-    pixinsight-mcp-watcher.js   # PJSR watcher script for PixInsight
-    lib/                        # PJSR helper modules
-  build/                   # Compiled output
-  package.json
-  tsconfig.json
-```
+See the repository-layout block in the README for the authoritative tree. In brief: `src/` (MCP
+server, TypeScript → `build/`), `module/` (native C++ module — the runtime), `pjsr/` (the watcher
+JS that the module's handlers are generated from), `docs/` (this knowledge base + `workflows/`
+playbooks), `pi-repo/` (the update-repo channel), `scripts/`, `test/`.
 
 ## Troubleshooting
 
