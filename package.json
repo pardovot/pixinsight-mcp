@@ -12,7 +12,11 @@
     "README.md",
     "LICENSE"
   ],
-  "author": "Alain Escaffre (original); packaged by pardovot",
+  "author": "pardovot",
+  "contributors": [
+    "Alain Escaffre (originator of the project this one grew from)",
+    "Andre Couto (V8 runtime port of the watcher)"
+  ],
   "homepage": "https://github.com/pardovot/pixinsight-mcp",
   "repository": {
     "type": "git",

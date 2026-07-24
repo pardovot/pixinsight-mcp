@@ -5,13 +5,12 @@ An **MCP server** that lets an AI assistant (Claude Code, Claude Desktop) operat
 and inspect the result, while **PixInsight stays fully interactive** so you can watch and
 review the work live.
 
-This is a fork of [aescaffre/pixinsight-mcp](https://github.com/aescaffre/pixinsight-mcp) that
-diverged substantially: it adds a **native PixInsight module**, a **generic process runner**
-instead of per-process tools, and a **research-backed workflow knowledge base**.
-See [Relationship to upstream](#relationship-to-upstream).
+Three parts make that work: a **native PixInsight module** that polls without blocking the UI, a
+**generic process runner** instead of a tool per process, and a **research-backed workflow
+knowledge base** the agent processes from.
 
-**Status:** working and used for real processing. The autonomous end-to-end flow is still
-being built, see [Roadmap](#roadmap).
+**Status:** working and used for real processing. The autonomous loop is running with
+human-in-the-loop review per batch - see [Autonomy](#autonomy) and [Roadmap](#roadmap).
 
 ---
 
@@ -63,19 +62,19 @@ user-private; do not point it at a shared or synced location.
 
 ### Three delivery channels
 
-1. **MCP server** (npm), `@pardovot/pixinsight-mcp`
-2. **Signed PixInsight update repo** (`pi-repo/`), ships the **native module** (`type="module"`,
+1. **MCP server** (npm) - `@pardovot/pixinsight-mcp`
+2. **PixInsight update repo** (`pi-repo/`) - ships the **native module** (`type="module"`,
    installed into `bin/`) via PixInsight's own updates mechanism, so no source build is needed.
-   Local-identity-signed, so it validates only on machines where this PixInsight license is
-   activated until CPD registration enables public distribution
-3. **Native C++ module** (`module/`), **the runtime**
+   Currently built **unsigned** pending Certified PixInsight Developer registration - see
+   [Update repository status](#update-repository-status)
+3. **Native C++ module** (`module/`) - **the runtime**
 
 ---
 
 ## The tool design: one generic runner, not per-process tools
 
 Every PixInsight process is `new X; set params; executeOn(view)`. So instead of a tool per
-process, this fork exposes:
+process, this project exposes:
 
 - **`run_process(processId, viewId?, settings?)`**, runs **any** process by class name
   (`BlurXTerminator`, `AutomaticBackgroundExtractor`, `PixelMath`, anything installed)
@@ -84,7 +83,7 @@ process, this fork exposes:
 - **`run_script(...)`**, raw PJSR escape hatch
 
 One generic pair covers every process with zero per-process maintenance. **Adding
-`run_bxt`-style tools is the anti-pattern this fork deliberately moved past.** The legacy
+`run_bxt`-style tools is the anti-pattern this project deliberately moved past.** The legacy
 per-process wrappers (`run_bxt`, `sharpen`, `stretch_image`, …) were removed 2026-07-22.
 
 ### Never run a process blind
@@ -105,13 +104,22 @@ The methodology is baked into the tool descriptions and
 
 ## Tools
 
-14 tools. The ones that matter are in bold.
+22 tools. The ones that matter are in bold.
 
 | Category | Tools |
 |---|---|
 | Generic execution | **`run_process`**, **`get_process_parameters`**, **`run_script`**, `run_pixelmath` |
 | Image management | `list_open_images`, `open_image`, `save_image`, `close_image`, **`get_image_statistics`** |
-| Session / history | `get_history`, `undo`, `redo`, `snapshot`, `restore` |
+| Measurement | **`get_noise`**, **`get_background_gradient`**, `get_background_neutrality`, **`get_star_metrics`** |
+| Rendering | **`render_view`**, **`render_critic_pack`** |
+| Session / history | `get_history`, `get_full_history`, `undo`, `redo`, `snapshot`, `restore` |
+| Export | `export_container` |
+
+Measurement tools exist so settings are **derived from this image** rather than copied. Two
+non-obvious ones: `get_noise` returns an **MRS** estimate - never judge denoising by `stdDev`,
+which is signal-dominated on astro frames and produces false alarms; and
+`get_background_neutrality` needs `mode:'poststretch'` after stretching, because the ±8%
+sky-band metric lies once the transfer curve is applied.
 
 Authoritative definitions live in `src/tools/*.ts`.
 
@@ -134,6 +142,44 @@ Deliberate conventions encoded there:
 
 See [`docs/workflows/README.md`](docs/workflows/README.md) for the research method and
 verification status.
+
+---
+
+## Autonomy
+
+The knowledge base improves from its own runs, with the human reviewing **per batch** instead of
+per image. The loop:
+
+```
+  process-master  ──▶  render_critic_pack + measurement tools
+        │                        │
+        │                        ▼
+        │                 image-critic  ── judged against docs/CRITIC_RUBRIC.md
+        │                        │          BLIND to the transcript, parameters, provenance
+        │                        ▼
+        └──────────────  process-retro  ── types findings, applies safe fixes, queues research
+                                 │
+                                 ▼
+                             kb-gate  ── replays the reference target, re-measures every
+                                         checkpoint, A/B critic vs. the stored baseline
+                                 │
+                       PASS ─────┴───── FAIL → escalate to human
+```
+
+Two invariants hold this together, and both exist to prevent reward hacking:
+
+- **The critic is blind.** It sees only the rendered pack and the rubric - never how the image was
+  made. A critic that knows the parameters grades the reasoning, not the picture.
+- **`docs/CRITIC_RUBRIC.md` is human-owned.** It *is* the objective function. The loop may propose
+  rubric edits as queued findings; it may never apply them. Letting a system edit its own judge is
+  exactly the failure this rule prevents.
+
+`kb-gate` PASS is required before any knowledge-base edit auto-commits; FAIL always escalates.
+The human still does a sampled eyeball audit of roughly 1 run in 10 - that sampling is the drift
+detector, so it is not skipped because recent runs looked fine.
+
+Full protocol, including what stays human and when to re-baseline:
+[`docs/AUTONOMY.md`](docs/AUTONOMY.md).
 
 ---
 
@@ -160,13 +206,13 @@ claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp
 
 ### 2. Install the PixInsight-side watcher
 
-**Signed update repository.** In PixInsight: `Resources > Updates > Manage Repositories`, add the
+**Update repository.** In PixInsight: `Resources > Updates > Manage Repositories`, add the
 repository URL, then `Resources > Updates > Check for Updates`, PixInsight installs the native
 module into `bin/` and auto-loads it (no source build, no compiler).
 
-> ⚠️ Not usable by others yet: the repository in `pi-repo/` is **not published at a public URL**,
-> and it is signed with a **local** identity rather than a Certified PixInsight Developer one, so
-> other machines would reject it. Build from source instead.
+> ⚠️ **Not usable by others yet** - the repository in `pi-repo/` is **not published at a public
+> URL**. Build from source instead. See [Update repository status](#update-repository-status) for
+> why it currently ships unsigned.
 
 **Build the native module from source** (needs a C++ toolchain: MSVC on Windows, g++/clang on macOS/Linux):
 
@@ -200,6 +246,24 @@ Ask Claude to work on an image. The intended interaction is **goal-driven, not s
 
 > "Open this master, clean the gradient, tighten the stars, reduce noise, check your work as
 > you go."
+
+---
+
+## Update repository status
+
+Distribution signing is **deliberately disabled** (2026-07-24). `npm run repo:build` emits an
+**unsigned** `updates.xri` and a binary-only zip with no `.xsgn`.
+
+The reason is counterintuitive enough to be worth stating: the only signing identity available
+here is a **local** one, and PixInsight **rejects** an untrusted-signed repository outright on
+another machine, whereas an **unsigned** one merely prompts for confirmation and then installs.
+So for distribution, no signature beats a local signature.
+
+> Do **not** run `node module/sign.mjs pi-repo/updates.xri` while this holds. Local module
+> signing and `npm run module:install` are unaffected and still use the signed module.
+
+`sign.mjs` and `npm run module:sign` are kept intact. Re-enable checklist once a Certified
+PixInsight Developer identity exists: [`docs/POST-CDP-SIGNING.md`](docs/POST-CDP-SIGNING.md).
 
 ---
 
@@ -274,8 +338,11 @@ breaks, and add CI for all three.
 
 ```
 src/                  MCP server (TypeScript → build/)
-  tools/              tool definitions: image-management, processing, research
+  tools/              tool definitions: processing, image-management, measurement,
+                      render, session, export
+  pjsr/               PJSR script bodies the measurement/render tools send over the bridge
   bridge/             file-bridge client
+test/                 node --test suites (bridge client, handler generation)
 module/               native PixInsight module, THE RUNTIME
   src/                C++ sources; BridgeHandlersJS.h is GENERATED
   config.mjs          resolved paths/toolchain per platform (run it to inspect)
@@ -286,14 +353,22 @@ module/               native PixInsight module, THE RUNTIME
   install.mjs         install module + .xsgn (admin/root)
 pjsr/
   pixinsight-mcp-watcher.js   JS watcher, SOURCE OF TRUTH for handler logic
-pi-repo/              signed PixInsight update repository
+pi-repo/              PixInsight update repository (currently unsigned - see above)
 docs/
   workflows/          per-category processing playbooks (the knowledge layer)
   PROCESSING_GUIDE.md measure → configure → verify methodology
+  AUTONOMY.md         the autonomy loop: what stays human, when to re-baseline
+  CRITIC_RUBRIC.md    the objective function - HUMAN-OWNED, loop may only propose
+  PROCESSING_JOURNAL.md  dated per-run findings, the source retro reads from
+  POST-CDP-SIGNING.md re-enable checklist for distribution signing
+  RELEASING.md        tag-driven module release
   bridge-protocol.md  bridge wire format
 scripts/
   ping-watcher.mjs    bridge round-trip test
-  build-pi-repo.mjs   rebuild the update repo zip (re-sign updates.xri after!)
+  build-pi-repo.mjs   rebuild the update repo zip (leave updates.xri unsigned)
+  gate-compare.mjs    kb-gate checkpoint comparison
+.claude/skills/       process-master, process-retro, image-critic, kb-gate
+.github/workflows/    ci, module-build, module-release
 ```
 
 > **Handler logic lives in `pjsr/pixinsight-mcp-watcher.js` only.** `module/src/BridgeHandlersJS.h`
@@ -307,11 +382,13 @@ scripts/
 The goal is **autonomous processing from a short, goal-driven prompt**, the user states an
 outcome, the agent selects and configures the processes itself.
 
-- **M1**, one full agent-driven run on a real master, documented warts and all *(next)*
-- **M2**, first-class measurement tools (FWHM/PSF, gradient residual, noise/SNR, star count, clipping)
-- **M3**, acquisition-category detection + executable per-category step lists
-- **M4**, enforced verification gates (no-op, clipping, star-count collapse) and checkpoints
-- **M5**, a `/process <master>` entry point
+- **M1** - one full agent-driven run on a real master, documented warts and all ✅ *done*
+- **M2** - first-class measurement tools (MRS noise, gradient residual, background neutrality,
+  star metrics) ✅ *done 2026-07-24*, plus `render_view` / `render_critic_pack`, the blind
+  `image-critic`, and the `kb-gate` replay regression - see [Autonomy](#autonomy)
+- **M3** - acquisition-category detection + executable per-category step lists *(next)*
+- **M4** - enforced verification gates (no-op, clipping, star-count collapse) and checkpoints
+- **M5** - a `/process <master>` entry point
 
 > ⚠️ **Category detection must not trust the FITS `FILTER` header.** Real case from our own test
 > data: a master labelled `FILTER-NoFilter` was actually shot through an Antlia ALP-T 5 nm duoband
@@ -321,35 +398,43 @@ outcome, the agent selects and configures the processes itself.
 
 ---
 
-## Relationship to upstream
+## Origins
 
-**Shared with upstream:** the file-bridge contract, the PJSR handler bodies (ours are generated
-from a watcher descended from upstream's), and the MCP server skeleton.
+This project began in 2026 as a fork of
+[aescaffre/pixinsight-mcp](https://github.com/aescaffre/pixinsight-mcp) and has since become an
+independent codebase. What carries forward from that work is the idea and its foundation: **the
+file-bridge contract**, the **PJSR handler bodies** (ours are generated from a watcher descended
+from the original), and the **MCP server skeleton**.
 
-**New in this fork:** the native module (upstream has none), the generic
-`run_process` / `get_process_parameters` design, `docs/workflows/`, the signed update repository,
-the Windows platform layer, and npm packaging.
+What replaced the rest: the native module (the original had none), the generic
+`run_process` / `get_process_parameters` design in place of per-process tools,
+`docs/workflows/`, the measurement and autonomy layer, the update repository, the Windows
+platform layer, and npm packaging.
 
-**Removed from this fork:** upstream's `giga-run.mjs` agentic pipeline, `scripts/run-pipeline.mjs`,
-the config editor, the sample target configs, and `agents/` (its measurement/quality-gate code was
-kept for a while as a harvest target, then removed 2026-07-22, the M2 measurement tools will be
-built fresh). They described a different product, a Node pipeline driving PixInsight via a
-blocking script, and were never executed here. Git history retains them.
+The original's `giga-run.mjs` pipeline, `scripts/run-pipeline.mjs`, config editor, sample target
+configs, and `agents/` are **not** part of this codebase. They described a different product - a
+Node pipeline driving PixInsight through a *blocking* script - which is the specific problem the
+native module exists to solve. Git history retains them.
 
 ---
 
 ## Credits
 
-- **Alain Escaffre** ([@aescaffre](https://github.com/aescaffre)), original author: the pipeline,
-  the agentic architecture, and the PJSR watcher this fork's handlers descend from. Developed as a
-  member of [**Astro ARO**](https://astrolentejo.fr), a remote observatory in the Alentejo Dark Sky
-  Reserve (Portugal), Bortle 2-3.
-- **Andre Couto** ([@4ndr3c0ut0](https://github.com/4ndr3c0ut0)), V8 runtime port of the watcher
-  for PixInsight 1.9.4+ "Lockhart" (upstream
-  [PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1)).
-- **pardovot**, native PixInsight module, generic process runner, workflow knowledge base,
-  Windows port, packaging.
+- **Alain Escaffre** ([@aescaffre](https://github.com/aescaffre)) - originator of the project this
+  one grew from: the file bridge, the agentic architecture, and the PJSR watcher whose handler
+  logic still runs here. Developed as a member of [**Astro ARO**](https://astrolentejo.fr), a
+  remote observatory in the Alentejo Dark Sky Reserve (Portugal), Bortle 2-3.
+- **Andre Couto** ([@4ndr3c0ut0](https://github.com/4ndr3c0ut0)) - V8 runtime port of the watcher
+  for PixInsight 1.9.4+ "Lockhart"
+  ([PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1) on the original repository).
+- **pardovot** - native PixInsight module, generic process runner, workflow knowledge base,
+  measurement and autonomy layer, Windows port, packaging.
+
+> Alain's and Andre's commits are preserved in this repository's history. GitHub does not link
+> Alain's to his profile because they were authored with a local hostname email address
+> (`@MacBook-Pro-de-Alain.local`) that maps to no account - the same is true in his own
+> repository. The omission is a GitHub matching artifact, not a statement about authorship.
 
 ## License
 
-MIT © Alain Escaffre. See [LICENSE](LICENSE).
+MIT © Alain Escaffre (original work) and pardovot. See [LICENSE](LICENSE).

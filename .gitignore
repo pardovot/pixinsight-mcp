@@ -8,6 +8,7 @@ dist/
 # Local planning docs (not for the repo)
 .claude/plans/
 
-result-tests/*.xisf
+result-tests/*
+
 # Generated per-build by module/build.mjs
 module/src/BuildTimestamp.h

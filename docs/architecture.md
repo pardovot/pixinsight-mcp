@@ -108,7 +108,7 @@ is **post-processing** (after WBPP/pre-processing).
 - **File bridge, not sockets**: the only IPC PixInsight supports without core
   changes; latency (~poll interval) is irrelevant next to process runtimes.
 - **Generic process runner, never per-process tools**, see CLAUDE.md; adding
-  `run_bxt`-style wrappers is the anti-pattern this fork deliberately removed.
+  `run_bxt`-style wrappers is the anti-pattern this project deliberately removed.
 - **Measure → configure → verify**: tools and docs push the agent to measure
   the actual image before configuring a process, and to re-measure after
   (byte-identical stats = no-op = stop).
