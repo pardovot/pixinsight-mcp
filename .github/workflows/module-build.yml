@@ -9,9 +9,17 @@ name: Module Build (compile check)
 # need iteration (linker/toolchain, and the PCL clone layout below).
 #
 # Runners have no PixInsight, so PCL — the SDK the module links against — is
-# cloned from the open-source PixInsight/PCL repo and its location is fed to the
-# existing build scripts via env vars (PI_ROOT/PCLINCDIR/PCLSRCDIR are all
-# overridable in module/config.mjs — so NO change to that file is needed).
+# cloned from the official open-source repo (gitlab.com/pixinsight/PCL) and its
+# location is fed to the existing build scripts via env vars
+# (PI_ROOT/PCLINCDIR/PCLSRCDIR are all overridable in module/config.mjs — so NO
+# change to that file is needed).
+#
+# NOTE — Windows is not in the matrix yet: the public PCL repo ships the
+# Linux/macOS build projects (src/pcl/{linux,macosx}/g++) but NOT the Windows
+# vc17 project (src/pcl/windows/vc17/PCL.vcxproj is absent). Windows already
+# builds locally from a PixInsight install; adding it here needs those vc17
+# files vendored into this repo (see docs/RELEASING.md). CI here covers the two
+# platforms that have never been verified.
 
 on:
   workflow_dispatch:
@@ -37,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
       # PCL is cloned here; config.mjs derives PCLINCDIR=<PI_ROOT>/include and
@@ -53,7 +61,7 @@ jobs:
       - name: Clone PCL SDK
         shell: bash
         run: |
-          git clone --depth 1 https://github.com/PixInsight/PCL.git pcl
+          git clone --depth 1 https://gitlab.com/pixinsight/PCL.git pcl
           if [ -n "${{ github.event.inputs.pcl_ref }}" ]; then
             git -C pcl fetch --depth 1 origin "${{ github.event.inputs.pcl_ref }}"
             git -C pcl checkout FETCH_HEAD

@@ -31,10 +31,18 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
 ## CI workflows
 
 - **Compile-check** — `.github/workflows/module-build.yml`. Runs on module-source changes
-  and on demand (`workflow_dispatch`). Builds the module on Windows/Linux/macOS to prove it
-  **compiles**. Publishes nothing; needs no version bump. Runners have no PixInsight, so PCL
-  is cloned from the open-source `PixInsight/PCL` repo and fed to the existing build scripts
-  via env vars (no change to `module/config.mjs`).
+  and on demand (`workflow_dispatch`). Builds the module to prove it **compiles**. Publishes
+  nothing; needs no version bump. Runners have no PixInsight, so PCL is cloned from the
+  official open-source repo (`gitlab.com/pixinsight/PCL`, branch `master`) and fed to the
+  existing build scripts via env vars (no change to `module/config.mjs`).
+  - **Linux + macOS**: build from the GitLab source directly — it ships
+    `src/pcl/{linux,macosx}/g++` build projects. These are the two platforms never verified,
+    so CI's main job is here.
+  - **Windows**: NOT in the CI matrix yet. The public PCL repo omits the Windows vc17 project
+    (`src/pcl/windows/vc17/PCL.vcxproj` is absent), which the module's Windows PCL build
+    needs. Windows already builds locally from a PixInsight install; to add it to CI, vendor
+    those `vc17/` project files into this repo. Until then, Windows binaries come from the
+    local verified build.
 
 - **Release/publish** — *planned (Phase 2), lands once the compile-check is green on all
   three OSes.* Tag-driven; see the ritual below.
