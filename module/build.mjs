@@ -84,8 +84,16 @@ function main() {
 
   let env = { ...process.env };
   if (cfg.isWindows) {
-    console.log("Activating MSVC x64 environment ...");
-    env = msvcEnvironment();
+    if (process.env.VCINSTALLDIR) {
+      // Already inside an MSVC dev environment (a Developer Command Prompt, or a
+      // CI step like ilammy/msvc-dev-cmd). Use it directly — re-deriving vcvars
+      // is redundant and, on some hosts, fails to put cl.exe on PATH for CMake.
+      console.log("MSVC dev environment already active; using it.");
+      if (cfg.ninjaDir) env.PATH = `${cfg.ninjaDir}${path.delimiter}${env.PATH}`;
+    } else {
+      console.log("Activating MSVC x64 environment ...");
+      env = msvcEnvironment();
+    }
   }
   // CMake reads these for the PCL SDK location.
   env.PCLINCDIR = cfg.pclIncDir;

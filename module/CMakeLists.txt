@@ -95,6 +95,15 @@ if(PCL_LIB)
   target_link_libraries(MCPWatcher PRIVATE "${PCL_LIB}")
 endif()
 
+if(APPLE)
+  # PCL pulls in macOS system frameworks — CoreFoundation (CFString + allocators,
+  # via CharTraits) and Foundation (NSURL volume-capacity APIs + the Objective-C
+  # runtime, via GetVolumeAvailableCapacity). Without these the module .dylib
+  # fails to link: macOS defaults to strict undefined-symbol checking, unlike a
+  # Linux .so which defers unresolved symbols to load time.
+  target_link_libraries(MCPWatcher PRIVATE "-framework CoreFoundation" "-framework Foundation")
+endif()
+
 # PixInsight modules are "<Id>-pxm.<ext>" with no lib prefix.
 set_target_properties(MCPWatcher PROPERTIES
   PREFIX ""
