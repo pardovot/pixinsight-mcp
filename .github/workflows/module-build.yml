@@ -105,13 +105,17 @@ jobs:
           arch: x64
 
       # Use the runner's system cmake, not the VS-bundled one config.mjs picks by
-      # default — the bundled cmake can't detect cl.exe with -G Ninja. Must be
-      # "cmake.exe" (not "cmake"): Node's spawnSync (shell:false) only resolves an
-      # executable on PATH when the .exe extension is given, else spawn ENOENT.
+      # default — the bundled cmake can't detect cl.exe with -G Ninja. Pass its
+      # FULL PATH: Node's spawnSync (shell:false, custom env) won't resolve a bare
+      # "cmake"/"cmake.exe" on PATH here (spawn ENOENT); an absolute path needs no
+      # PATH lookup. Get-Command returns the first on PATH = system cmake.
       - name: Use system cmake (Windows)
         if: runner.os == 'Windows'
-        shell: bash
-        run: echo "CMAKE=cmake.exe" >> "$GITHUB_ENV"
+        shell: pwsh
+        run: |
+          $cmake = (Get-Command cmake.exe).Source
+          Write-Host "Using cmake: $cmake"
+          "CMAKE=$cmake" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build PCL static library
         run: node module/build-pcl.mjs
