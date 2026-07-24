@@ -4,6 +4,11 @@ Living record of real end-to-end runs: what the pipeline actually did, what work
 and what to build or fix next. Updated after every run (via the `process-retro` skill). This is
 the M1 "warts and all" deliverable and the working spec for M2+.
 
+**Autonomy (2026-07-24):** runs are critiqued by the blind `image-critic` skill against
+`docs/CRITIC_RUBRIC.md` (human-owned), and KB edits are regression-gated by `kb-gate` before
+committing. The human review protocol (per-batch KB diff, 1-in-10 eyeball audit, forced-human
+triggers) is `docs/AUTONOMY.md`.
+
 **Finding types**, every finding is exactly one of these, and the distinction is the whole point:
 
 | Type | Means | Fix goes to |
@@ -86,7 +91,14 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
    Shipped tools (`src/tools/session.ts`, delivered via `run_script` → **no module rebuild**):
    `get_history`, `undo`, `redo`, `snapshot` (hidden duplicate window), `restore` (undoable
    pixel-assign back). Correct revert signal is **`view.canGoBackward`**, never `canUndo`.
-3. **First-class measurement tools** `[tooling, HIGH]`, the agent hand-rolled corner-box gradient,
+3. ~~**First-class measurement tools**~~ `[tooling, HIGH]`, **SHIPPED (2026-07-24, live-verified vs the
+   R8 reference values):** `get_noise` (MRS, matched the 8.5e-6 checkpoint), `get_background_gradient`
+   (grid boxes + plane fit), `get_background_neutrality` (linear ±8%-band: 0.51% vs recorded 0.48%;
+   poststretch: near-neutral chroma per background-work.md), `get_star_metrics` (star-pixel median
+   0.0109 vs recorded 0.0106; FWHM/ecc via moments; adaptive threshold, MAD collapses on stars-only
+   layers, noise-floored + x4 escalation). `src/tools/measurement.ts` + `src/pjsr/measure-*.ts`,
+   run_script-delivered (no module rebuild). A measured stretch helper remains open (#8/#12).
+   Original text: the agent hand-rolled corner-box gradient,
    MRS noise, and stretch math in `run_script`. Using the wrong metric once (stdDev instead of MRS
    for denoising) caused a false "NXT broke it" alarm and a needless undo. → `get_noise` (MRS),
    `get_background_gradient`, `get_background_neutrality`, and a measurement-driven stretch helper.
@@ -114,7 +126,8 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
    `run_process("GeneralizedHyperbolicStretch")`; (b) a first-class **measurement-driven stretch helper**
    (`stretch_ghs` wrapping the native process, or the tested PixelMath builder with the analytic
    D-for-target-peak solve) so the stretch stops being hand-rolled each run.
-9. **`get_background_neutrality` + safe `neutralize_background`** `[tooling, HIGH]` (sharpens #3), Run 3
+9. **`get_background_neutrality`** ✅ **shipped 2026-07-24 (see #3)**, both modes (linear diffuse-sky
+   band + poststretch near-neutral chroma). The safe `neutralize_background` ACTUATOR is still open., Run 3
    hand-rolled the **diffuse-sky-band** neutrality metric (grid `image.sample`, median ±8% of luminance
    median, the darkest-N% metric is WRONG on nebula-fillers: dark lanes = real OIII). And the
    `BackgroundNeutralization` *process* **blew up** (median ×100, R clipped to 1.0) with a narrow
@@ -148,7 +161,12 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     window missing). **Run 5 it worked reliably** (named `snapshotId`s created + restored, used to iterate the
     stretch and star layer). Either already fixed or the R3 failure was intermittent → downgraded; keep an eye
     out, no active fix needed unless it recurs.
-13. **Background-work + visual-QA tooling** `[tooling, HIGH, Run 7]`, the whole background session was
+13. **Background-work + visual-QA tooling** `[tooling, HIGH, Run 7]`, **(b) and (c) SHIPPED 2026-07-24:**
+    `render_view(viewId, path, stf, rect?, downsample?)` (STF auto with degenerate-median clamp / asis /
+    view; verified vs the approved final render) **plus** `render_critic_pack` + the blind `image-critic`
+    skill + `docs/CRITIC_RUBRIC.md` + the `kb-gate` regression skill (see `docs/AUTONOMY.md`, critic
+    calibration: blind A/B correctly ranked the approved R8 final over rho_combined on background chroma).
+    (a) `background_neutralize` actuator and (d) SPCC curve auto-provisioning still open. Original: the whole background session was
     hand-rolled in `run_script` (curves fit, gated teal→luminance, ~10 render-downsample-and-Read cycles).
     → (a) **`background_neutralize(viewId, {signalHue, w, ...})`** wrapping the validated 2-stage recipe
     (`docs/background-work.md`); (b) **`render_view(viewId, factor)`** → returns a downsampled JPEG for
@@ -157,6 +175,41 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     LIES post-stretch) + faint/bright preservation ratio. (d) SPCC **broadband** OSC-duoband curve
     auto-provisioning from `library/filters.xspd` (the `Sony CMOS X-UVIRcut / <filter>` + IMX QE lookup), since
     NB mode is now off-limits.
+14. **Session-replication artifact `[tooling, MED, Run 8, user-requested]`**, user wants to replay a full
+    session precisely (a power outage lost the in-app state). A single `ProcessContainer` **can't** express the
+    workflow: it branches at SXT (starless in place + stars in a new window, stretched separately, screen-recombined)
+    and several steps need runtime data (SPFC/SPCC filter curves from `filters.xspd`, PixelMath expressions). The
+    new **`get_full_history(viewId)`** tool reads the cumulative `ProcessContainer` per view (good for the linear
+    trunk) but not the branch or the PJSR-driven steps. → build **`export_session(viewIds[])`** emitting a
+    self-contained replay `.js` (each step's `ProcessInstance.toSource()` + the branch orchestration) + a
+    ProcessContainer for the linear trunk. **CONFIRMED (R8): native process-icon minting is impossible headless**, `writeIcon`
+    only overwrites an EXISTING GUI icon (errors "No such instance icon" otherwise), and there's no PJSR `.xpsm` file-save. So
+    `export_session` must emit **paste-to-rebuild container source** (`ProcessContainer` + `.at(i).toSource()`), not a binary icon.
+    Interim artifacts written: `result-tests/Rho-Ophiuchi-Panel-1/{replay.js (executable, handles the branch), process-container.js
+    (all 17 instances + settings via toSource), HISTORY.md}`.
+    **✅ SOLVED (2026-07-24, user-verified).** `.xpsm` is plain XML and I CAN write it directly (File.writeTextFile) → PI opens it
+    → icons appear (no icon-mint API needed). Cracked the exact format from the user's `untitled.xpsm` (PI 1.9.4): a
+    `<instance class="ProcessContainer" id="X_inst">` wrapping child `<instance class=... version="256" enabled="true">` blocks,
+    PLUS a required `<icon id="Name" instance="X_inst" xpos ypos workspace="Workspace01"/>` element (the missing `<icon>` is
+    exactly why my first attempt loaded nothing). Built a **toSource()→XML converter** (in `replay.js`): scalars/bools→`value`,
+    enums `Class.NAME`→`value="NAME"`, strings→text content, arrays→`<table><tr><td id="x"/><td id="y"/>`. **Gotcha:** `toSource()`
+    formats curve/HS point arrays MULTI-LINE → a line-by-line parser silently drops the tables; parse with a multiline regex
+    (`/P\.(\w+)\s*=\s*([\s\S]*?);\s*(?=P\.\w+\s*=|$)/g`) + `eval` the array. **Delivered + user-verified loading:** per-section
+    `linear/starless/stars/recombine.xpsm`. **replay.js is a proven empty→final reproducer** (2 clean-room `main()` runs → identical
+    `[rho_final,starless,stars]`, median 0.169). Design settled: **per-section `.xpsm` containers** (narrow, per-image) + **one
+    `replay.js`** (whole-session, empty→exact-final-state); **capture INCREMENTALLY as each process runs**, NOT from `view.processing`
+    at the end (resets on save/reopen; `createNewImage` outputs carry empty history; crash-lossy). → build `export_session(outDir)` MCP
+    tool wrapping this (emitter + replay generator). See `result-tests/Rho-Ophiuchi-Panel-1/replay.js` for the reference implementation.
+    **MCP tool BUILT + VERIFIED END-TO-END (2026-07-24):** `export_container(viewId, outputPath, iconName, fromIndex?, toIndex?)`
+   , TS tool `src/tools/export.ts` (registered in `index.ts`, `tsc` clean) + watcher handler `handleExportContainer` in
+    `pjsr/pixinsight-mcp-watcher.js` (the proven converter, sourced from a `view.processing` slice; export per section by range
+    while the view is LIVE). Activated by the module regen (`module:build` → `sign` → `install` as admin, PI closed, same loop
+    as the `get_full_history` add) + MCP-server restart to register the tool. **Verified:** a tool call on a live view emitted a
+    container **byte-identical (modulo icon name)** to the user-verified inline one, curve tables intact. `replay.js` (whole-session,
+    empty→exact-final, proven 3×) stays hand-authored for now (branch orchestration is bespoke) → future `export_session` can template it.
+15. **`star_color_correct(viewId)` helper `[tooling, LOW, Run 8]`**, the gated star-color rule (measure star-pixel
+    hue → green-dominant: SCNR green; magenta/purple-fringed: `invert→SCNR-green→invert`) is hand-rolled. Bundle the
+    hue measurement + the two conditional ops (extends the `star_stretch` helper, backlog #10).
 
 ---
 
@@ -553,3 +606,58 @@ research→demo→validate treatment we gave background work:
 - **Saturation**, **Hue**, and the **CIE c\*** (chroma) component specifically, color fine-tuning in LCh/Lab, not just RGB
 Treat these as the M-next research/demo backlog. **Do the same measure→render→judge-by-eye loop; don't hardcode.**
 Also open: background-method generalization (OIII/SHO signal-hue, untested) and the SPCC-NB-vs-broadband root cause.
+
+### Run 8, 2026-07-23, **OSC broadband RGB (first non-HOO run)**, Rho Ophiuchi Complex Panel 1 (FRA500+reducer, ASI2600MC Pro / IMX571, NoFilter, dec −24)
+**Outcome:** first **OSC-RGB** run on this fork, the whole prior journal is OSC-HOO. Full autonomous linear+nonlinear
+run to a saved `rho_final.xisf/.jpg`; **good result on the first pass** (no "dim/milky/awful" verdict, the OSC-HOO
+nonlinear discipline transferred). Then **re-run 1-to-1 from scratch** (user lost the in-app state to a power outage)
+- every checkpoint reproduced within AI-tool rounding. Playbook synthesis: **linear+color = `osc-rgb.md`** (broadband
+SPCC, NOT narrowband); **nonlinear = `osc-hoo.md` methodology** (the run-validated half; osc-rgb's was thin/unvalidated).
+
+**Linear half, worked, verified by artifact:** BXT correct-only (WCS preserved), SPFC (plain `Sony Color Sensor R/G/B`
++ Ideal QE → `PCL:SPFC:ScaleFactors`), **MGC DECLINED** → GradientCorrection, SPCC broadband (`WhiteBalanceFactors`,
+bg neutral, diffuse-sky spread 0.48%), BXT sharpen 0.8/0.2, NXT 0.8 (MRS noise ~8.5e-6 uniform), SXT `unscreen=false` split.
+
+**Findings**
+- `[correctness]` **MGC declines with `executeOn=false` (no exception, byte-identical stats) at dec −24**, MARS DR2
+  far-southern coverage gap (not the empty-table no-op). Table bound + `.xmars` present, still declined. → **GradientCorrection**
+  fallback (`protection:true` etc.) worked well: corner-median ramp halved (0.000427→0.000212), central nebula preserved
+  (protection stopped it eating signal). SPFC was then wasted (only MGC needs it). → baked into `osc-rgb.md` step 5 + skill.
+- `[correctness]` **`image.median(channel)` throws** in the bare context, cost one failed reporting line (SPCC itself ran).
+  Use `get_image_statistics` or `selectedChannel`+`median()`. → skill API notes.
+- `[quality]` ✅ **OSC-RGB nonlinear half got its first live datapoint and it WORKED** by borrowing OSC-HOO GHS discipline.
+  Very compressed post-SPCC bg (median ~0.00026). GHS pass-1 (`SP=0.00022,b=4,D=7`) → mode 0.17 but **milky** (R5 mode).
+  De-milk: gentle `CurvesTransformation` **K** S-curve (floor down, nebula up) + moderate **S** saturation (~1.35×), judged
+  on the render. Faint outer dust survived (R6 check passed). ⚠ **per-object datapoint, NOT a law**, osc-rgb nonlinear still
+  wants its own research pass; recorded R8 curves in `osc-rgb.md` step 9 as evidence, did NOT hardcode as default.
+- `[quality]`/`[method]` ✅ **Star stretch** (a=4.5, satAmount=1.2, M≈0.0106) → tight colorful stars, verified 1:1. Orange-dominant,
+  astrophysically correct toward the galactic center. Star-PIXEL-median + ColorSaturation + 1:1 method (from R5) transferred to RGB.
+- `[method]` **New star-COLOR technique from the user (gated):** green-dominant stars → `SCNR green`; magenta/purple/red-fringed
+  → **`invert→SCNR-green→invert`** (magenta = green's complement → kills purple fringe, shifts toward yellow). Measure star pixels
+  first, apply only what fires. → `osc-rgb.md` step 11 + skill. (The `invert→SCNR→invert` trick was already noted for HOO magenta
+  fringing; now promoted to a general **star-color decision rule**.) **Applied + validated on-image:** measured star pixels =
+  green 1.6% (skip SCNR), magenta/purple **37.5%** → `invert→SCNR-green→invert` → magenta **37.5%→0%**, stars visibly warmer/cleaner
+  (golden-white, no purple fringe), profiles intact at 1:1. First on-image confirmation of the rule.
+- `[tooling]` **Session replication**, user wants a precise full-session replay (ProcessContainer or history). A single container
+  can't hold the SXT branch + PJSR curve-loading. → backlog #14; interim replay script written to `result-tests/Rho-Ophiuchi-Panel-1/`.
+- `[tooling]` **Watcher/bridge went unresponsive after the re-run** (300 s timeout, "PJSR watcher may not be running"), blocked
+  the star-color application + the 4 image saves. Likely PI needs relaunching (post-outage state). Not a repro of the old
+  result-corruption; the process calls had all returned cleanly. → user must restart PI + watcher to finish the on-image asks.
+
+**Changed this entry:** `osc-rgb.md` (step 5 MGC-decline+GC-fallback; step 9 R8 nonlinear datapoint; step 11 star-stretch pointer +
+gated star-color rule); `process-master` skill (MGC-decline signal, star-color rule, `median(channel)` wart); backlog #14 (session
+replication) + #15 (star_color_correct helper). Repro artifacts: `result-tests/Rho-Ophiuchi-Panel-1/{HISTORY.md,replay.js}`; `.gitignore`
+extended (`result-tests/**/*.xisf|jpg`). **OSC-RGB pipeline state:** linear half solid (same as HOO minus MARS-southern); nonlinear half
+= 1 good datapoint (borrowed HOO), needs its own validation; star-color rule new/unvalidated on-image.
+
+**Done this session (after the watcher recovered):** rebuilt cleanly from the intact `rho_linear_processed.xisf`; saved all 4 layers
+(`rho_linear_starless/stars`, `rho_final_starless/stars`) + `rho_final` to `result-tests/Rho-Ophiuchi-Panel-1/`; applied+validated the
+gated star-color correction; wrote `replay.js` (full-session replay, gated star-color included) + `HISTORY.md`.
+**Still open, highest value next:** (1) OSC-RGB nonlinear half needs its own research/validation pass (currently 1 borrowed datapoint).
+(2) Build the `export_session` replication tool (#14), the interim is a hand-authored replay script. (3) Star-color + de-milk rules
+await a second RGB target to confirm they generalize.
+
+**Post-run feedback (2026-07-24, user at the machine, learning only, image not re-changed):**
+- `[quality]` **Star amount ceiling found.** Generated the precise midpoint between my a=4.5 (too soft) and the user's own harder stretch (too hard) = **a=5.4** (matched star-pixel **p90** exactly, the right axis, not count). User: middle is good "but stars should still slightly pull softer" → sweet spot **a≈5.0-5.2** for Rho Oph. Confirms "push harder than first guess" has a ceiling: too hard inflates faint noise-stars. Recorded as per-object datapoint in `osc-rgb.md` (NOT a default).
+- `[method]` **SCNR-green green-haze applies to the STARS layer (user's original point) AND the starless.** The user's "green haze around blue stars" meant the **stars** image; but they also liked a **gated** SCNR-green on the **starless** (teal haze in the reflection nebula / around blue stars), purifies teal→blue, and since Average Neutral only edits green it **cannot reduce blue** (the user's worry). ⚠ Measure **green EXCESS** `gex=G−(R+B)/2>0` on the *localized* haze/halos, the region mean is blue-dominated (reads ≤0) and hides it. Not a default either place; judge on the render. → `osc-rgb.md` step 11 + skill.
+- `[tooling]` **ProcessContainer can't be created from the API, CONFIRMED hard limit.** `writeIcon` errors *"No such instance icon"* on a non-existent icon (can only overwrite an existing GUI icon); there is no PJSR process-icon/`.xpsm` file-save. Delivered instead: `process-container.js` (a built `ProcessContainer` with all 17 process instances + exact settings dumped via `.toSource()`, paste into Script Editor → drag → save as `.xpsm`) + `replay.js` (executable full-session reproducer, handles the SXT branch a container can't). → sharpens backlog #14: `export_session` must emit the paste-to-rebuild container source, since native icon minting is impossible headless. **Lesson for me: state the ProcessContainer API limit up front, don't substitute a replay script silently.**
