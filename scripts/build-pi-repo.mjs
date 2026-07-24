@@ -20,11 +20,18 @@
 //
 // Usage:  node scripts/build-pi-repo.mjs   (npm run repo:build)
 //
-// ⚠ SIGNING (do LAST, once everything is clean): the module .xsgn must already
-// exist (module:sign), and updates.xri itself must be signed AFTER this runs:
-//   node module/sign.mjs pi-repo/updates.xri
-// Our signing identity is LOCAL (not a Certified PixInsight Developer), so the
-// repo validates only on machines where this PixInsight license is activated.
+// ⚠ SIGNING TEMPORARILY DISABLED (pending Certified PixInsight Developer status).
+// The distributed repo ships the module UNSIGNED and updates.xri UNSIGNED. Reason:
+// our only signing identity is LOCAL (developerId 0104952866723499). On another
+// machine that identity is untrusted, and PixInsight REJECTS an untrusted-signed
+// repo/module outright — whereas an UNSIGNED repo triggers a user-confirmation
+// prompt and installs. So for distribution, no signature beats a local one.
+//   - This script no longer requires/embeds the module .xsgn (binary-only zip).
+//   - Do NOT run `node module/sign.mjs pi-repo/updates.xri` — leave the xri unsigned.
+// Local install (module:install) still uses the signed module and is unaffected.
+// RE-ENABLE once a CPD identity exists: restore the .xsgn packaging below and the
+// updates.xri sign step. sign.mjs and `npm run module:sign` are kept intact.
+// Full checklist: docs/POST-CDP-SIGNING.md
 
 import fs from "node:fs";
 import path from "node:path";
@@ -130,25 +137,22 @@ function fmtDate(d) {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 }
 
-// Build one package per platform whose signed binary is present in module/build/.
+// Build one package per platform whose binary is present in module/build/.
+// UNSIGNED distribution (see header): the module .xsgn is intentionally NOT
+// bundled — an untrusted local signature is rejected on other machines, while an
+// unsigned module installs after a confirmation prompt.
 const version = readVersion();
 const built = [];
 let newestMtime = 0;
 
 for (const plat of PLATFORMS) {
   const binPath = path.join(buildDir, MODULE_BASE + plat.ext);
-  const sgnPath = path.join(buildDir, MODULE_BASE + ".xsgn");
   if (!fs.existsSync(binPath)) {
     console.log(`  - ${plat.os}: no ${MODULE_BASE}${plat.ext} in module/build/ — skipped`);
     continue;
   }
-  if (!fs.existsSync(sgnPath)) {
-    console.log(`  ! ${plat.os}: ${MODULE_BASE}${plat.ext} present but UNSIGNED (no .xsgn) — skipped (run module:sign)`);
-    continue;
-  }
   const entries = [
     { name: `${plat.dir}/${MODULE_BASE}${plat.ext}`, data: fs.readFileSync(binPath) },
-    { name: `${plat.dir}/${MODULE_BASE}.xsgn`, data: fs.readFileSync(sgnPath) },
   ];
   const zip = buildZip(entries);
   const fileName = `mcpwatcher-module-${plat.os}.zip`;
@@ -156,12 +160,12 @@ for (const plat of PLATFORMS) {
   const sha1 = createHash("sha1").update(zip).digest("hex");
   newestMtime = Math.max(newestMtime, fs.statSync(binPath).mtimeMs);
   built.push({ plat, fileName, sha1 });
-  console.log(`  + ${plat.os}/${plat.arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext} + .xsgn)  sha1=${sha1}`);
+  console.log(`  + ${plat.os}/${plat.arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext}, unsigned)  sha1=${sha1}`);
 }
 
 if (built.length === 0) {
-  console.error("\n[ERROR] No signed module binary found in module/build/.");
-  console.error("        Run: npm run module:build && npm run module:sign, then retry.");
+  console.error("\n[ERROR] No module binary found in module/build/.");
+  console.error("        Run: npm run module:build, then retry.");
   process.exit(1);
 }
 
@@ -216,4 +220,5 @@ const xri =
 
 fs.writeFileSync(xriPath, xri, "utf8");
 console.log(`\nwrote ${xriPath}  (version ${version}, releaseDate ${releaseDate}, ${built.length} platform(s))`);
-console.log("REMINDER: sign updates.xri before publishing:  node module/sign.mjs pi-repo/updates.xri");
+console.log("This repo is UNSIGNED (pre-CDP): other machines get a confirmation prompt, then install.");
+console.log("Do NOT sign updates.xri — a local-identity signature is rejected on other machines.");

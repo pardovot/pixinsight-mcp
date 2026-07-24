@@ -7,13 +7,13 @@
          @pardovot/pixinsight-mcp MCP server. https://github.com/pardovot/pixinsight-mcp
       </p>
    </description>
-   <metadata id="20260723-mcpwatcher-module" releaseDate="20260723">
+   <metadata id="20260724-mcpwatcher-module" releaseDate="20260724">
       <title>
          PixInsight MCP Watcher Module 1.2.0
       </title>
       <description>
          <p>
-            Non-blocking bridge module: a pcl::Timer on PixInsight&apos;s event loop
+            Non-blocking bridge module: a pcl::Timer on PixInsight's event loop
             polls ~/.pixinsight-mcp/bridge for commands from the MCP server and
             runs them while PixInsight stays fully interactive. Open it under
             Process &gt; Utilities &gt; MCP Watcher.
@@ -21,7 +21,6 @@
       </description>
    </metadata>
    <platform os="windows" arch="x64" version="1.9.4:1.9.99">
-      <package fileName="mcpwatcher-module-windows.zip" sha1="34139e7683f58154c0a4a4c387f0bf4f73e84244" type="module" metadata="20260723-mcpwatcher-module"/>
+      <package fileName="mcpwatcher-module-windows.zip" sha1="59d0f98e652403ca5fa3078647ab2a914409c926" type="module" metadata="20260724-mcpwatcher-module"/>
    </platform>
 </xri>
-<Signature developerId="0104952866723499" timestamp="2026-07-22T23:27:37.721Z" encoding="Base64">Ox5pcSoSt0j0ZDHF62iRXpIOQQeARD4PFMrlN92DGLYFDh67EfTSmCBVwZ4gcNo/Ok8hkyLY9dSCFJk4fmG7CQ==</Signature>
