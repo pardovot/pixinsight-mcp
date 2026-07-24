@@ -84,8 +84,23 @@ function main() {
 
   let env = { ...process.env };
   if (cfg.isWindows) {
-    console.log("Activating MSVC x64 environment ...");
-    env = msvcEnvironment();
+    if (process.env.VCINSTALLDIR) {
+      // Already inside an MSVC dev environment (a Developer Command Prompt, or a
+      // CI step like ilammy/msvc-dev-cmd). Use it directly — re-deriving vcvars
+      // is redundant and, on some hosts, fails to put cl.exe on PATH for CMake.
+      console.log("MSVC dev environment already active; using it.");
+      // Prepend Ninja to the EXISTING PATH key. On Windows that key is usually
+      // "Path"; assigning env.PATH would add a SECOND, conflicting variable that
+      // shadows the real PATH in the child process and hides cl.exe from CMake
+      // (observed on GitHub runners: "No CMAKE_CXX_COMPILER" despite cl on PATH).
+      if (cfg.ninjaDir) {
+        const pathKey = Object.keys(env).find((k) => k.toLowerCase() === "path") || "PATH";
+        env[pathKey] = `${cfg.ninjaDir}${path.delimiter}${env[pathKey] || ""}`;
+      }
+    } else {
+      console.log("Activating MSVC x64 environment ...");
+      env = msvcEnvironment();
+    }
   }
   // CMake reads these for the PCL SDK location.
   env.PCLINCDIR = cfg.pclIncDir;

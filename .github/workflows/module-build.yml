@@ -1,0 +1,153 @@
+name: Module Build (compile check)
+
+# Builds the native PixInsight module on all three OSes to prove it COMPILES.
+# It publishes NOTHING (see the planned release workflow + docs/RELEASING.md) and
+# needs no version bump — building is not publishing.
+#
+# Why this exists: the macOS/Linux build branches have never been run. This is
+# where we discover and fix them. Expect Windows green first; macOS/Linux to
+# need iteration (linker/toolchain, and the PCL clone layout below).
+#
+# Runners have no PixInsight, so PCL — the SDK the module links against — is
+# cloned from the official open-source repo (gitlab.com/pixinsight/PCL) and its
+# location is fed to the existing build scripts via env vars
+# (PI_ROOT/PCLINCDIR/PCLSRCDIR are all overridable in module/config.mjs — so NO
+# change to that file is needed).
+#
+# NOTE — Windows PCL project: the public PCL repo ships the Linux/macOS build
+# projects (src/pcl/{linux,macosx}/g++) but NOT the Windows vc17 project
+# (src/pcl/windows/vc17/PCL.vcxproj is absent). We vendor it in
+# module/vendor/pcl-vc17/ and overlay it into the clone below (Windows only).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pcl_ref:
+        description: "PixInsight/PCL git ref (blank = default branch)"
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - "module/**"
+      - "pjsr/pixinsight-mcp-watcher.js"
+      - ".github/workflows/module-build.yml"
+  push:
+    branches: [main]
+    paths:
+      - "module/**"
+      - "pjsr/pixinsight-mcp-watcher.js"
+      - ".github/workflows/module-build.yml"
+
+# Rapid pushes to the same ref cancel superseded runs instead of stacking.
+concurrency:
+  group: module-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # PCL is cloned here; config.mjs derives PCLINCDIR=<PI_ROOT>/include and
+      # PCLSRCDIR=<PI_ROOT>/src from it. The compiled static lib goes to the
+      # default writable ~/pcl-build (see config.mjs pclBuildOut), which we cache.
+      PI_ROOT: ${{ github.workspace }}/pcl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clone PCL SDK
+        shell: bash
+        run: |
+          git clone --depth 1 https://gitlab.com/pixinsight/PCL.git pcl
+          if [ -n "${{ github.event.inputs.pcl_ref }}" ]; then
+            git -C pcl fetch --depth 1 origin "${{ github.event.inputs.pcl_ref }}"
+            git -C pcl checkout FETCH_HEAD
+          fi
+          echo "PCL_SHA=$(git -C pcl rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Overlay vendored Windows vc17 project (absent from public PCL)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p pcl/src/pcl/windows/vc17
+          cp module/vendor/pcl-vc17/PCL.vcxproj module/vendor/pcl-vc17/PCL.vcxproj.filters \
+             pcl/src/pcl/windows/vc17/
+
+      - name: Restore cached PCL static library
+        id: pcl-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/pcl-build
+          key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      # Establish the MSVC x64 dev environment for the whole job. build.mjs
+      # detects VCINSTALLDIR and uses this directly instead of re-running vcvars,
+      # which on the runner didn't put cl.exe on PATH for CMake. cmake/ninja come
+      # from the VS install (config.mjs locates them via vswhere).
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Use the runner's system cmake, not the VS-bundled one config.mjs picks by
+      # default — the bundled cmake can't detect cl.exe with -G Ninja. Pass its
+      # FULL PATH: Node's spawnSync (shell:false, custom env) won't resolve a bare
+      # "cmake"/"cmake.exe" on PATH here (spawn ENOENT); an absolute path needs no
+      # PATH lookup. Get-Command returns the first on PATH = system cmake.
+      - name: Use system cmake (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cmake = (Get-Command cmake.exe).Source
+          Write-Host "Using cmake: $cmake"
+          "CMAKE=$cmake" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build PCL static library
+        run: node module/build-pcl.mjs
+
+      # Save PCL right after it builds — BEFORE the module build that might still
+      # fail — so failed runs don't rebuild PCL (~13 min) on the next attempt.
+      - name: Save cached PCL static library
+        if: steps.pcl-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/pcl-build
+          key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
+
+      - name: Diagnose toolchain (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: cmd
+        run: |
+          echo VCINSTALLDIR=%VCINSTALLDIR%
+          where cl
+          where cmake
+          where ninja
+          cmake --version
+
+      - name: Build module
+        run: node module/build.mjs
+
+      - name: Upload module artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCPWatcher-pxm-${{ matrix.os }}
+          path: module/build/MCPWatcher-pxm.*
+          if-no-files-found: warn
+          retention-days: 7
