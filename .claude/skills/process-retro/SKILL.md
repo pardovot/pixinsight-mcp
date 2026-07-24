@@ -17,6 +17,11 @@ improvements out. The goal is that the **next** run is measurably less painful a
 - The run transcript (the user pastes it).
 - The user's own notes/observations (often sharper than the transcript, weight them heavily; the
   user is at the machine and sees the actual image, which you did not).
+- **The run's critic reports** (phase-boundary packs + `image-critic` outputs, per the
+  process-master critic gates), a first-class notes source; its findings arrive already typed.
+  **When the user's notes and the critic conflict, the user outranks the critic**, and the
+  disagreement itself is a `[method]` finding against `docs/CRITIC_RUBRIC.md` (propose the rubric
+  edit as a queued finding; NEVER edit the rubric yourself, it is human-owned).
 
 ## Step 1, load current state (do not skip)
 Read, in full: `CLAUDE.md`, the run's playbook (`docs/workflows/<category>.md`), the
@@ -41,10 +46,18 @@ If a finding feels like two types, split it. "The stretch was dim AND I had to u
 ## Step 3, apply what's safe, queue what needs research
 - **`[correctness]` / `[method]`** → edit `process-master` / `CLAUDE.md` / the playbook directly so
   it can't recur. Cite the run evidence in the edit or commit. These are the cheap, high-value wins.
+  **Then gate the batch:** run the `kb-gate` skill (Tier-1) on the edits. **PASS** → commit the KB
+  edits with the gate report referenced in the commit message. **FAIL** (an eye-confirmable/visible
+  regression) → revert to queued, escalate to the human with the gate report. **ADVISORY**
+  (metric-only failures, noise/star-count/FWHM, nothing visible) → do NOT auto-commit and do NOT
+  revert; surface the `metricOnlyFailures` to the human ("metric moved, can't confirm by eye -
+  benign drift or re-baseline?") and wait. Batch all of a retro's safe edits into ONE gate run.
 - **`[tooling]`** → add or sharpen an item in the journal's **Tooling backlog** with the concrete
   symptom + the proposed tool + a priority. Do **not** paper over a missing tool with more prompt
   instructions, that just moves the cost to every future run.
 - **`[quality]`** → add an **Open research question** to the journal: what to research and why.
+  A `[quality]` playbook change that comes OUT of research later additionally needs kb-gate
+  **Tier-2** (or explicit human review) before it lands, Tier-1 can't see decision changes.
   **Never invent replacement processing numbers to "fix" a quality issue.** A good stretch value is
   a research output, not a guess, that is the project's core rule (measure → configure → verify,
   research-backed playbooks). If the user gave a specific correction ("stars need to be much more

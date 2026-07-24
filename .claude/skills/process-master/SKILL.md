@@ -49,8 +49,9 @@ consequential (e.g. output path), pick a sensible default and mention it.
 **Detect existing state; do not redo it:**
 - **Plate solve:** check `View.window.hasAstrometricSolution` via `run_script` (a boolean
   property, NOT `astrometricSolution()`, which throws). The solution is an XISF property, so
-  `CTYPE*` keywords are often absent on solved images. Only run ImageSolver if false. BXT does
-  not necessarily strip the WCS [R1], re-check after BXT; re-solve only if actually false.
+  `CTYPE*` keywords are often absent on solved images. Only run ImageSolver if false. BXT
+  preserves the WCS, do not treat WCS survival as a checkpoint, a per-step outcome, or something
+  to announce in plans/tables. Just don't re-solve unless `hasAstrometricSolution` is actually false.
 - **Crop:** an `_autocrop` master is already cropped, don't crop again. Close WBPP's stray
   `*_crop_mask` view at the start so it can't be picked up as a target.
 
@@ -59,14 +60,34 @@ bare context [R1]). Run MGC with `useMARSDatabase=true` AND pass the table expli
 `marsDatabaseFiles: [[true, "<abs path to .xmars>"]]` (Windows: `%APPDATA%/Roaming/Pleiades/XMARS/`).
 **Headless MGC silently no-ops on an empty table**, the GUI config does not transfer. If MGC
 no-ops (the gate catches it) or errors: report clearly and fall back to GradientCorrection.
+**MGC also DECLINES where MARS lacks coverage, the clean signal is `executeOn` returns `false`
+(no exception, stats byte-identical)** [R8: dec −24 Rho Oph; MARS DR2 far-southern (<−15°) coverage
+is thin]. Same fallback: `GradientCorrection` (`protection:true, protectionThreshold:0.1,
+protectionAmount:0.5, scale:5, smoothness:0.4`, R8 halved the corner ramp AND preserved the central
+nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe before SPFC would save it.
 
 ## Step 2, the loop (every step; never skip the measure/verify halves)
 
-1. **Measure first** (`get_image_statistics` / `run_script`), before-baseline + configuration input.
+1. **Measure first**, before-baseline + configuration input. Use the dedicated tools:
+   `get_noise` (MRS, never stdDev), `get_background_gradient`, `get_background_neutrality`
+   (mode `linear` pre-stretch / `poststretch` after), `get_star_metrics` (star-pixel median,
+   FWHM, brightest-star coords), `get_image_statistics`; `run_script` only for what they
+   don't cover.
 2. **Introspect**: `get_process_parameters(processId)`; reason about what the params mean here.
 3. **Configure** from the playbook + the measurement, never fixed numbers you recall. Use the
    generic `run_process(processId, viewId, settings)`.
-4. **Run**, then **re-measure**.
+4. **Run**, then **re-measure**. **While the image is LINEAR, also apply auto STF** (a
+   `ScreenTransferFunction` autostretch, screen only, pixels untouched) **after EVERY process**,
+   so the user can actually see what the step did; linear pixels render near-black otherwise, and
+   the module is non-blocking precisely so they can inspect live. ⛔ **Except the starless and the
+   stars layers, never auto-STF those:** SXT translates the parent image's STF onto both split
+   products and autostretch destroys it, and on a star layer it blows out (layer is ~99.9% black →
+   median≈0 → noise mapped to the 0.25 target) [RC-Astro; R2]. Standard params: shadows clip
+   −2.80σ, target background 0.25; `STF` row order is `[c0, c1, m, r0, r1]` (NOT the
+   `HistogramTransformation` order `[c0, m, c1, r0, r1]`, easy to swap). To show it in chat, bake
+   the same numbers into a throwaway clone with `HistogramTransformation` (an STF won't appear in a
+   saved file), or simply `render_view(viewId, path, stf:"auto")`, which does exactly this
+   (and refuses to blow out a mostly-empty layer: degenerate-median clamp + warning).
 5. **Verify, a gate, not a formality:** byte-identical stats = no-op → stop, diagnose (wrong
    output default? separate output view? mask?), fix, re-run. Watch for clipping (values pinned
    to 0/1), star-count collapse, background sign flips.
@@ -132,7 +153,9 @@ no-ops (the gate catches it) or errors: report clearly and fall back to Gradient
   only for linear neutrality). Judge on the render + background chroma of the near-neutral
   population + faint/bright preservation. Removing chroma makes darks read blacker at equal
   luminance → neutralize by preserving brightness; never fix "too dark" by global brightening
-  (washes the neutral). Compare variants side-by-side; **the user picks.**
+  (washes the neutral). Compare variants side-by-side; **the critic ranks (blind A/B mode);
+  the user audits per `docs/AUTONOMY.md`**, pause for the user only at aesthetic decision
+  points they named.
 - **Post-stretch background neutralization IS legitimate** (the old "never after stretch" was too
   broad, it came from blind SCNR@100%): see `docs/background-work.md` [R7, user-validated].
   Recipe: (1) luminance-dependent per-channel curves leveling, then (2) pull teal pixels toward
@@ -157,8 +180,19 @@ no-ops (the gate catches it) or errors: report clearly and fall back to Gradient
   a per-object datapoint, NOT a default ("other targets might not be as good"). A darker
   background tolerates a harder star stretch. Never the nebula's black points on stars.
 - **VERIFY STARS AT 1:1, global stats lie** (star-layer median≈0 hides too-dim stars) [R5].
-  Render a true 1:1 crop (`Crop` `mode=1`, negative margins, ~900×640, centered on a
-  grid-scanned bright star `max(r,g,b)>0.5`) and LOOK before calling the star step done.
+  `render_view(viewId, path, stf:"asis", rect:[…])` centered on a bright star from
+  `get_star_metrics().brightestStars` (~600×400) and LOOK before calling the star step done.
+- **Star COLOR correction, gated + measured [R8, user technique].** After the star stretch,
+  measure the star-pixel hue and apply **only what fires**: (a) **green-dominant** stars → `SCNR`
+  green (Average Neutral); (b) **magenta / purple / red-fringed** stars → **`invert → SCNR green →
+  invert`** (magenta is green's complement, so this removes the purple fringe and pushes those stars
+  toward yellow). Measure the star pixels first; never apply both blindly (same gate discipline as
+  the nebula SCNR). Broadband star fields especially: SPCC gives good bulk star color but leaves
+  purple fringing on bright/saturated stars. **Green haze around bright blue stars lives on BOTH the
+  stars layer and the starless** (reflection nebula) [R8, user], a gated, careful SCNR green on the
+  starless is legitimate too (purifies teal→blue; Average Neutral only edits green so it can't reduce
+  blue). Measure **green excess** `gex=G−(R+B)/2>0` on the *localized* halos, the region mean is
+  blue-dominated (reads ≤0) and hides it. Not a default step; judge on the render.
 - **Recombine `starless*~stars + stars`** (≡ screen), the formula is correct; artifacts mean
   the star layer wasn't a natural MTF stretch, not a combine bug [R4].
 - **Open research gaps, do NOT invent numbers** (`process-retro` them): in-place OSC gold/teal
@@ -180,8 +214,29 @@ no-ops (the gate catches it) or errors: report clearly and fall back to Gradient
   is an array of property-id **strings**; named enum constants are `undefined` in the watcher's
   bare context (`UndoFlag_*`, `ColorSaturation.AkimaSubsplines`, …), use numeric values
   (`HSt=2` for Akima) and call `view.beginProcess()` with no arg.
+- **`image.median(channel)` THROWS** in the bare context (a channel arg isn't accepted) [R8], omit
+  it (`image.median()` = current selection) or set `image.selectedChannel = c` then `image.median()`,
+  or just use the `get_image_statistics` tool for per-channel medians. Same for other stats methods.
 - MCP tool params (easy to get wrong): `open_image` takes **`filePath`**; `run_script` takes
   **`code`**; `save_image` needs **`overwrite:true`** to replace an existing file.
+
+## Critic gates (phase boundaries, the autonomous quality loop)
+
+At each of these three boundaries, run the blind critic before moving on:
+1. **post-linear**, after gradient correction + color calibration + BXT/NXT, before SXT/stretch;
+2. **post-stretch**, starless and stars layers judged as separate packs (never `stf:"auto"`
+   on the star layer, pack them `poststretch`);
+3. **final**, the recombined result.
+
+Procedure per gate: `render_critic_pack(viewId, <scratch dir>, phase)` → launch the
+`image-critic` skill as a **subagent given ONLY the pack dir + `docs/CRITIC_RUBRIC.md`** -
+never the transcript or parameter values (blindness is the design; see the skill).
+- `pass` → proceed; keep the report for the run record.
+- `revise: <axis>` → re-enter the measure→configure→verify loop on that axis. **Max 2 revise
+  cycles per boundary**, then log the unresolved axis as a finding and proceed, a stuck axis
+  is information for process-retro, not a reason to loop forever.
+- The final pack + all critic reports are end-of-run artifacts: keep them with the run record
+  (they feed process-retro and the 1-in-10 human audit, `docs/AUTONOMY.md`).
 
 ## Checkpoints & when you finish
 
