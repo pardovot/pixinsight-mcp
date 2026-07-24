@@ -342,6 +342,94 @@ function handleGetHistory(command) {
    };
 }
 
+// get_full_history, the complete named step list WITH per-step settings.
+// KEY FACT (verified live): view.processing is the CUMULATIVE ProcessContainer of
+// every history step (its entries .at(0..N-1) are states 1..N); view.initialProcessing
+// is the base (state 0); view.historyIndex is the current pointer. So the whole history
+// reads out of these two objects with NO navigation, fully read-only, no pixel swap.
+// PixInsight prunes the redo branch when a process is applied after an undo, so
+// view.processing already reflects the surviving linear history the GUI shows; steps
+// ahead of the pointer are redo-able (not applied to current pixels).
+function handleGetFullHistory(command) {
+   var viewId = command.parameters.viewId;
+   var maxLines = command.parameters.maxParamLines || 12;
+   var w = findWindowByViewId(viewId);
+   if (!w) throw new Error("Image not found: " + viewId);
+   var v = w.mainView;
+   var current = v.historyIndex;
+
+   function innerIds(pc) {
+      var ids = [];
+      try { for (var k = 0; k < pc.length; ++k) ids.push(pc.at(k).processId()); } catch (e) {}
+      return ids;
+   }
+   // Extract just the `P.<param> = ...;` assignment lines, dropping the huge
+   // pixel/path/comment blobs (e.g. ImageIntegration's 80 KB file list).
+   function compactParams(p, limit) {
+      var out = [];
+      try {
+         var lines = String(p.toSource()).split("\n");
+         for (var i = 0; i < lines.length; ++i) {
+            var ln = lines[i].replace(/^\s+/, "");
+            if (ln.substring(0, 2) === "P." || ln.substring(0, 2) === "P[") {
+               if (ln.length > 200) ln = ln.substring(0, 160) + " ...";
+               out.push(ln);
+               if (out.length >= limit) { out.push("... (truncated; " + lines.length + " source lines)"); break; }
+            }
+         }
+      } catch (e) { out.push("(source unavailable: " + e.message + ")"); }
+      return out;
+   }
+
+   var steps = [];
+   // Base state (index 0), usually a ProcessContainer (the WBPP/integration).
+   // Its source can be enormous, so we list inner process names but skip params.
+   var baseId = "(none)", baseInner = null;
+   try {
+      var init = v.initialProcessing;
+      baseId = init.processId();
+      if (baseId === "ProcessContainer") baseInner = innerIds(init);
+   } catch (e) {}
+   steps.push({ index: 0, processId: baseId, inner: baseInner, params: [], applied: true, current: current === 0 });
+
+   var c = v.processing, n = 0;
+   try { n = c.length; } catch (e) { n = 0; }
+   for (var j = 0; j < n; ++j) {
+      var p = c.at(j);
+      var pid = p.processId();
+      var stateIndex = j + 1;
+      steps.push({
+         index: stateIndex,
+         processId: pid,
+         inner: (pid === "ProcessContainer") ? innerIds(p) : null,
+         params: compactParams(p, maxLines),
+         applied: stateIndex <= current,
+         current: stateIndex === current
+      });
+   }
+
+   var msg = [];
+   msg.push(viewId + " history: " + n + " step(s) after base; current index=" + current +
+            ", canUndo=" + v.canGoBackward + ", canRedo=" + v.canGoForward);
+   for (var s = 0; s < steps.length; ++s) {
+      var st = steps[s];
+      var head = "[" + st.index + "] " + st.processId;
+      if (st.inner && st.inner.length) head += " {" + st.inner.join(", ") + "}";
+      var flags = [];
+      if (st.current) flags.push("CURRENT");
+      if (!st.applied) flags.push("redo-able, not applied");
+      if (flags.length) head += "  <" + flags.join("; ") + ">";
+      msg.push(head);
+      for (var q = 0; q < st.params.length; ++q) msg.push("      " + st.params[q]);
+   }
+
+   return {
+      status: "success",
+      outputs: { historyIndex: current, stepCount: n, canUndo: v.canGoBackward, canRedo: v.canGoForward, steps: steps },
+      message: msg.join("\n")
+   };
+}
+
 function handleUndo(command) {
    var viewId = command.parameters.viewId;
    var steps = command.parameters.steps || 1;
@@ -452,6 +540,80 @@ function findViewById(viewId) {
 }
 
 // ============================================================================
+// Reproducibility export, write a loadable ProcessContainer .xpsm from a view's
+// process-history slice. .xpsm is plain XML; PixInsight opens it -> icon appears.
+// The scripting API CANNOT mint icons (writeIcon only overwrites an existing one),
+// so we write the file directly. Format cracked from a real PI 1.9.4 save.
+// ============================================================================
+
+function handleExportContainer(command) {
+   var p = command.parameters;
+   var viewId = p.viewId, iconName = p.iconName || "ProcessContainer", outPath = p.outputPath;
+   if (!outPath) throw new Error("outputPath is required");
+   var w = findWindowByViewId(viewId);
+   if (!w) throw new Error("Image not found: " + viewId);
+   var pc = w.mainView.processing;
+   var total = 0; try { total = pc.length; } catch (e) { total = 0; }
+   var from = (p.fromIndex != null) ? p.fromIndex : 0;
+   var to = (p.toIndex != null) ? p.toIndex : total;
+   if (from < 0) from = 0;
+   if (to > total) to = total;
+   var procs = [];
+   for (var i = from; i < to; ++i) procs.push(pc.at(i));
+   if (!procs.length)
+      throw new Error("No history steps in [" + from + "," + to + ") for " + viewId + " (history has " +
+                      total + "). Note: view.processing RESETS on save+reopen and createNewImage outputs " +
+                      "start with empty history, export while the view is still live.");
+
+   function xmlEsc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+   function tableRows(arr) {
+      var s = "";
+      for (var r = 0; r < arr.length; ++r)
+         s += '         <tr>\n            <td id="x" value="' + arr[r][0] + '"/>\n            <td id="y" value="' + arr[r][1] + '"/>\n         </tr>\n';
+      return s;
+   }
+   // ProcessInstance -> <instance> XML. Handles scalars/bools/enums/strings AND (crucially)
+   // MULTI-LINE curve/HS point arrays, a line-by-line parser silently drops those tables.
+   function instanceToXpsm(P, indent) {
+      var src = P.toSource();
+      var cls = /new\s+(\w+)/.exec(src)[1];
+      var body = src.substring(src.indexOf(";") + 1);
+      var pad = indent + "   ";
+      var x = indent + '<instance class="' + cls + '" version="256" enabled="true">\n';
+      var re = /P\.(\w+)\s*=\s*([\s\S]*?);\s*(?=P\.\w+\s*=|$)/g, m;
+      while ((m = re.exec(body)) !== null) {
+         var id = m[1], v = m[2].replace(/^\s+|\s+$/g, "");
+         if (v === "true" || v === "false") x += pad + '<parameter id="' + id + '" value="' + v + '"/>\n';
+         else if (/^-?[0-9.]+([eE]-?[0-9]+)?$/.test(v)) x += pad + '<parameter id="' + id + '" value="' + v + '"/>\n';
+         else if (/^[A-Za-z_]\w*\.[A-Za-z_]\w*$/.test(v)) x += pad + '<parameter id="' + id + '" value="' + v.split(".").pop() + '"/>\n';
+         else if (v.charAt(0) === '"') { var str = v.slice(1, -1); x += str === "" ? pad + '<parameter id="' + id + '"></parameter>\n' : pad + '<parameter id="' + id + '">' + xmlEsc(str) + "</parameter>\n"; }
+         else if (v.charAt(0) === "[") {
+            var arr; try { arr = eval(v); } catch (e) { arr = null; }
+            if (arr && arr.length && arr[0] && arr[0].length === 2) x += pad + '<table id="' + id + '" rows="' + arr.length + '">\n' + tableRows(arr) + pad + "</table>\n";
+            else x += pad + '<table id="' + id + '" rows="0"/>\n';
+         }
+      }
+      return x + indent + "</instance>\n";
+   }
+
+   var instId = iconName + "_inst";
+   var xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<xpsm version="1.0" xmlns="http://www.pixinsight.com/xpsm" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.pixinsight.com/xpsm http://pixinsight.com/xpsm/xpsm-1.0.xsd">\n' +
+      '   <instance class="ProcessContainer" id="' + instId + '">\n';
+   var ids = [];
+   for (var k = 0; k < procs.length; ++k) { xml += instanceToXpsm(procs[k], "      "); ids.push(procs[k].processId()); }
+   xml += "   </instance>\n" +
+      '   <icon id="' + iconName + '" instance="' + instId + '" xpos="16" ypos="688" workspace="Workspace01"/>\n</xpsm>\n';
+
+   File.writeTextFile(outPath, xml);
+   return {
+      status: "success",
+      outputs: { path: outPath, count: procs.length, processes: ids, fromIndex: from, toIndex: to },
+      message: "Wrote " + procs.length + "-process container '" + iconName + "' (" + ids.join(", ") + ") to " + outPath
+   };
+}
+
+// ============================================================================
 // Command Router
 // ============================================================================
 
@@ -489,10 +651,14 @@ function dispatchCommand(command) {
 
    // Session / process-history: revert + checkpoint
    if (tool === "get_history") return handleGetHistory(command);
+   if (tool === "get_full_history") return handleGetFullHistory(command);
    if (tool === "undo") return handleUndo(command);
    if (tool === "redo") return handleRedo(command);
    if (tool === "snapshot") return handleSnapshot(command);
    if (tool === "restore") return handleRestore(command);
+
+   // Reproducibility: emit a per-section ProcessContainer .xpsm
+   if (tool === "export_container") return handleExportContainer(command);
 
    // Script execution
    if (tool === "run_script") return handleRunScript(command);

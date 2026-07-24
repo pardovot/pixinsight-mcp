@@ -7,6 +7,9 @@ import { BridgeClient } from "./bridge/client.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
 import { registerProcessingTools } from "./tools/processing.js";
 import { registerSessionTools } from "./tools/session.js";
+import { registerExportTools } from "./tools/export.js";
+import { registerMeasurementTools } from "./tools/measurement.js";
+import { registerRenderTools } from "./tools/render.js";
 
 // Single version source: package.json (shipped alongside build/ in the npm package).
 const { version } = JSON.parse(
@@ -34,6 +37,9 @@ async function main() {
   registerImageManagementTools(server, bridge);
   registerProcessingTools(server, bridge);
   registerSessionTools(server, bridge);
+  registerExportTools(server, bridge);
+  registerMeasurementTools(server, bridge);
+  registerRenderTools(server, bridge);
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();
