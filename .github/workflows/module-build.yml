@@ -38,6 +38,11 @@ on:
       - "pjsr/pixinsight-mcp-watcher.js"
       - ".github/workflows/module-build.yml"
 
+# Rapid pushes to the same ref cancel superseded runs instead of stacking.
+concurrency:
+  group: module-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -88,8 +93,15 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      # cmake/ninja on Windows come from the Visual Studio install (config.mjs
-      # locates them via vswhere); MSVC is set up by build.mjs via vcvars64.
+      # Establish the MSVC x64 dev environment for the whole job. build.mjs
+      # detects VCINSTALLDIR and uses this directly instead of re-running vcvars,
+      # which on the runner didn't put cl.exe on PATH for CMake. cmake/ninja come
+      # from the VS install (config.mjs locates them via vswhere).
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Build PCL static library
         run: node module/build-pcl.mjs
@@ -104,3 +116,4 @@ jobs:
           name: MCPWatcher-pxm-${{ matrix.os }}
           path: module/build/MCPWatcher-pxm.*
           if-no-files-found: warn
+          retention-days: 7
