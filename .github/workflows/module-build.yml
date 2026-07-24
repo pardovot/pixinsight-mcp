@@ -1,0 +1,92 @@
+name: Module Build (compile check)
+
+# Builds the native PixInsight module on all three OSes to prove it COMPILES.
+# It publishes NOTHING (see the planned release workflow + docs/RELEASING.md) and
+# needs no version bump — building is not publishing.
+#
+# Why this exists: the macOS/Linux build branches have never been run. This is
+# where we discover and fix them. Expect Windows green first; macOS/Linux to
+# need iteration (linker/toolchain, and the PCL clone layout below).
+#
+# Runners have no PixInsight, so PCL — the SDK the module links against — is
+# cloned from the open-source PixInsight/PCL repo and its location is fed to the
+# existing build scripts via env vars (PI_ROOT/PCLINCDIR/PCLSRCDIR are all
+# overridable in module/config.mjs — so NO change to that file is needed).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pcl_ref:
+        description: "PixInsight/PCL git ref (blank = default branch)"
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - "module/**"
+      - "pjsr/pixinsight-mcp-watcher.js"
+      - ".github/workflows/module-build.yml"
+  push:
+    branches: [main]
+    paths:
+      - "module/**"
+      - "pjsr/pixinsight-mcp-watcher.js"
+      - ".github/workflows/module-build.yml"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # PCL is cloned here; config.mjs derives PCLINCDIR=<PI_ROOT>/include and
+      # PCLSRCDIR=<PI_ROOT>/src from it. The compiled static lib goes to the
+      # default writable ~/pcl-build (see config.mjs pclBuildOut), which we cache.
+      PI_ROOT: ${{ github.workspace }}/pcl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clone PCL SDK
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/PixInsight/PCL.git pcl
+          if [ -n "${{ github.event.inputs.pcl_ref }}" ]; then
+            git -C pcl fetch --depth 1 origin "${{ github.event.inputs.pcl_ref }}"
+            git -C pcl checkout FETCH_HEAD
+          fi
+          echo "PCL_SHA=$(git -C pcl rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Cache built PCL static library
+        uses: actions/cache@v4
+        with:
+          path: ~/pcl-build
+          key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      # cmake/ninja on Windows come from the Visual Studio install (config.mjs
+      # locates them via vswhere); MSVC is set up by build.mjs via vcvars64.
+
+      - name: Build PCL static library
+        run: node module/build-pcl.mjs
+
+      - name: Build module
+        run: node module/build.mjs
+
+      - name: Upload module artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCPWatcher-pxm-${{ matrix.os }}
+          path: module/build/MCPWatcher-pxm.*
+          if-no-files-found: warn
