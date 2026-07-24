@@ -38,11 +38,10 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
   - **Linux + macOS**: build from the GitLab source directly — it ships
     `src/pcl/{linux,macosx}/g++` build projects. These are the two platforms never verified,
     so CI's main job is here.
-  - **Windows**: NOT in the CI matrix yet. The public PCL repo omits the Windows vc17 project
-    (`src/pcl/windows/vc17/PCL.vcxproj` is absent), which the module's Windows PCL build
-    needs. Windows already builds locally from a PixInsight install; to add it to CI, vendor
-    those `vc17/` project files into this repo. Until then, Windows binaries come from the
-    local verified build.
+  - **Windows**: the public PCL repo omits the Windows vc17 project
+    (`src/pcl/windows/vc17/PCL.vcxproj`), which the Windows PCL build needs. We vendor it in
+    `module/vendor/pcl-vc17/` (copied from a stock install, PCLL-licensed) and the workflow
+    overlays it into the clone before building. So Windows is a full CI target too.
 
 - **Release/publish** — *planned (Phase 2), lands once the compile-check is green on all
   three OSes.* Tag-driven; see the ritual below.

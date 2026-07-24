@@ -14,12 +14,10 @@ name: Module Build (compile check)
 # (PI_ROOT/PCLINCDIR/PCLSRCDIR are all overridable in module/config.mjs — so NO
 # change to that file is needed).
 #
-# NOTE — Windows is not in the matrix yet: the public PCL repo ships the
-# Linux/macOS build projects (src/pcl/{linux,macosx}/g++) but NOT the Windows
-# vc17 project (src/pcl/windows/vc17/PCL.vcxproj is absent). Windows already
-# builds locally from a PixInsight install; adding it here needs those vc17
-# files vendored into this repo (see docs/RELEASING.md). CI here covers the two
-# platforms that have never been verified.
+# NOTE — Windows PCL project: the public PCL repo ships the Linux/macOS build
+# projects (src/pcl/{linux,macosx}/g++) but NOT the Windows vc17 project
+# (src/pcl/windows/vc17/PCL.vcxproj is absent). We vendor it in
+# module/vendor/pcl-vc17/ and overlay it into the clone below (Windows only).
 
 on:
   workflow_dispatch:
@@ -45,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
       # PCL is cloned here; config.mjs derives PCLINCDIR=<PI_ROOT>/include and
@@ -67,6 +65,14 @@ jobs:
             git -C pcl checkout FETCH_HEAD
           fi
           echo "PCL_SHA=$(git -C pcl rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Overlay vendored Windows vc17 project (absent from public PCL)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p pcl/src/pcl/windows/vc17
+          cp module/vendor/pcl-vc17/PCL.vcxproj module/vendor/pcl-vc17/PCL.vcxproj.filters \
+             pcl/src/pcl/windows/vc17/
 
       - name: Cache built PCL static library
         uses: actions/cache@v4
