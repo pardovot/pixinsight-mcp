@@ -1,0 +1,99 @@
+name: Module Release (publish)
+
+# Tag-driven publish of the native module to the `dist` branch - the PixInsight
+# update-repository URL users add:
+#   https://raw.githubusercontent.com/pardovot/pixinsight-mcp/dist/
+#
+# Flow:
+#   1. preflight - assert the tag matches module/src/Version.h (the guard against
+#      forgetting to bump, or republishing a version PixInsight won't re-deliver).
+#   2. build     - reuse module-build.yml to build all three OS binaries.
+#   3. publish   - assemble pi-repo/ (UNSIGNED, pre-CDP - see docs/POST-CDP-SIGNING.md)
+#      and force-push it to the single-commit `dist` branch.
+#
+# To cut a release:  bump module/src/Version.h, commit, then
+#   git tag module-v<version> && git push --tags
+# See docs/RELEASING.md.
+
+on:
+  push:
+    tags: ["module-v*"]
+  workflow_dispatch: {}
+
+# Serialize releases so two never race on the dist branch.
+concurrency:
+  group: module-release
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        shell: bash
+        run: |
+          VER=$(sed -n 's/.*MCPWATCHER_VERSION_STR[[:space:]]*"\([^"]*\)".*/\1/p' module/src/Version.h)
+          [ -n "$VER" ] || { echo "::error::Could not read MCPWATCHER_VERSION_STR from Version.h"; exit 1; }
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Version.h = $VER"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGVER="${GITHUB_REF_NAME#module-v}"
+            if [ "$TAGVER" != "$VER" ]; then
+              echo "::error::Tag ${GITHUB_REF_NAME} (=$TAGVER) != Version.h (=$VER). Bump Version.h or retag."
+              exit 1
+            fi
+            echo "Tag matches Version.h ($VER)."
+          else
+            echo "Manual dispatch - publishing Version.h version $VER."
+          fi
+
+  # Reuse the compile-check workflow so the release build can never drift from it.
+  build:
+    needs: preflight
+    uses: ./.github/workflows/module-build.yml
+
+  publish:
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the dist branch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download built module binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dl
+          pattern: MCPWatcher-pxm-*
+          merge-multiple: true
+
+      - name: Stage binaries for packaging
+        run: |
+          mkdir -p module/build
+          find dl -type f \( -name 'MCPWatcher-pxm.dll' -o -name 'MCPWatcher-pxm.so' \
+               -o -name 'MCPWatcher-pxm.dylib' \) -exec cp {} module/build/ \;
+          echo "Staged:"; ls -l module/build
+
+      - name: Assemble pi-repo (unsigned, pre-CDP)
+        run: node scripts/build-pi-repo.mjs
+
+      - name: Publish pi-repo to the dist branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd pi-repo
+          # Fresh init each release -> dist stays a single commit (no binary
+          # history accumulates); force-push overwrites the previous publish.
+          git init -q -b dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Publish MCP Watcher module v${{ needs.preflight.outputs.version }} (${GITHUB_SHA::7})"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" dist
+          echo "Published -> https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/dist/updates.xri"
