@@ -2,19 +2,19 @@ name: Module Build (compile check)
 
 # Builds the native PixInsight module on all three OSes to prove it COMPILES.
 # It publishes NOTHING (see the planned release workflow + docs/RELEASING.md) and
-# needs no version bump — building is not publishing.
+# needs no version bump - building is not publishing.
 #
 # Why this exists: the macOS/Linux build branches have never been run. This is
 # where we discover and fix them. Expect Windows green first; macOS/Linux to
 # need iteration (linker/toolchain, and the PCL clone layout below).
 #
-# Runners have no PixInsight, so PCL — the SDK the module links against — is
+# Runners have no PixInsight, so PCL - the SDK the module links against - is
 # cloned from the official open-source repo (gitlab.com/pixinsight/PCL) and its
 # location is fed to the existing build scripts via env vars
-# (PI_ROOT/PCLINCDIR/PCLSRCDIR are all overridable in module/config.mjs — so NO
+# (PI_ROOT/PCLINCDIR/PCLSRCDIR are all overridable in module/config.mjs - so NO
 # change to that file is needed).
 #
-# NOTE — Windows PCL project: the public PCL repo ships the Linux/macOS build
+# NOTE - Windows PCL project: the public PCL repo ships the Linux/macOS build
 # projects (src/pcl/{linux,macosx}/g++) but NOT the Windows vc17 project
 # (src/pcl/windows/vc17/PCL.vcxproj is absent). We vendor it in
 # module/vendor/pcl-vc17/ and overlay it into the clone below (Windows only).
@@ -108,7 +108,7 @@ jobs:
           arch: x64
 
       # Use the runner's system cmake, not the VS-bundled one config.mjs picks by
-      # default — the bundled cmake can't detect cl.exe with -G Ninja. Pass its
+      # default - the bundled cmake can't detect cl.exe with -G Ninja. Pass its
       # FULL PATH: Node's spawnSync (shell:false, custom env) won't resolve a bare
       # "cmake"/"cmake.exe" on PATH here (spawn ENOENT); an absolute path needs no
       # PATH lookup. Get-Command returns the first on PATH = system cmake.
@@ -123,8 +123,8 @@ jobs:
       - name: Build PCL static library
         run: node module/build-pcl.mjs
 
-      # Save PCL right after it builds — BEFORE the module build that might still
-      # fail — so failed runs don't rebuild PCL (~13 min) on the next attempt.
+      # Save PCL right after it builds - BEFORE the module build that might still
+      # fail - so failed runs don't rebuild PCL (~13 min) on the next attempt.
       - name: Save cached PCL static library
         if: steps.pcl-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4

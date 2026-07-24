@@ -1,14 +1,14 @@
 name: Module Release (publish)
 
-# Tag-driven publish of the native module to the `dist` branch — the PixInsight
+# Tag-driven publish of the native module to the `dist` branch - the PixInsight
 # update-repository URL users add:
 #   https://raw.githubusercontent.com/pardovot/pixinsight-mcp/dist/
 #
 # Flow:
-#   1. preflight — assert the tag matches module/src/Version.h (the guard against
+#   1. preflight - assert the tag matches module/src/Version.h (the guard against
 #      forgetting to bump, or republishing a version PixInsight won't re-deliver).
-#   2. build     — reuse module-build.yml to build all three OS binaries.
-#   3. publish   — assemble pi-repo/ (UNSIGNED, pre-CDP — see docs/POST-CDP-SIGNING.md)
+#   2. build     - reuse module-build.yml to build all three OS binaries.
+#   3. publish   - assemble pi-repo/ (UNSIGNED, pre-CDP - see docs/POST-CDP-SIGNING.md)
 #      and force-push it to the single-commit `dist` branch.
 #
 # To cut a release:  bump module/src/Version.h, commit, then
@@ -47,7 +47,7 @@ jobs:
             fi
             echo "Tag matches Version.h ($VER)."
           else
-            echo "Manual dispatch — publishing Version.h version $VER."
+            echo "Manual dispatch - publishing Version.h version $VER."
           fi
 
   # Reuse the compile-check workflow so the release build can never drift from it.
