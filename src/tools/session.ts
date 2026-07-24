@@ -47,6 +47,29 @@ export function registerSessionTools(server: McpServer, bridge: BridgeClient): v
     }
   );
 
+  // get_full_history, every step's process name AND settings (History Explorer + hidden params)
+  server.tool(
+    "get_full_history",
+    "List a view's FULL process history: every step's process name and its settings, what " +
+      "the GUI History Explorer shows, plus the settings it hides. Read-only (walks the " +
+      "cumulative process container; no undo/redo, no pixel change). Step 0 is the base " +
+      "(integration); steps ahead of the current index are flagged redo-able. Note: PixInsight " +
+      "prunes the redo branch when a process is applied after an undo, so pruned steps are gone " +
+      "and never appear here.",
+    {
+      viewId: z.string().describe("View ID (an open image's main view)"),
+      maxParamLines: z.number().int().min(1).max(200).default(12)
+        .describe("Max settings lines shown per step before truncating"),
+    },
+    async ({ viewId, maxParamLines }) => {
+      const result = await bridge.sendCommand("get_full_history", "__internal__", { viewId, maxParamLines });
+      if (result.status === "error") return errorContent(result.error.message);
+      return {
+        content: [{ type: "text" as const, text: (result as any).message ?? "No history." }],
+      };
+    }
+  );
+
   // undo, walk back N process-history steps
   server.tool(
     "undo",
