@@ -55,6 +55,10 @@ jobs:
       # PCLSRCDIR=<PI_ROOT>/src from it. The compiled static lib goes to the
       # default writable ~/pcl-build (see config.mjs pclBuildOut), which we cache.
       PI_ROOT: ${{ github.workspace }}/pcl
+      # Use the runner's system cmake instead of the VS-bundled one config.mjs
+      # picks by default on Windows — that bundled cmake failed to detect cl.exe
+      # with -G Ninja. Harmless on Linux/macOS (config already defaults to 'cmake').
+      CMAKE: cmake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,8 +83,9 @@ jobs:
           cp module/vendor/pcl-vc17/PCL.vcxproj module/vendor/pcl-vc17/PCL.vcxproj.filters \
              pcl/src/pcl/windows/vc17/
 
-      - name: Cache built PCL static library
-        uses: actions/cache@v4
+      - name: Restore cached PCL static library
+        id: pcl-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/pcl-build
           key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
@@ -105,6 +110,26 @@ jobs:
 
       - name: Build PCL static library
         run: node module/build-pcl.mjs
+
+      # Save PCL right after it builds — BEFORE the module build that might still
+      # fail — so failed runs don't rebuild PCL (~13 min) on the next attempt.
+      - name: Save cached PCL static library
+        if: steps.pcl-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/pcl-build
+          key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
+
+      - name: Diagnose toolchain (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: cmd
+        run: |
+          echo VCINSTALLDIR=%VCINSTALLDIR%
+          where cl
+          where cmake
+          where ninja
+          cmake --version
 
       - name: Build module
         run: node module/build.mjs
