@@ -11,7 +11,7 @@ description: |
 
 > ⚠️ **This is a parameter/knowledge reference, not a runnable pipeline.**
 > The Node pipeline this skill originally documented (`scripts/run-pipeline.mjs`, `editor/`,
-> config JSONs) was **deleted** from this fork. Do not look for those files.
+> config JSONs) is **not part of this codebase**. Do not look for those files.
 >
 > **How processing actually happens now:** the agent drives PixInsight directly through the MCP
 > tools, `get_process_parameters` → reason → `run_process` → re-measure. To *drive a full run*,
