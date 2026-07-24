@@ -20,6 +20,9 @@ name: Module Build (compile check)
 # module/vendor/pcl-vc17/ and overlay it into the clone below (Windows only).
 
 on:
+  # Reusable: the release workflow (module-release.yml) calls this to build all
+  # three binaries before publishing.
+  workflow_call: {}
   workflow_dispatch:
     inputs:
       pcl_ref:
@@ -128,17 +131,6 @@ jobs:
         with:
           path: ~/pcl-build
           key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
-
-      - name: Diagnose toolchain (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: cmd
-        run: |
-          echo VCINSTALLDIR=%VCINSTALLDIR%
-          where cl
-          where cmake
-          where ninja
-          cmake --version
 
       - name: Build module
         run: node module/build.mjs
