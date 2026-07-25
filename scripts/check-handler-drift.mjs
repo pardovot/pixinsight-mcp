@@ -9,12 +9,17 @@
 //      `var <alias> = command.parameters`).
 //   2. EXPECTED_HANDLERS_REV (src/bridge/client.ts) must equal
 //      HANDLERS_REVISION (watcher JS).
+//   3. The handler section cannot change without a HANDLERS_REVISION bump:
+//      scripts/handlers-rev.lock.json stores {rev, hash of the sentinel
+//      block}. Hash changed + rev unchanged = build failure. A rev bump
+//      auto-updates the lock (commit it), the bump IS the explicit action.
 //
 // Static source analysis, no build output needed. run_script is exempt: it is
 // the generic carrier for TS-side composites (src/pjsr/*.ts).
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -142,9 +147,44 @@ if (!clientRev) errors.push("EXPECTED_HANDLERS_REV not found in client.ts");
 if (watcherRev && clientRev && watcherRev !== clientRev)
   errors.push(`revision mismatch: watcher HANDLERS_REVISION=${watcherRev}, client EXPECTED_HANDLERS_REV=${clientRev}`);
 
+// ---------------------------------------------------------------------------
+// Hash lock: a handler-section change without a rev bump fails the build,
+// otherwise a forgotten bump makes the skew detector itself skew silently.
+// ---------------------------------------------------------------------------
+
+const lockPath = path.join(repoRoot, "scripts", "handlers-rev.lock.json");
+const begin = watcher.indexOf("__MCP_HANDLERS_BEGIN__");
+const end = watcher.indexOf("__MCP_HANDLERS_END__");
+let lockUpdate = null;
+if (begin === -1 || end === -1) {
+  errors.push("handler sentinels not found in watcher JS");
+} else {
+  const section = watcher.slice(begin, end).replace(/\r\n/g, "\n");
+  const hash = crypto.createHash("sha256").update(section).digest("hex");
+  const lock = fs.existsSync(lockPath) ? JSON.parse(fs.readFileSync(lockPath, "utf8")) : null;
+  if (!lock) {
+    lockUpdate = { rev: Number(watcherRev), hash, note: "initialized" };
+  } else if (Number(watcherRev) < lock.rev) {
+    errors.push(`HANDLERS_REVISION went backwards: watcher ${watcherRev}, lock ${lock.rev}`);
+  } else if (Number(watcherRev) > lock.rev) {
+    lockUpdate = { rev: Number(watcherRev), hash, note: `bumped from ${lock.rev}` };
+  } else if (hash !== lock.hash) {
+    errors.push(
+      "handler section changed without a HANDLERS_REVISION bump. Bump HANDLERS_REVISION " +
+        "(pjsr/pixinsight-mcp-watcher.js) AND EXPECTED_HANDLERS_REV (src/bridge/client.ts), " +
+        "then rebuild; the lock updates itself on the bump."
+    );
+  }
+}
+
 if (errors.length) {
   console.error("Handler drift check FAILED:");
   for (const e of errors) console.error("  - " + e);
   process.exit(1);
+}
+if (lockUpdate) {
+  const { note, ...lock } = lockUpdate;
+  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
+  console.log(`Handler rev lock ${note}: rev ${lock.rev} (commit scripts/handlers-rev.lock.json)`);
 }
 console.log(`Handler drift check OK (${toolToHandler.size} verbs, rev ${watcherRev})`);

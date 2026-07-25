@@ -76,34 +76,58 @@ export class BridgeClient {
 
     const timeoutMs = options?.timeoutMs ?? this.config.defaultTimeoutMs;
     const result = await this.waitForResult(id, timeoutMs);
-    this.checkHandlersRev(result);
-    return result;
+    return this.checkHandlersRev(result);
   }
 
-  // Warn (once per session, stderr) when the installed module's handlers and
-  // this server disagree on revision. Only success results carry the marker,
-  // error envelopes are built outside dispatchCommand.
-  private checkHandlersRev(result: BridgeResult): void {
-    if (this.revWarned || result.status !== "success") return;
+  // Revision skew handling. Only success results carry the marker (error
+  // envelopes are built outside dispatchCommand). A module OLDER than the
+  // server is dangerous, the server may rely on handler behavior it lacks, so
+  // every command hard-errors with fix instructions (fail loudly; a rebuild
+  // cycle is ~1 min). A NEWER module presumably keeps old behavior, so it only
+  // gets a one-time warning appended to the result. stderr is near-invisible
+  // in an agent session, which is why both surface in the result itself.
+  private checkHandlersRev(result: BridgeResult): BridgeResult {
+    if (result.status !== "success") return result;
     const rev = (result.outputs as Record<string, unknown>)?.handlersRev;
-    if (rev === EXPECTED_HANDLERS_REV) return;
-    this.revWarned = true;
-    if (rev === undefined) {
-      console.error(
-        "[pixinsight-mcp] WARNING: the installed MCPWatcher module predates handler revision " +
-          "reporting; the server may rely on handler behavior it does not have. Rebuild and " +
-          "reinstall the module (npm run module:build, module:sign, then module:install as " +
-          "admin with PixInsight closed)."
-      );
-    } else {
-      console.error(
-        `[pixinsight-mcp] WARNING: handler revision mismatch, installed module reports ${rev}, ` +
-          `server expects ${EXPECTED_HANDLERS_REV}. ` +
-          (Number(rev) < EXPECTED_HANDLERS_REV
-            ? "Rebuild and reinstall the module."
-            : "The module is newer than this server; update/rebuild the MCP server.")
-      );
+    if (rev === EXPECTED_HANDLERS_REV) return result;
+
+    const reinstall =
+      "Rebuild and reinstall the module: npm run module:build, module:sign, then " +
+      "module:install as admin with PixInsight closed, then restart the MCP server.";
+
+    if (rev === undefined || Number(rev) < EXPECTED_HANDLERS_REV) {
+      const detail = rev === undefined
+        ? "predates handler revision reporting"
+        : `reports handler revision ${rev}, this server expects ${EXPECTED_HANDLERS_REV}`;
+      if (!this.revWarned) {
+        this.revWarned = true;
+        console.error(`[pixinsight-mcp] installed MCPWatcher module ${detail}. ${reinstall}`);
+      }
+      return {
+        id: result.id,
+        timestamp: result.timestamp,
+        status: "error",
+        process: result.process,
+        duration_ms: result.duration_ms,
+        error: {
+          message:
+            `The command ran, but the installed MCPWatcher module ${detail}, so this server ` +
+            `cannot trust its handler behavior. ${reinstall}`,
+          type: "HandlersRevisionMismatch",
+        },
+      };
     }
+
+    // Module newer than server: warn once, in the result the agent actually reads.
+    if (!this.revWarned) {
+      this.revWarned = true;
+      const note =
+        `[pixinsight-mcp] installed module reports handler revision ${rev}, this server ` +
+        `expects ${EXPECTED_HANDLERS_REV}; the module is newer, update/rebuild the MCP server.`;
+      console.error(note);
+      result.message = (result.message ? result.message + "\n" : "") + "WARNING: " + note;
+    }
+    return result;
   }
 
   private async waitForResult(id: string, timeoutMs: number): Promise<BridgeResult> {
