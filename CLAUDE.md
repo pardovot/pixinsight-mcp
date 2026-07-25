@@ -90,12 +90,16 @@ reports "your module predates this" instead of silently doing the old thing. `sa
 
 **Systemic skew guards (added 2026-07-26):**
 - Every success result echoes `outputs.handlersRev` (`HANDLERS_REVISION` in the watcher JS;
-  `EXPECTED_HANDLERS_REV` in `src/bridge/client.ts` must match). **Bump BOTH on any behavioral
-  handler change**; the server warns once per session on mismatch. This is coarse detection,
-  keep per-feature markers (like `hints`) for gaps that must hard-error.
+  `EXPECTED_HANDLERS_REV` in `src/bridge/client.ts` must match). **Bump BOTH on any handler
+  change.** A module OLDER than the server hard-errors every command with reinstall
+  instructions (a rebuild is ~1 min; fail loudly beats silent stale primitives); a NEWER
+  module warns once, appended to the result the agent reads. Per-feature markers (like
+  `hints`) remain for gaps that must stay hard errors across releases.
 - `scripts/check-handler-drift.mjs` (runs in `npm run build`) fails when a TS tool sends a
-  bridge parameter the handler never reads (the save_image-compression drift class), and when
-  the two revision constants disagree.
+  bridge parameter the handler never reads (the save_image-compression drift class), when the
+  two revision constants disagree, and, via the hash lock `scripts/handlers-rev.lock.json`,
+  when the handler section changes without a rev bump (a forgotten bump would silently
+  disarm the detector). The lock auto-updates on a bump; commit it.
 
 ## Processing methodology (baked into the `run_process` tool description + `docs/PROCESSING_GUIDE.md`)
 Never run a process blind:
