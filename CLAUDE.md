@@ -48,6 +48,7 @@ baseline requirement, not a later "port" and not a nice-to-have.
 - **`get_process_parameters(processId)`**, introspects that process's settable params + current defaults.
 - Rationale: every PixInsight process is `new X; set params; executeOn(view)`. One generic tool covers all of them with zero per-process maintenance. Adding `run_bxt`-style tools is the **anti-pattern we deliberately moved past**.
 - The per-process tools (`run_bxt`, `run_nxt`, `run_sxt`, `sharpen`, `denoise`, `stretch_image`, `remove_gradient`, …) were **legacy convenience wrappers and were removed 2026-07-22** (along with `search_processing_recommendations`). Don't re-add them. `run_script` remains the raw PJSR escape hatch.
+- `run_pixelmath` (the last surviving per-process MCP tool, with a restricted parameter set: no `symbols`/`rescale`/…) was **removed as an MCP tool 2026-07-26**; use `run_process("PixelMath")`. The **bridge verb + handler remain** for direct bridge callers (public contract).
 
 ## ⛔ WHERE LOGIC LIVES, and never let build cost decide it
 There are two legitimate homes for tool logic. Pick by **what the thing is**, never by what is
@@ -58,9 +59,13 @@ cheaper to ship.
 | **Embedded JS handler** (`pjsr/pixinsight-mcp-watcher.js` → `BridgeHandlersJS.h`) | **Primitives**: the bridge protocol's own verbs. `open_image`, `save_image`, `close_image`, `run_process`, `run_script`, `export_container`. Stable, rarely change. | `module:build` → `module:sign` → close PI → `module:install` (admin) → reopen → restart MCP |
 | **TS-generated PJSR** (`src/pjsr/*.ts` + `execPjsrJson`) | **Composites** built on those primitives that evolve with the knowledge base: the measurement tools, `render_view`, `render_critic_pack`. | `npm run build` + MCP restart |
 
-**The test:** does the bridge expose this as a command? Then it is a primitive and the handler is
-its ONE implementation. Is it analysis/rendering logic layered on top, expected to change as the
-playbooks change? Then TS-side is right.
+**The test (all three must hold for the handler; any failure means TS-side):**
+1. **Stability**: semantics do not evolve with `docs/workflows/` or the critic rubric.
+2. **Contract value**: useful to any bridge client, not just the MCP agent loop.
+3. **Boundary fit**: benefits from validation/error semantics at the PixInsight edge.
+
+(The old test, "does the bridge expose it as a command", was circular: the bridge exposes
+whatever someone put there. Replaced 2026-07-26 after the placement audit.)
 
 ⛔ **"I'll do it TS-side to avoid the rebuild-sign-admin-install cycle" is not an architecture
 argument.** It is a cost argument, and it produces the actual failure mode: **two implementations of
@@ -82,6 +87,15 @@ inconvenient. Corrected by putting it back in the handler.
 capability marker in its `outputs` and have the MCP server check it, so an older installed module
 reports "your module predates this" instead of silently doing the old thing. `save_image` returns
 `outputs.hints` for exactly this.
+
+**Systemic skew guards (added 2026-07-26):**
+- Every success result echoes `outputs.handlersRev` (`HANDLERS_REVISION` in the watcher JS;
+  `EXPECTED_HANDLERS_REV` in `src/bridge/client.ts` must match). **Bump BOTH on any behavioral
+  handler change**; the server warns once per session on mismatch. This is coarse detection,
+  keep per-feature markers (like `hints`) for gaps that must hard-error.
+- `scripts/check-handler-drift.mjs` (runs in `npm run build`) fails when a TS tool sends a
+  bridge parameter the handler never reads (the save_image-compression drift class), and when
+  the two revision constants disagree.
 
 ## Processing methodology (baked into the `run_process` tool description + `docs/PROCESSING_GUIDE.md`)
 Never run a process blind:

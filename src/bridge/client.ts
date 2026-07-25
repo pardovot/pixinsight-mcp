@@ -17,11 +17,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// Must match HANDLERS_REVISION in pjsr/pixinsight-mcp-watcher.js; the drift
+// test (scripts/check-handler-drift.mjs) enforces equality. Coarse skew
+// detector: per-feature markers (save_image outputs.hints) stay the pattern
+// for gaps that must hard-error.
+export const EXPECTED_HANDLERS_REV = 1;
+
 export class BridgeClient {
   private config: BridgeConfig;
   private commandsDir: string;
   private resultsDir: string;
   private logsDir: string;
+  private revWarned = false;
 
   constructor(config?: Partial<BridgeConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -68,7 +75,35 @@ export class BridgeClient {
     await rename(tmpPath, commandPath);
 
     const timeoutMs = options?.timeoutMs ?? this.config.defaultTimeoutMs;
-    return this.waitForResult(id, timeoutMs);
+    const result = await this.waitForResult(id, timeoutMs);
+    this.checkHandlersRev(result);
+    return result;
+  }
+
+  // Warn (once per session, stderr) when the installed module's handlers and
+  // this server disagree on revision. Only success results carry the marker,
+  // error envelopes are built outside dispatchCommand.
+  private checkHandlersRev(result: BridgeResult): void {
+    if (this.revWarned || result.status !== "success") return;
+    const rev = (result.outputs as Record<string, unknown>)?.handlersRev;
+    if (rev === EXPECTED_HANDLERS_REV) return;
+    this.revWarned = true;
+    if (rev === undefined) {
+      console.error(
+        "[pixinsight-mcp] WARNING: the installed MCPWatcher module predates handler revision " +
+          "reporting; the server may rely on handler behavior it does not have. Rebuild and " +
+          "reinstall the module (npm run module:build, module:sign, then module:install as " +
+          "admin with PixInsight closed)."
+      );
+    } else {
+      console.error(
+        `[pixinsight-mcp] WARNING: handler revision mismatch, installed module reports ${rev}, ` +
+          `server expects ${EXPECTED_HANDLERS_REV}. ` +
+          (Number(rev) < EXPECTED_HANDLERS_REV
+            ? "Rebuild and reinstall the module."
+            : "The module is newer than this server; update/rebuild the MCP server.")
+      );
+    }
   }
 
   private async waitForResult(id: string, timeoutMs: number): Promise<BridgeResult> {

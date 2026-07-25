@@ -83,6 +83,13 @@ function getTimestamp() {
 // Command Handlers
 // ============================================================================
 
+// Bump on ANY behavioral handler change. Every success result echoes it as
+// outputs.handlersRev so the MCP server detects an outdated installed module
+// generically (client.ts EXPECTED_HANDLERS_REV must match; the drift test
+// enforces equality). Per-feature markers (save_image outputs.hints) remain
+// for gaps that must hard-error.
+var HANDLERS_REVISION = 1;
+
 function handleListOpenImages(command) {
    var windows = ImageWindow.windows;
    var images = [];
@@ -138,6 +145,11 @@ function handleSaveImage(command) {
    var overwrite = command.parameters.overwrite || false;
    // Default compressed. On a 6159x7396 float RGB master: 521.7 MB -> 384.2 MB.
    var compression = command.parameters.compression || "zlib+sh";
+   // Same list the MCP tool's enum enforces; direct bridge callers get a clean
+   // rejection instead of writer-defined behavior on a typo.
+   var validCodecs = ["zlib", "zlib+sh", "zstd", "zstd+sh", "lz4", "lz4+sh", "lz4hc", "lz4hc+sh", "none"];
+   if (validCodecs.indexOf(compression) < 0)
+      throw new Error("Unknown compression codec: " + compression + " (valid: " + validCodecs.join(", ") + ")");
 
    var window = findWindowByViewId(viewId);
    if (!window) {
@@ -643,6 +655,13 @@ function handleExportContainer(command) {
 var STALE_COMMAND_MS = 10 * 60 * 1000;
 
 function dispatchCommand(command) {
+   var result = routeCommand(command);
+   if (!result.outputs) result.outputs = {};
+   result.outputs.handlersRev = HANDLERS_REVISION;
+   return result;
+}
+
+function routeCommand(command) {
    var tool = command.tool;
 
    if (command.timestamp) {
