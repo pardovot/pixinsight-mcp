@@ -17,33 +17,10 @@ function processResult(result: any, successMsg: string) {
 
 export function registerProcessingTools(server: McpServer, bridge: BridgeClient): void {
 
-  // run_pixelmath
-  server.tool(
-    "run_pixelmath",
-    "Execute a PixelMath expression on an image",
-    {
-      expression: z.string().describe("Math expression (e.g. '$T * 0.5')"),
-      expression1: z.string().optional().describe("Green channel expression (if different)"),
-      expression2: z.string().optional().describe("Blue channel expression (if different)"),
-      targetViewId: z.string().optional().describe("Apply to this view in-place"),
-      createNewImage: z.boolean().default(false).describe("Create a new image instead"),
-      newImageId: z.string().optional().describe("ID for new image"),
-    },
-    async (params) => {
-      const result = await bridge.sendCommand("run_pixelmath", "PixelMath", {
-        expression: params.expression,
-        expression1: params.expression1 ?? "",
-        expression2: params.expression2 ?? "",
-        useSingleExpression: !params.expression1 && !params.expression2,
-        createNewImage: params.createNewImage,
-        newImageId: params.newImageId ?? "",
-      }, {
-        executeMethod: params.targetViewId ? "executeOn" : "executeGlobal",
-        targetView: params.targetViewId,
-      });
-      return processResult(result, `PixelMath executed: ${params.expression}`);
-    }
-  );
+  // run_pixelmath was removed as an MCP tool 2026-07-26: a per-process wrapper
+  // (the anti-pattern) with a restricted parameter set (no symbols/rescale/...).
+  // Use run_process("PixelMath") instead. The bridge verb + handler remain for
+  // direct bridge callers (public contract).
 
   // run_process, generic: run ANY PixInsight process by name
   server.tool(
