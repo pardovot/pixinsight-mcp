@@ -136,6 +136,8 @@ function handleSaveImage(command) {
    var viewId = command.parameters.viewId;
    var filePath = command.parameters.filePath;
    var overwrite = command.parameters.overwrite || false;
+   // Default compressed. On a 6159x7396 float RGB master: 521.7 MB -> 384.2 MB.
+   var compression = command.parameters.compression || "zlib+sh";
 
    var window = findWindowByViewId(viewId);
    if (!window) {
@@ -144,10 +146,26 @@ function handleSaveImage(command) {
    if (File.exists(filePath) && !overwrite) {
       throw new Error("File already exists (set overwrite=true): " + filePath);
    }
-   window.saveAs(filePath, false, false, false, false);
+
+   // ALWAYS pass an explicit codec for XISF. An empty hints string means "format defaults",
+   // and those defaults are SESSION-MUTABLE: one saveAs with a codec hint changes them, so a
+   // later empty-hint save silently inherits it (probed live: the same image wrote 16.95 MB
+   // with "", then 12.07 MB with "" after a single zlib+sh save). Explicit hints are what make
+   // written file sizes reproducible. Non-XISF writers reject an unknown codec hint, so gate it.
+   var isXisf = /\.xisf$/i.test(filePath);
+   var hints = isXisf ? ("compression-codec " + compression) : "";
+   window.saveAs(filePath, false, false, false, false, hints);
+
+   // File.size() does NOT exist in PJSR; FileInfo carries the size.
+   var bytes = -1;
+   try { bytes = new FileInfo(filePath).size; } catch (e) {}
+
    return {
       status: "success",
-      outputs: { filePath: filePath },
+      // `hints` is also the CAPABILITY MARKER the MCP server checks: if it is absent, the
+      // installed module predates compression support and the server must say so loudly
+      // rather than silently writing uncompressed files.
+      outputs: { filePath: filePath, hints: hints, bytes: bytes },
       message: "Saved " + viewId + " to " + filePath
    };
 }
