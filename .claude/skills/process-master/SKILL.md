@@ -385,15 +385,22 @@ channel (N x cost, low yield); the critic gates stay at post-linear / post-stret
 
 ### ⛔ File-writing rules (every save, no exceptions)
 
-- **XISF: ALWAYS compressed.** `save_image` does NOT expose compression, so write via `run_script`:
+- **XISF: ALWAYS compressed.** `save_image` now takes **`compression`, defaulting to `zlib+sh`**, so
+  the normal tool call is already correct. Measured on a 6159x7396 float RGB master:
+  **521.7 MB → 384.2 MB (−26%)**, about 140 MB per image, and a run writes 6+ of them.
+  `zlib+sh` (deflate + byte shuffling) is the best codec tested; `zstd+sh` within ~1%; plain
+  `lz4`/`lz4hc` markedly worse. **Byte shuffling is the load-bearing part for float data**
+  (unshuffled loses a further ~16%), always keep the `+sh`.
+- ⛔ **When saving via raw PJSR (`run_script`, `replay.js`), pass the codec EXPLICITLY:**
   ```js
-  ImageWindow.windowById(id).saveAs(path, false, false, false, false, "compression-codec zlib+sh");
+  w.saveAs(path, false, false, false, false, "compression-codec zlib+sh");   // 6th arg = hints
   ```
-  Measured on a 6159x7396 float RGB master: **521.7 MB → 384.2 MB (−26%)**, about 140 MB per image.
-  `zlib+sh` (deflate + byte shuffling) is the best of the codecs tested; `zstd+sh` is within ~1%;
-  plain `lz4`/`lz4hc` are markedly worse (−23/−25%), and **unshuffled** codecs lose a further ~16%
-  on smaller frames. Byte shuffling is what makes float data compress, always keep the `+sh`.
-  ⚠️ An empty hints string means "format defaults", NOT "no compression". Be explicit.
+  An empty hints string means "format defaults", and **those defaults are SESSION-MUTABLE**: one
+  saveAs with a codec hint changes them, so a later empty-hint save silently inherits it (probed:
+  the same image wrote 16.95 MB with `""`, then 12.07 MB with `""` after one `zlib+sh` save).
+  **Consequence: any save without an explicit hint has non-deterministic size across a session**,
+  including the module's own `save_image` bridge handler and any `saveView()` helper in a replay
+  script. Explicit hints everywhere, or file sizes will not reproduce.
 - **JPEG: ALWAYS quality 100.** `render_view(..., quality: 100)`. These are deliverables and review
   artifacts, not web assets.
 - **Verify the write, do not assume:** re-open and assert non-zero saturation somewhere in the frame
