@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { BridgeClient } from "../build/bridge/client.js";
+import { BridgeClient, EXPECTED_HANDLERS_REV } from "../build/bridge/client.js";
 
 async function freshBridge(t, config = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-mcp-test-"));
@@ -45,7 +45,9 @@ function resultFor(cmd, extra = {}) {
     status: "success",
     process: cmd.process,
     duration_ms: 1,
-    outputs: {},
+    // A current watcher stamps every success result with its handler revision
+    // (dispatchCommand); results without it are treated as a stale module.
+    outputs: { handlersRev: EXPECTED_HANDLERS_REV },
     message: "ok",
     ...extra,
   };
@@ -123,6 +125,42 @@ test("partial write completed within the grace window succeeds", async (t) => {
   const res = await pending;
   assert.equal(res.status, "success");
   assert.equal(res.message, "completed");
+});
+
+test("stale module: success without handlersRev becomes a hard error", async (t) => {
+  const { client, commands, results } = await freshBridge(t);
+  const pending = client.sendCommand("ping", "__test__", {});
+  const cmd = await nextCommand(commands);
+  await writeResult(results, cmd, { outputs: {} });
+  const res = await pending;
+  assert.equal(res.status, "error");
+  assert.equal(res.error.type, "HandlersRevisionMismatch");
+  assert.match(res.error.message, /module:install/);
+});
+
+test("stale module: lower handlersRev becomes a hard error", async (t) => {
+  const { client, commands, results } = await freshBridge(t);
+  const pending = client.sendCommand("ping", "__test__", {});
+  const cmd = await nextCommand(commands);
+  await writeResult(results, cmd, { outputs: { handlersRev: EXPECTED_HANDLERS_REV - 1 } });
+  const res = await pending;
+  assert.equal(res.status, "error");
+  assert.equal(res.error.type, "HandlersRevisionMismatch");
+});
+
+test("newer module: warns in the first result's message only, stays success", async (t) => {
+  const { client, commands, results } = await freshBridge(t);
+  for (const expectWarning of [true, false]) {
+    const pending = client.sendCommand("ping", "__test__", {});
+    const cmd = await nextCommand(commands);
+    // Play the watcher fully: consume the command file, else the next loop
+    // iteration reads this one again.
+    await fs.rm(path.join(commands, `${cmd.id}.json`));
+    await writeResult(results, cmd, { outputs: { handlersRev: EXPECTED_HANDLERS_REV + 1 } });
+    const res = await pending;
+    assert.equal(res.status, "success");
+    assert.equal(/WARNING:.*newer/s.test(res.message), expectWarning);
+  }
 });
 
 test("timeout: no result → Timeout error", async (t) => {
