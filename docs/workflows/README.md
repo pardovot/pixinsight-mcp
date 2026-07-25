@@ -28,6 +28,20 @@ each kind of data). This README lets a fresh session continue the series at full
 | mono-HaLRGB | `mono-halrgb.md` | ✅ verified (17-leg re-run; replaced the provisional draft; surfaced PhotometricContinuumSubtraction/PCS Oct-2024) |
 | mono-SHO | `mono-sho.md` | ✅ verified (Tier-1 capstone; narrowband palette) |
 
+**Cross-cutting STAGE playbooks** (not acquisition categories, they compose with any of the above):
+
+| Stage | File | Status |
+|---|---|---|
+| Mosaic / multi-panel assembly | `mosaic.md` | ✅ run-verified (R9, 2-panel OSC-RGB) + researched; mono ordering single-source |
+
+> **Why `mosaic.md` is a stage, not a category:** 6 categories x mosaic = 12 near-duplicate
+> playbooks. Mosaic is a **second combination point** on an axis orthogonal to acquisition
+> category (channel combination = per-filter → RGB; **panel combination** = per-panel → mosaic),
+> and the decomposition model below already covers it. The governing pre/post-combine rule
+> generalises to panels almost verbatim. Only ONE thing is category-dependent: how the two
+> combination points order against each other (OSC: panel-combine is the only combine; mono:
+> mosaic each filter first, THEN channel-combine). Do not fork per-category mosaic playbooks.
+
 Tier-2 (later): OSC-SHO/foraxx, hybrid mono-Ha+OSC, dual-scope blends.
 
 ## Why the HaLRGB run was provisional

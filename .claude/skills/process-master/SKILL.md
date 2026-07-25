@@ -38,6 +38,13 @@ misrouting narrowband to a broadband playbook calibrates color wrongly. Genuinel
 | mono Ha+LRGB | `docs/workflows/mono-halrgb.md` |
 | mono SHO / narrowband palette | `docs/workflows/mono-sho.md` |
 
+**MULTI-PANEL / MOSAIC?** Read **`docs/workflows/mosaic.md` IN ADDITION to** the category playbook
+above. It is a cross-cutting *stage* (panel combination), not a category, so the category file
+still governs colour/stretch. It owns: what runs per-panel vs once on the mosaic, registration,
+intensity matching, **the measure-before-you-merge rule (do NOT reach for GradientMergeMosaic
+reflexively)**, cropping, and the metric caveats that misfire on mosaics (bimodal peak, gradient
+corner-spread, neutrality band).
+
 **Read the entire matching playbook, in full, before planning a single step.** Present your plan
 as the playbook's step order with your intended checkpoint points.
 
@@ -121,9 +128,37 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   `$T-offsetB`; offsets = channel median − min channel), while linear, tiny residuals compound
   through the stretch. **Not** the `BackgroundNeutralization` process for a small pedestal, it
   blew up in R3 (median ×100, R clipped).
-- **SCNR is NOT a default step** [R1 pink, R2 blue casts]. Apply only if the measured rule fires
-  (green median ≥ BOTH red and blue in the nebula), and even then not blindly at 100%, equal
-  medians ≠ neutral. **⛔ Never stack SCNR + a mask chasing a metric [R7 worst result].**
+- **SCNR is NOT a default step** [R1 pink, R2 blue casts]. Apply only if the measured rule fires,
+  and even then not blindly at 100%, equal medians ≠ neutral. **⛔ Never stack SCNR + a mask
+  chasing a metric [R7 worst result].**
+  - **Gate on the midpoint axis, `gex = G − (R+B)/2 > 0`** [R9 corrected], NOT "G ≥ both R and B".
+    The old gate misses the common case where R is a hair above G yet G sits well above the R-B
+    midpoint (R9 nebula: gate said skip, `gexRel` was **+0.17** and the dust read visibly olive).
+  - ⛔ **ALWAYS use a NEUTRAL protection method** (`protectionMethod` 2 = AverageNeutral, default;
+    3 = MaximumNeutral). **NEVER the mask methods** (0 = MaximumMask, 1 = AdditiveMask) on a field
+    with real colour diversity. Counter-intuitive but measured [R9]:
+    - Neutral = `G' = Min(G, m)`, `m = 0.5(R+B)`. **Self-gating**: a mathematical NO-OP wherever
+      green is already at/below the midpoint, so genuinely low-green regions come out
+      **byte-identical**. R9: Hα arc 4.6°→4.6°, blue sky 240.9°→240.9°, unchanged to the digit.
+    - Mask = `G' = G×[1 − a(1−m)]`, scales green down **everywhere, unconditionally**, dragging
+      legitimately-low-green regions toward magenta. R9 MaximumMask@0.5 wrecked the same regions:
+      Hα arc 4.6°→**335.2°** (sat 0.235→0.379), blue sky 240.9°→**280.1°** (sat 0.125→0.322), the
+      whole field went purple on the render. This is the doc's own warning ("mask-protected SCNR
+      ... can introduce a magenta cast to the sky background").
+    - So "clipping" is **surgical** and "scaling" touches everything. The common forum claim that
+      the scaling methods are the safe ones is **refuted on-image**.
+  - **Expect a residual green bias even AFTER colour calibration; it is physical, not a bug.**
+    Sky **airglow is dominated by the OI 557.7 nm green line**, and mercury light pollution has a
+    strong 546.1 nm green line, both land squarely in a G filter or an OSC green channel. **OSC
+    adds a second cause:** RGGB has 2x green photosites, so green is debayer-interpolated
+    differently from R and B. **This applies to MONO too** (the G filter collects the same airglow
+    and LP; haze/moonlight scatter broadly). Photometric calibration fixes *stellar* colour, it
+    does not necessarily null an **additive, green-weighted sky pedestal**, and on a nebula-filling
+    field there is no true blank sample for background neutralization to key on. → a modest
+    post-calibration `gex > 0` is the expected state; SCNR-neutral is the right corrective.
+    ⚠️ But **magnitude is diagnostic**: R9 measured **80.9% of pixels** above the midpoint (mean
+    excess only 0.046). A large fraction means the upstream cast is big enough to investigate
+    (background reference sample, debayer), not just to clamp.
 - **SXT is an OPTIONAL branch, never mandatory. Extract on linear with `unscreen=false`**
   (unscreen is for nonlinear extraction; simple subtraction keeps best star color) [R4→research].
   `snapshot` first; with `stars=true`, `undo` on the starless leaves the spawned `*_stars` window
@@ -138,6 +173,18 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   for a PixelMath fallback. (Emergency fallback only: port `computeGHSCoefficients`/`buildGHSExpr`
   from `git show 2b5482a^:scripts/run-pipeline.mjs`; median is preserved under a monotonic map,
   so D can be solved analytically for the target peak.)
+- **⛔ The peak gate assumes ONE background population. On a mosaic / heterogeneous field it is
+  BIMODAL and a global argmax is meaningless [R9].** R9's histogram had two real peaks (0.154 and
+  0.226) from two genuinely different sky regions; the global mode jumped between them and reported
+  channel modes disagreeing 2× (R 0.088 / B 0.175), which reads as a catastrophic over-black-point
+  but was pure metric artifact. **Measure the peak PER REGION** (split the frame along the seam /
+  along the dominant structure) and gate each. Also: a first curve pinned only at the global mode
+  crushed the darker half to 0.095, the fix was pinning at the background and putting the gain
+  ABOVE it (the R6 mechanism), which held both halves in range.
+- **Residual / speckle metrics must be normalised by LOCAL BACKGROUND, not absolute [R9, user].**
+  An A/B where absolute speckle σ *halved* (2.4e-4 → 1.1e-4) still read as "a tad more noisy" to
+  the user, because removing the core glow dropped the background under those leftovers (3.11× →
+  1.58×), raising their contrast. Report speckle-over-local-background, and let the render decide.
 - **⛔ Dim stretch = over-black-pointing, the #1 recurring failure [R1-R4].** END at histogram
   peak ≈ 0.20-0.25. The black point is a **gentle true-black set** (shave only the few % of empty
   sky below the histogram rise), NOT a background crush; each GHS pass re-lifts shadows → pair
@@ -182,13 +229,21 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 - **VERIFY STARS AT 1:1, global stats lie** (star-layer median≈0 hides too-dim stars) [R5].
   `render_view(viewId, path, stf:"asis", rect:[…])` centered on a bright star from
   `get_star_metrics().brightestStars` (~600×400) and LOOK before calling the star step done.
-- **Star COLOR correction, gated + measured [R8, user technique].** After the star stretch,
-  measure the star-pixel hue and apply **only what fires**: (a) **green-dominant** stars → `SCNR`
-  green (Average Neutral); (b) **magenta / purple / red-fringed** stars → **`invert → SCNR green →
-  invert`** (magenta is green's complement, so this removes the purple fringe and pushes those stars
-  toward yellow). Measure the star pixels first; never apply both blindly (same gate discipline as
-  the nebula SCNR). Broadband star fields especially: SPCC gives good bulk star color but leaves
-  purple fringing on bright/saturated stars. **Green haze around bright blue stars lives on BOTH the
+- **Star COLOR correction, gated + measured [R8; metric CORRECTED in R9].** Both branches gate on
+  ONE axis, green vs the R-B midpoint, measured on star pixels:
+  (a) **green EXCESS** `gex = G−(R+B)/2 > 0` → `SCNR` green (Average Neutral);
+  (b) **green DEFICIT** `gdef = (R+B)/2−G > 0` → **`invert → SCNR green → invert`**.
+  ⛔ **Do NOT gate (b) on "magenta" (`R>G && B>G`).** That R8 test needs green to be the MINIMUM
+  channel and misses the common case `B < G < (R+B)/2`: on R9 it read 0.17% ("skip") while the
+  correct test read **74.2%** of lit pixels, a defect the user could see. Applying (b): 74.2%→1.0%.
+  (b) reduces to **`G_new = max(G, (R+B)/2)`**, a **no-op** wherever green already sits at/above the
+  midpoint, and a smooth continuum puts G at ~the midpoint, so a deficit is non-physical on a
+  continuum source (Antares verified unchanged: hue 29.7→30.0°, sat 0.700→0.702). → **broadband +
+  stars layer: treat (b) as default ON**, gate = magnitude sanity check, not permission.
+  ⛔ **HARD EXCLUSION, emission lines (not red stars).** Where red is Hα, G is legitimately below
+  the midpoint (R9 Sh2-9 arc: G 0.357 vs midpoint 0.385, (b) would bleach it) → **never on
+  narrowband/duoband, never on a starless holding emission nebulosity.** Gates are **per-image,
+  never inherited**: adjacent panels of the same target fired opposite branches. **Green haze around bright blue stars lives on BOTH the
   stars layer and the starless** (reflection nebula) [R8, user], a gated, careful SCNR green on the
   starless is legitimate too (purifies teal→blue; Average Neutral only edits green so it can't reduce
   blue). Measure **green excess** `gex=G−(R+B)/2>0` on the *localized* halos, the region mean is
@@ -219,6 +274,18 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   or just use the `get_image_statistics` tool for per-channel medians. Same for other stats methods.
 - MCP tool params (easy to get wrong): `open_image` takes **`filePath`**; `run_script` takes
   **`code`**; `save_image` needs **`overwrite:true`** to replace an existing file.
+- **⛔ A lingering `image.selectedChannel` silently makes `render_view` MONOCHROME** [mosaic run,
+  cost the delivered JPEG]. `render_view` honours the view's channel selection and replicates that
+  one channel into R=G=B, with **no warning** and a normal 3-channel file, so it looks like a
+  correct color JPEG until you measure saturation. `save_image` (XISF) is NOT affected, and
+  `render_critic_pack` resets selections internally, so the critic sees correct color while your
+  deliverable is grey. **Always `image.resetSelections()` at the end of EVERY measurement helper**,
+  and beware helpers called inside a `JSON.stringify(...)` that runs *after* your reset line, that
+  is exactly how it happened. Cheap guard before shipping: sample a few pixels and assert
+  `max(R,G,B) != min(R,G,B)` somewhere in the frame.
+- **`export_container` indices are offset by 1 from `get_full_history` display indices** (its 0 =
+  the first step *after* the base container). Verify by the returned process-name list, not the
+  numbers, an off-by-one silently ships the WRONG stretch in the container.
 
 ## Critic gates (phase boundaries, the autonomous quality loop)
 
@@ -238,11 +305,66 @@ never the transcript or parameter values (blindness is the design; see the skill
 - The final pack + all critic reports are end-of-run artifacts: keep them with the run record
   (they feed process-retro and the 1-in-10 human audit, `docs/AUTONOMY.md`).
 
+**Triaging critic findings [R9, all three lessons cost something]:**
+- ⛔ **Verify every ARTIFACT claim against the SOURCE MASTER before removing anything.** R9's critic
+  reported a "satellite trail" that was real sky (a cometary reflection nebula, present in the
+  untouched master). One `open_image` + one crop settles it. Satellite trails also do not survive
+  stacking rejection and do not terminate on a star.
+- ⛔ **Never batch-dismiss an artifact list because some entries are false.** R9: of four findings,
+  two were false (bright-star "halos" = real reflection nebulosity) and one was real sky, so the
+  list was written off, and the **fourth was TRUE** (a globular core left in the starless, later
+  user-confirmed). Adjudicate each finding separately.
+- **Judge the starless in the context it will be seen in.** Two of R9's three false artifact
+  findings came from judging a layer nobody ever views alone; removed-star sites are expected there.
+- **The critic is blind to your process, but it is also blind to the SKY**, and only the first is
+  the design goal. Every wrong R9 call came from missing subject facts (dust-filled field, no empty
+  sky, two globulars, an emission arc), not bad judgment. Weigh its background/gradient verdicts
+  accordingly on wide dusty fields.
+
 ## Checkpoints & when you finish
 
 The user's prompt says where to pause, honor it; the module is non-blocking, so they can inspect
 the live image between steps. At each checkpoint: before/after measurements, what you changed and
 why (cite the playbook), what's next. Pause more often early in a run, less as confidence builds.
 
-At the end: save the result, then **write down the warts**, vague playbook spots, tools that
-surprised you, measurements you had to improvise. That list is the spec for the next tools to build.
+## ⛔ DELIVERABLES, every run, no exceptions
+
+**Everything below goes to `result-tests/<TargetName>/`, never a scratch/working dir.** The run is
+NOT finished until all of it exists. Do not report completion first and produce these on request.
+
+**Images, 6 minimum.** The layer pairs are the point: linear (pre-stretch) and final, for both
+starless and stars, so any later run can restart from either side of the stretch.
+
+| File | State |
+|---|---|
+| `linear.xisf` | mosaic/master, post BXT+NXT, pre-SXT (the post-linear checkpoint) |
+| `linear_starless.xisf` | post-SXT, still LINEAR |
+| `linear_stars.xisf` | post-SXT, still LINEAR |
+| `final_starless.xisf` | fully stretched + colour-corrected |
+| `final_stars.xisf` | fully stretched + colour-corrected |
+| `final.xisf` + `final.jpg` | the recombined result |
+
+**Process containers, 4**, via `export_container` (see the index off-by-one trap above):
+`linear.xpsm`, `starless.xpsm`, `stars.xpsm`, `recombine.xpsm`.
+
+**Records, 3:** `metrics.json` (kb-gate baseline: per-checkpoint metrics + critic scores; see an
+existing target for the schema), `replay.js` (empty→final reproducer), `HISTORY.md` (pipeline as
+run + the warts).
+
+Rules that make the above actually correct:
+- **Export containers LIVE**, before saving/closing the view. `view.processing` resets on
+  save+reopen and `createNewImage` outputs (the recombine) start with EMPTY history, so the
+  recombine container must be captured from a view you applied it to **in place**.
+- **A container must contain only the KEPT path.** Snapshot/restore leaves abandoned attempts and
+  `Script` entries interleaved in the history, so a plain index range can ship a discarded stretch.
+  If the kept steps are non-contiguous, rebuild the section cleanly on a copy of the previous
+  checkpoint and export from that, which also verifies your recorded parameters reproduce the
+  result (expect a byte-identical diff).
+- **Re-save the layers AFTER the last edit to them.** Saving `final_starless` before a later SCNR
+  or curve leaves a stale file that does not match `final.xisf`.
+- Mosaics/multi-panel add the per-panel and registered intermediates (`P<n>_lin.xisf`,
+  `reg_P<n>.xisf`) and a per-panel linear container; capture them during the run, the views are
+  closed by the time you stitch.
+
+Then **write down the warts**, vague playbook spots, tools that surprised you, measurements you had
+to improvise. That list is the spec for the next tools to build.
