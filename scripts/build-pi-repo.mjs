@@ -145,6 +145,10 @@ const version = readVersion();
 const built = [];
 let newestMtime = 0;
 
+// pi-repo/ is a build output staging dir (published to the dist branch), not
+// tracked on main, so create it on demand.
+fs.mkdirSync(piRepoDir, { recursive: true });
+
 for (const plat of PLATFORMS) {
   const binPath = path.join(buildDir, MODULE_BASE + plat.ext);
   if (!fs.existsSync(binPath)) {
