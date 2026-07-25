@@ -207,9 +207,55 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     as the `get_full_history` add) + MCP-server restart to register the tool. **Verified:** a tool call on a live view emitted a
     container **byte-identical (modulo icon name)** to the user-verified inline one, curve tables intact. `replay.js` (whole-session,
     empty→exact-final, proven 3×) stays hand-authored for now (branch orchestration is bespoke) → future `export_session` can template it.
-15. **`star_color_correct(viewId)` helper `[tooling, LOW, Run 8]`**, the gated star-color rule (measure star-pixel
-    hue → green-dominant: SCNR green; magenta/purple-fringed: `invert→SCNR-green→invert`) is hand-rolled. Bundle the
-    hue measurement + the two conditional ops (extends the `star_stretch` helper, backlog #10).
+15. **`star_color_correct(viewId)` helper `[tooling, LOW→MED, Run 8; metric corrected R9]`**, the gated star-color
+    rule is hand-rolled. **R9 corrected the gate axis**: both branches key on green vs the R-B midpoint,
+    `gex=G−(R+B)/2>0` → SCNR green; `gdef=(R+B)/2−G>0` → `invert→SCNR-green→invert`. The old "magenta"
+    test (`R>G && B>G`) misses the common case and read 0.17% where the correct test read 74.2%. Bundle the
+    measurement + the two conditional ops, and bake in the emission-line exclusion (broadband stars-layer only).
+16. **Phase-aware measurement metrics `[tooling, HIGH, Run 9]`**, the star/gradient blocks emit confidently wrong
+    numbers outside their valid phase and there is no signal that they are inapplicable:
+    `starPixelMedian` **0.0175 vs a rendered 0.28-0.36 (~20×)** on a stars-only layer; `starCount 0` /
+    `medianFWHM null` / `medianEccentricity null` on a recombined final; FWHM/ecc computed from a **6-star**
+    sample of 21,705; gradient `cornerSpreadPctOfCenter` up to **475,589%** on a star layer. Two critics
+    independently flagged these as unusable. → suppress/flag fields by phase, report the measured-star count
+    alongside any FWHM/ecc, and weight the star sample by brightness.
+17. **`render_view` must not honour `image.selectedChannel` `[tooling, HIGH, Run 9]`**, a lingering channel
+    selection makes it emit a **silently MONOCHROME** file (one channel replicated to R=G=B) with a normal
+    3-component container and **no warning**. It shipped the delivered JPEG. `save_image` is unaffected and
+    `render_critic_pack` already resets internally, so **the blind critic saw correct colour while the
+    deliverable was grey**. → reset (or ignore) channel selection inside `render_view`, and warn if it was set.
+18. **Cheap INVARIANTS layer, separate from the aesthetic rubric `[tooling, HIGH, Run 9]`**, the mono JPEG passed
+    the entire aesthetic critic rubric because the rubric judges taste, not integrity. Add target-independent
+    booleans that hard-fail regardless of object: `max(R,G,B) != min(R,G,B)` somewhere (chroma exists), no
+    shadow/highlight clipping wall, geometry as expected, no seam step across a known blend band. Invariants
+    generalize across every target; aesthetic scores do not (see research Q below).
+19. **`export_container` index alignment `[tooling, MED, Run 9]`**, its `fromIndex/toIndex` are offset by +1 from
+    `get_full_history` display indices (its 0 = first step *after* the base container). Cost two wrong exports in
+    one session: one silently included an ABANDONED stretch, the other silently DROPPED the star MTF PixelMath.
+    → align the indexing with `get_full_history`, or make the returned process-name list the documented
+    verification step. Related: a non-contiguous kept path cannot be expressed as a range at all (R9 had to
+    rebuild the starless on a copy to get a clean container).
+21. **kb-gate Tier-1 is mislabeled, and the real gate is missing `[tooling, HIGH, Run 9, user-raised]`.**
+    Tier-1 replays `replay.js`, a **hardcoded list of process instances that never reads the skill or the
+    playbook**. So a KB batch consisting of prose edits produces byte-identical pixels and Tier-1 passes
+    **regardless of whether the edits are right or wrong**. The kb-gate skill already admits this ("a playbook
+    change that alters processing DECISIONS can pass Tier-1 trivially"), yet process-retro still requires a
+    Tier-1 PASS to auto-commit KB edits, which is a ~20 min ritual that tests nothing about the batch.
+    → **(a) Rename/reclassify Tier-1 as what it actually is, an ENVIRONMENT / reproducibility regression test.**
+    Its real value (catching a PI/BXT/NXT/SXT version bump changing pixels, or a corrupted baseline) is genuine
+    but unrelated to KB edits. Correct triggers: after a tool/PI upgrade, periodically, or before re-baselining,
+    **not** per KB batch.
+    → **(b) Build a CHEAP Tier-2**, the only tier that can actually see a decision change, since a fresh
+    `process-master` run is the only thing that reads the KB. Proposal: run the fresh run on a **crop of the
+    reference master** (e.g. 1500x1500 around the object) instead of full resolution, which cuts the BXT/NXT/SXT
+    cost by ~15x while still exercising every decision, gate, and measurement path. Band tolerances, not tight
+    relative ones (fresh runs are non-deterministic).
+    → **(c) Until (b) exists, say so honestly** rather than running Tier-1 as a proxy: a decision-altering KB
+    edit needs explicit human review, and should be labelled as such in the retro report.
+20. **Critic-pack coverage gaps `[tooling, LOW, Run 9]`**, no 1:1 crop on the brightest star (the canonical site
+    for recombine halos/seams, both R9 critics had to improvise one from a 5× downsample); `stars.png` defaults
+    to a subset of `corner-tl` so it adds no independent sampling; starless packs have no recombine preview,
+    which caused 2 of 3 false artifact findings; pack PNGs are effectively uncompressed (~5× oversized).
 
 ---
 
@@ -288,6 +334,85 @@ playbook `osc-hoo.md` steps 10-12 rewritten. Summary of what landed:
   validated for **Hα-dominant HOO** (protect red / gate `rex<0`). The per-target signal-hue re-keying for
   **OIII-rich HOO, SHO, and RGB** is designed but **untested**, needs a live demo on each palette to confirm the
   hue axis and dose transfer. Do NOT assume it transfers unverified.
+- **MOSAIC playbook** ✅ **WRITTEN 2026-07-25 → `docs/workflows/mosaic.md`.** Originally queued here as
+  "needs a research pass", which **over-scoped it**: the research had already been done at the start of R9
+  (6 web searches + the GradientMergeMosaic primary doc read in full locally + `MosaicByCoordinates`/
+  `StarAlignment` source inspection) and then validated end-to-end. The real gap was **capture**, not knowledge.
+  → **Lesson `[method]`: when a run does mid-run research, the retro's job is to CAPTURE it, not re-queue it.**
+  **Structure decision (user-driven):** mosaic is a **cross-cutting STAGE playbook, not an acquisition
+  category** (6 categories x mosaic = 12 near-duplicate files). It is a **second combination point** (channel
+  combination vs **panel** combination) and the existing pre/post-combine governing rule generalises to it
+  almost verbatim. Only the *ordering of the two combination points* is category-dependent.
+  A browser pass (per README step 8) recovered the previously-403'd `chaoticnebula` workflow, which added the
+  **3+ panel route** (`ImageSolver` on the centre panel → `CatalogStarGenerator` synthetic star field →
+  `StarAlignment` all panels to it, instead of pairwise chaining). `lightvortexastronomy.com` is **down at
+  origin** (Cloudflare DNS failure), genuinely unavailable rather than tool-blocked.
+  ⚠️ **`[method]` finding against myself:** the browser fallback is documented as automatic in
+  `docs/workflows/README.md` step 8, and I did NOT use it during the run, I hit 403/SSL on two load-bearing
+  pages and moved on. Escalate to the browser in-run, not at retro.
+  **Still open, now narrow** (carried into `mosaic.md`'s Contested list, not a research programme):
+  (1) per-panel gradient+colour then stitch, vs stitch-then-correct (R9: per-panel, since gradients differ);
+  (2) **when to use GradientMergeMosaic at all** - R9 REJECTED it (it manufactured red/teal blobs at bright stars
+  near panel edges, and its `nShrinkCount` caps at 10 px so the offending stars cannot be excluded). The decisive
+  measurement was that panel-vs-panel agreement in the overlap was **median 2e-6, spread ±5e-5, i.e. at the MRS
+  noise level**, so StarAlignment's frame adaptation had already matched the panels and GMM's Poisson solve had
+  nothing to correct. **Candidate rule: measure overlap agreement FIRST; if it is at noise level, prefer a plain
+  feather blend.** Needs confirming on panels that genuinely DON'T match;
+  (3) per-panel vs mosaic-level SPCC (R9 per-panel; WB factors came out near-identical, 0.7536/0.6738 vs
+  0.7524/0.6612, which is itself evidence the panels were consistent);
+  (4) BXT correct-only before assembly + sharpen after (RC-Astro-sourced, held up in R9);
+  (5) how much overlap is enough (R9 had 808 px ≈ 20%).
+- **SXT `overlap` on dense clusters / globulars `[quality, R9, OPEN, do NOT change the default on this]`.**
+  3-way A/B on an M4 crop: SXT `overlap` 0.20 left the core at **3.11×** local background, `overlap` 0.50 at
+  **1.58×** (absolute speckle σ also halved, 2.4e-4 → 1.1e-4), **StarNet2 at 11.75× with speckle ≈ the
+  unprocessed input** (it barely removed the cluster). Cost of 0.5: nebulosity 0.6-2.6% darker. **BUT the user,
+  looking at the render, was NOT convinced**: with the core glow gone the remaining leftovers read "a tad more
+  noisy" (see the metric finding in R9, absolute speckle vs speckle-over-local-background). So: overlap 0.5 is a
+  promising lead for cluster fields, **not** a validated default. Research needs a normalised residual metric and
+  more than one cluster. StarNet2 is not the answer for this failure mode.
+- **Do aesthetic critic scores generalize across targets at all? `[method/quality, R9, OPEN]`** R9 scored ~2.5/4
+  on gate verdicts, and every wrong call came from the critic being blind to the **subject** (dust-filled field,
+  no empty sky, two globulars, an emission arc) rather than to the process. Blind-to-process is the design goal;
+  blind-to-sky is an accident. **Proposal to evaluate: give the critic a factual "target card"** (acquisition
+  category, field size, dominant structure, known objects) which leaks no parameter choices. Also evaluate
+  splitting the gate into **invariants (absolute, target-independent, hard-fail, backlog #18)** vs **aesthetics
+  (ranked A/B only, never absolute scores)** - the A/B mode is the one that has been reliable.
+  ⚠️ Touches `docs/CRITIC_RUBRIC.md` and the blindness contract, both **human-owned**: proposal only.
+- **`docs/CRITIC_RUBRIC.md` gaps surfaced by R9 `[method, R9, QUEUED, human-owned, do NOT self-edit]`.** Both
+  R9 critics independently reported the same structural holes: (a) **no stars-only branch** - axis 2's neutral-gray
+  objective and its 0.05 chroma reference are meaningless on a star layer whose correct background is black
+  (`bgChroma` read 0.788); (b) **no representation for a non-applicable axis** - a starless layer cannot score
+  "stars", and emitting a placeholder 3 would silently trip the two-axes-at-3 revise rule (one critic emitted
+  `null`); (c) **axis 1 contradicts its own anchor** - the stated band is 0.20-0.25 but the calibration anchor
+  records the user-APPROVED R8 reference at 0.138, and R9 landed between them at 0.183; (d) the **0.4
+  star-pixel-median target** is applied at phases where it compares to nothing; (e) **no guidance for a
+  nebula-filling frame with no empty-sky corner**, which is exactly where the background axis misfires.
+- **Why does a green bias SURVIVE colour calibration? `[quality, R9, OPEN, user-raised]`** R9 measured
+  **80.9% of pixels above the R-B midpoint** (mean excess 0.046) on an SPCC-calibrated image. SCNR-neutral is
+  the right corrective (see below) but the magnitude says something upstream is leaning green. Candidate causes,
+  **all physical, none yet isolated**: (a) **airglow is dominated by the OI 557.7 nm green line** and mercury LP
+  has a strong **546.1 nm** line, both landing in a green channel, and photometric calibration fixes *stellar*
+  colour, not an additive green-weighted **sky pedestal**; (b) on a nebula-filling field, background
+  neutralization has **no true blank sample** to key on (R9's blank patches even flipped R-B sign across the
+  frame); (c) **OSC-specific: RGGB has 2x green photosites**, so green is debayer-interpolated differently.
+  ⚠️ **(a) and (b) apply to MONO too** (the G filter collects the same airglow/LP; haze and moonlight scatter
+  broadly), so this is not an OSC-only question. Research: separate the additive-pedestal term from the
+  debayer term (compare an OSC master against a mono G master of similar sky), and test whether a better
+  background-reference strategy removes most of it before SCNR is reached.
+  **⚠️ Do NOT read this as "stop using SCNR"**, see the settled finding below.
+- ✅ **SETTLED (R9, measured on-image, user-driven): SCNR protection method matters far more than amount.**
+  The widely-repeated forum claim that the *scaling* (mask) methods are safer than the *clipping* (neutral)
+  ones is **refuted on our data, and reversed.** Neutral (`G' = Min(G, 0.5(R+B))`) is **self-gating**, a
+  mathematical no-op wherever green is already at/below the midpoint: R9's Hα arc (4.6°) and blue sky (240.9°)
+  came out **byte-identical** while the dust corrected 60.8°→45.5°. Mask (`G' = G×[1−a(1−m)]`) scales green
+  down **unconditionally everywhere**: `MaximumMask@0.5` sent the same Hα arc to **335.2°** and the blue sky to
+  **280.1°**, turning the whole region magenta on the render, exactly the magenta-sky-cast drawback the
+  PixInsight doc itself warns about. → **always AverageNeutral/MaximumNeutral, never the mask methods** on a
+  field with real colour diversity. Also settled: placement (linear vs post-stretch) is a **minor** axis,
+  post-stretch is ~3° more aggressive (Jensen: for a concave stretch the midpoint computed after stretching is
+  lower) and both are identical no-ops where green is legitimately low. Baked into `osc-rgb.md` step 10 + skill.
+  ⚠️ Legacy-doc trap: the 2010 PixInsight LE page says "the Amount parameter is not used for neutral
+  protection", **modern PixInsight DOES honour it** (amount 0.5 left G above the midpoint, i.e. partial).
 
 ---
 
@@ -661,3 +786,98 @@ await a second RGB target to confirm they generalize.
 - `[quality]` **Star amount ceiling found.** Generated the precise midpoint between my a=4.5 (too soft) and the user's own harder stretch (too hard) = **a=5.4** (matched star-pixel **p90** exactly, the right axis, not count). User: middle is good "but stars should still slightly pull softer" → sweet spot **a≈5.0-5.2** for Rho Oph. Confirms "push harder than first guess" has a ceiling: too hard inflates faint noise-stars. Recorded as per-object datapoint in `osc-rgb.md` (NOT a default).
 - `[method]` **SCNR-green green-haze applies to the STARS layer (user's original point) AND the starless.** The user's "green haze around blue stars" meant the **stars** image; but they also liked a **gated** SCNR-green on the **starless** (teal haze in the reflection nebula / around blue stars), purifies teal→blue, and since Average Neutral only edits green it **cannot reduce blue** (the user's worry). ⚠ Measure **green EXCESS** `gex=G−(R+B)/2>0` on the *localized* haze/halos, the region mean is blue-dominated (reads ≤0) and hides it. Not a default either place; judge on the render. → `osc-rgb.md` step 11 + skill.
 - `[tooling]` **ProcessContainer can't be created from the API, CONFIRMED hard limit.** `writeIcon` errors *"No such instance icon"* on a non-existent icon (can only overwrite an existing GUI icon); there is no PJSR process-icon/`.xpsm` file-save. Delivered instead: `process-container.js` (a built `ProcessContainer` with all 17 process instances + exact settings dumped via `.toSource()`, paste into Script Editor → drag → save as `.xpsm`) + `replay.js` (executable full-session reproducer, handles the SXT branch a container can't). → sharpens backlog #14: `export_session` must emit the paste-to-rebuild container source, since native icon minting is impossible headless. **Lesson for me: state the ProcessContainer API limit up front, don't substitute a replay script silently.**
+
+### Run 9, 2026-07-25, **OSC broadband RGB, first MOSAIC**, Rho Ophiuchi Complex Panels 1+2 (FRA500+reducer, ASI2600MC Pro / IMX571, NoFilter, dec −24/−26)
+**Outcome:** first **multi-panel** run on this fork. Two `_autocrop` masters, one finished 6159x7396
+(~3.8deg x 4.6deg) mosaic covering Antares, M4, M80, sigma Sco / Sh2-9 and the IC 4603/4604 blue reflection
+complex. **Final critic gate PASS** (stretch 4 / bg 3 / faint 4 / stars 4 / artifacts 4). No mosaic playbook
+existed; the order was derived from web research mid-run. Full artifacts in
+`result-tests/Rho-Ophiuchi-2Panel-Mosaic/` (16 warts in `HISTORY.md`). ⚠️ Note the earlier **Panel-2 session
+(2026-07-24) was never journaled**, its findings live only in `result-tests/Rho-Ophiuchi-Panel-2/NOTES.md`;
+two of them were independently re-derived here.
+
+**Pipeline:** per panel (BXT correct-only, GradientCorrection, SPCC broadband; SPFC+MGC skipped per R8
+southern-MARS decline) → StarAlignment `mode=2` Register/Union-Separate + frameAdaptation +
+distortionCorrection (808 px overlap) → **feather blend, NOT GradientMergeMosaic** → crop → BXT sharpen →
+NXT (LF 0.7) → SXT → starless: GHS(SP 0.00029, D 6.9, b 4) + de-milk curve + saturation + **SCNR green 0.5**
++ highlight curve; stars: MTF a=5.1 + ColorSaturation x1.2 + SCNR green 1.0 → screen recombine.
+
+**Findings**
+- `[method]` ⛔ **The star-colour gate measured the WRONG QUANTITY (user-caught).** R8's branch-(b) test was
+  "magenta" = `R>G && B>G` (green is the MINIMUM channel). The real defect is a green **deficit without**
+  magenta (`B < G < (R+B)/2`). On the user's A/B previews: magenta test **0.17%** ("skip") vs red-fringe test
+  **74.2%** of lit pixels; applying `invert→SCNR-green→invert` took it **74.2% → 1.0%** and the user confirmed
+  the visible "reddish bulbs" vanished. Correct axis = green vs the R-B midpoint, the exact mirror of `gex`.
+  **(b) reduces to `G_new = max(G, (R+B)/2)`**, a no-op wherever green is already at/above the midpoint, and a
+  smooth continuum puts G at ~the midpoint, so a deficit is non-physical on a continuum source. Verified on the
+  reddest object in frame: **Antares hue 29.7→30.0 deg, sat 0.700→0.702** (G 0.419 vs midpoint 0.421).
+  ⛔ **The hard exclusion is emission lines, not red stars:** the Sh2-9 arc in the starless reads G 0.357 vs
+  midpoint 0.385, so (b) would bleach real Halpha. → **broadband + STARS LAYER only, default ON; never
+  narrowband/duoband, never a starless holding emission.** → `osc-rgb.md` step 11 + skill + backlog #15.
+- `[method]` **The stretch peak gate assumes ONE background population; a mosaic is BIMODAL.** Two real peaks
+  (0.154 rho Oph half / 0.226 Antares half); the global argmax jumped between them and reported channel modes
+  disagreeing 2x (R 0.088 / B 0.175), which reads as catastrophic over-black-pointing but was metric artifact.
+  A first curve pinned at the global mode crushed the darker half to 0.095; pinning at the background with the
+  gain ABOVE it (R6 mechanism) held both halves in range. → measure the peak PER REGION. Skill updated.
+- `[method]` **Residual/speckle metrics must be normalised by LOCAL BACKGROUND.** In the SXT A/B, absolute
+  speckle sigma *halved* (2.4e-4 → 1.1e-4) yet the user read the leftovers as "a tad more noisy", because
+  removing the core glow dropped the background beneath them (3.11x → 1.58x) and raised their contrast.
+  **The user's eyes beat the statistic**; the metric was measuring the wrong thing. Skill updated.
+- `[method]` **Critic triage cost real mistakes, three ways.** (a) It reported a "satellite trail" that is
+  **real sky** (a cometary reflection nebula, verified present in the untouched master), so always check an
+  artifact claim against the source master. (b) Having found two false entries (bright-star "halos" = real
+  reflection nebulosity), I **batch-dismissed the whole list, and the fourth finding was TRUE** (globular core
+  left in the starless, later user-confirmed). (c) 2 of 3 false findings came from judging the starless **in
+  isolation**, a layer nobody ever views alone. Skill updated with all three.
+- `[method]` **Overriding the post-linear gate was correct, and the final critic independently confirmed it.**
+  It called the ~30% top-to-bottom ramp a gradient; a sky-floor profile showed a smooth monotone decline
+  **through the seam** with both panels agreeing, i.e. the Antares dust filling the upper half.
+  The final critic reached the same conclusion from the per-channel plane slopes (R by=-0.261 vs B by=-0.080,
+  "what a yellow dust cloud produces, not a light-pollution ramp"). **The gradient metric has no honest reading
+  on a dust-filled wide field.** Also skipped the linear additive null: blank-sky patches showed **R-B flipping
+  sign** across the field, which a global offset cannot fix and would only flatten real colour.
+- `[correctness]` ⛔ **Shipped a silently MONOCHROME final JPEG.** A measurement helper left
+  `image.selectedChannel=1` set (it ran inside a `JSON.stringify(...)` positioned *after* my
+  `resetSelections()` line), and `render_view` honours the selection, replicating green into R=G=B. Normal
+  3-component file, zero saturation, no warning. Took five controlled variants (size / downsample / quality /
+  drive / concurrency all cleared) to isolate. `save_image` is unaffected, every `.xisf` verified
+  colour-correct. **`render_critic_pack` resets internally, so the blind critic saw correct colour while the
+  deliverable was grey.** → skill trap + backlog #17 (fix the tool) + #18 (invariants layer).
+- `[correctness]` **The deliverables contract did not exist anywhere.** The `process-master` finish step said
+  only "save the result, then write down the warts"; `AUTONOMY.md` references
+  `result-tests/<target>/metrics.json` only as a threshold store. The 4-image/4-container pattern existed
+  **solely as an undocumented artifact of the Panel-1 folder**, so a literal reading of the skill produced none
+  of it and everything went to a scratch dir. → the skill now has a mandatory **DELIVERABLES** section
+  (6 images / 4 containers / 3 records + the capture rules).
+- `[correctness]` **A saved layer went stale** (`final_starless` written before a later SCNR + curve, so it did
+  not match `final.xisf`). Rebuilding the starless from `linear_starless.xisf` with the 5 kept ops reproduced
+  the live view **byte-identically** (mean and max abs diff exactly 0), which fixed the file *and*
+  independently verified the parameters recorded in `replay.js`. That rebuild-and-diff is now the prescribed
+  way to build a container when the kept steps are non-contiguous.
+- `[tooling]` **`export_container` indices are +1 off from `get_full_history`**, which silently shipped an
+  ABANDONED stretch in one export and silently DROPPED the star MTF in another. Only the returned
+  process-name list revealed it. → backlog #19.
+- `[tooling]` **Star/gradient metric blocks emit confidently wrong numbers off-phase** (`starPixelMedian` ~20x
+  low, `starCount 0` / `FWHM null` on the recombined final, FWHM from a 6-star sample, gradient spread up to
+  475,589% on a star layer). Both critics flagged them independently. → backlog #16.
+- `[quality]` **GradientMergeMosaic rejected on measurement.** It manufactured red/teal blobs at bright stars
+  near panel edges and `nShrinkCount` caps at 10 px, too small to exclude them. Overlap agreement measured
+  **median 2e-6, spread +/-5e-5 = MRS noise level**, so frame adaptation had already matched the panels and the
+  Poisson solve had nothing to correct. Feather blend instead: row-median profile monotone through the blend,
+  seam invisible at 1:1. → research question (mosaic playbook), candidate rule "measure overlap agreement
+  first".
+- `[quality]` **SXT `overlap` 0.5 vs 0.2 vs StarNet2 on a globular** (A/B, user-requested): core residual
+  3.11x → **1.58x** for overlap 0.5; **StarNet2 11.75x** with speckle ~= the unprocessed input (it barely
+  removed the cluster). But the user was **not convinced** on the render, so this is recorded as an open lead
+  with the **default unchanged**. My prediction that overlap only fixes tile seams was **wrong**.
+
+**Changed this entry:** `osc-rgb.md` (step 11 star-colour gate axis rewritten + emission exclusion);
+`process-master` skill (corrected star-colour gate; mandatory DELIVERABLES section; critic-triage rules;
+bimodal per-region peak gate; background-normalised residual metrics; `selectedChannel` mono-render trap;
+`export_container` off-by-one trap); journal backlog **#15 sharpened, #16-#20 added**; research questions
+**+5** (mosaic playbook, SXT overlap on clusters, do aesthetic scores generalize, CRITIC_RUBRIC gaps).
+**Repro artifacts:** `result-tests/Rho-Ophiuchi-2Panel-Mosaic/{HISTORY.md, metrics.json, replay.js,
+linear|starless|stars|recombine.xpsm, 6 images}`.
+**OSC-RGB pipeline state:** linear half solid and now mosaic-capable; the nonlinear half has a **second** good
+datapoint (R8 + R9) and the star-colour gate is materially better specified. **Mosaic support is real but
+undocumented**, the playbook is the highest-value open item.
