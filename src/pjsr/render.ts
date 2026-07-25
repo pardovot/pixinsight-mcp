@@ -31,7 +31,8 @@ export function renderScript(
   const out = JSON.stringify(outputPath);
   const rectJs = rect ? JSON.stringify(rect) : "null";
   const ds = downsample && downsample > 1 ? Math.trunc(downsample) : 0;
-  const q = quality && quality > 0 ? Math.min(100, Math.trunc(quality)) : 90;
+  // Default 100: these are deliverables and review artifacts, not web assets.
+  const q = quality && quality > 0 ? Math.min(100, Math.trunc(quality)) : 100;
   return `(function(){
   var sig = function(x){ return (typeof x === "number" && isFinite(x)) ? Number(x.toPrecision(6)) : x; };
   var v = View.viewById(${id});

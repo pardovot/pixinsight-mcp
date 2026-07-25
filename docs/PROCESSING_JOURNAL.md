@@ -240,8 +240,20 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     `compression-codec zlib+sh`, i.e. **~140 MB wasted per image**, and a run writes 6+ of them. There is no
     compression parameter on the tool, so the only route today is `run_script` + `ImageWindow.saveAs(path,
     false,false,false,false, "compression-codec zlib+sh")`, which every future run has to remember.
-    → **add a `compression` param to `save_image` (default `zlib+sh`)** and default `render_view` JPEG quality
-    to 100. Measured codec ranking on a 6159x7396 float RGB master: zlib+sh 384.2 MB ≈ zstd+sh, lz4hc 393.5 MB,
+    ✅ **DONE 2026-07-26, and far cheaper than assumed: NO module rebuild needed.** `render_view` was already
+    implemented as TS-generated PJSR via `execPjsrJson` (not a module handler), so `save_image` was reimplemented
+    the same way: it now takes **`compression` (default `zlib+sh`)**, suppresses the hint for non-XISF, keeps the
+    overwrite guard, and reports the written size. `render_view` JPEG quality default 90 → **100**. TypeScript
+    only, so `npm run build` + an MCP-server restart activates it, no `module:build`/sign/admin-install/PI
+    restart. The module's own `handleSaveImage` (5-arg `saveAs`, no hints) is now bypassed by the tool but is
+    still a trap for any direct bridge caller, fix it at the next module regen.
+    ⚠️ **Two live API findings from this work:** (a) **`File.size()` does NOT exist in PJSR**, use
+    `new FileInfo(path).size` (or an opened `File`'s `.size`); (b) ⛔ **XISF format hints are SESSION-STICKY**,
+    an empty hints string means "format defaults" and a previous `saveAs` with a codec hint MUTATES those
+    defaults, so the same image wrote 16.95 MB with `""` and then 12.07 MB with `""` after one `zlib+sh` save.
+    **Any save without an explicit codec has non-deterministic size across a session**, which affects
+    `replay.js` reproducibility. Always pass the codec explicitly.
+    (Original ask: add a `compression` param to `save_image` and default `render_view` JPEG quality to 100.) Measured codec ranking on a 6159x7396 float RGB master: zlib+sh 384.2 MB ≈ zstd+sh, lz4hc 393.5 MB,
     lz4 400.1 MB, none 521.7 MB. **Byte shuffling is the load-bearing part** for float data (on a 1500x1500
     crop, unshuffled zlib gave 22.10 MB vs 18.53 MB shuffled, a further ~16%). PixInsight's GUI "zlib deflate"
     already shuffles (byte-identical to `zlib+sh` within 82 bytes), but an empty hints string means "format

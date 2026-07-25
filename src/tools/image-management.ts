@@ -1,6 +1,45 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
+import { execPjsrJson } from "../pjsr/exec.js";
+
+/**
+ * Save a view via PJSR so we can pass XISF format hints, which the module's
+ * `save_image` handler cannot (it calls the 5-arg saveAs). Measured on a
+ * 6159x7396 float RGB master: 521.7 MB uncompressed -> 384.2 MB with zlib+sh.
+ * Byte shuffling is the load-bearing part for float data; an EMPTY hints string
+ * means "format defaults", NOT "no compression", so we always pass it explicitly.
+ * The hint is XISF-only, other writers reject an unknown codec hint.
+ */
+function saveScript(
+  viewId: string,
+  filePath: string,
+  overwrite: boolean,
+  compression: string
+): string {
+  const id = JSON.stringify(viewId);
+  const out = JSON.stringify(filePath);
+  const codec = JSON.stringify(compression);
+  return `(function(){
+  var w = ImageWindow.windowById(${id});
+  if (!w || w.isNull) throw new Error("Image not found: " + ${id});
+  var path = ${out};
+  if (File.exists(path) && !${overwrite ? "true" : "false"})
+     throw new Error("File already exists (set overwrite=true): " + path);
+  // ALWAYS emit an explicit codec for XISF. Empty hints means "format defaults", and those
+  // defaults are SESSION-MUTABLE: a previous saveAs with a codec hint changes them, so an
+  // empty-hint save silently inherits it (probed live: "" gave 16.95 MB, then 12.07 MB after
+  // one zlib+sh save of the same image). Explicit hints keep file sizes deterministic.
+  var isXisf = /\\.xisf$/i.test(path);
+  var codec = ${codec};
+  var hints = isXisf ? ("compression-codec " + codec) : "";
+  w.saveAs(path, false, false, false, false, hints);
+  // File.size() does NOT exist in PJSR (probed live); FileInfo carries the size.
+  var bytes = -1;
+  try { bytes = new FileInfo(path).size; } catch (e) {}
+  return JSON.stringify({ viewId: ${id}, filePath: path, hints: hints, bytes: bytes });
+})()`;
+}
 
 export function registerImageManagementTools(server: McpServer, bridge: BridgeClient): void {
 
@@ -59,25 +98,38 @@ export function registerImageManagementTools(server: McpServer, bridge: BridgeCl
   // save_image
   server.tool(
     "save_image",
-    "Save an open image to disk",
+    "Save an open image to disk. XISF is written COMPRESSED by default (zlib+sh, about -26% on " +
+      "float masters); pass compression:'none' only if you have a reason. The codec hint is " +
+      "ignored for non-XISF formats.",
     {
       viewId: z.string().describe("View ID of the image to save"),
       filePath: z.string().describe("Output path (.xisf, .fits, .tiff, .png)"),
       overwrite: z.boolean().default(false).describe("Overwrite existing file"),
+      compression: z
+        .enum(["zlib+sh", "zstd+sh", "lz4+sh", "lz4hc+sh", "zlib", "zstd", "lz4", "lz4hc", "none"])
+        .default("zlib+sh")
+        .describe(
+          "XISF compression codec. '+sh' = byte shuffling, which is what makes float data " +
+            "compress; keep it unless you know otherwise. XISF only."
+        ),
     },
-    async ({ viewId, filePath, overwrite }) => {
-      const result = await bridge.sendCommand("save_image", "__internal__", {
-        viewId, filePath, overwrite,
-      });
-      if (result.status === "error") {
+    async ({ viewId, filePath, overwrite, compression }) => {
+      try {
+        const out = await execPjsrJson(
+          bridge,
+          saveScript(viewId, filePath, overwrite, compression)
+        );
+        const mb = out.bytes > 0 ? ` (${(out.bytes / 1048576).toFixed(1)} MB)` : "";
+        const how = out.hints ? ` [${compression}]` : "";
         return {
-          content: [{ type: "text", text: `Error saving image: ${result.error.message}` }],
+          content: [{ type: "text", text: `Saved **${viewId}** to ${filePath}${mb}${how}` }],
+        };
+      } catch (e: any) {
+        return {
+          content: [{ type: "text", text: `Error saving image: ${e?.message ?? String(e)}` }],
           isError: true,
         };
       }
-      return {
-        content: [{ type: "text", text: `Saved **${viewId}** to ${filePath}` }],
-      };
     }
   );
 

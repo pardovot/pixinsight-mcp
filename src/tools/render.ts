@@ -32,7 +32,7 @@ export function registerRenderTools(server: McpServer, bridge: BridgeClient): vo
       rect: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional()
         .describe("Source crop [x0,y0,x1,y1] in image pixels"),
       downsample: z.number().int().min(1).max(16).optional().describe("Integer downsample factor"),
-      quality: z.number().int().min(10).max(100).optional().describe("JPEG quality (ignored for PNG)"),
+      quality: z.number().int().min(10).max(100).optional().describe("JPEG quality, default 100 (ignored for PNG)"),
     },
     async ({ viewId, outputPath, stf, rect, downsample, quality }) => {
       try {
