@@ -23,8 +23,8 @@
     "url": "git+https://github.com/pardovot/pixinsight-mcp.git"
   },
   "scripts": {
-    "build": "tsc",
-    "test": "tsc && node --test",
+    "build": "tsc && node scripts/check-handler-drift.mjs",
+    "test": "tsc && node --test && node scripts/check-handler-drift.mjs",
     "dev": "tsc --watch",
     "start": "node build/index.js",
     "setup-bridge": "node -e \"const fs=require('fs'),os=require('os'),p=require('path'),b=p.join(os.homedir(),'.pixinsight-mcp');['bridge/commands','bridge/results','bridge/logs'].forEach(d=>fs.mkdirSync(p.join(b,d),{recursive:true}))\"",

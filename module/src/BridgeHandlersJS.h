@@ -9,6 +9,13 @@ R"MCPJS(
 // Command Handlers
 // ============================================================================
 
+// Bump on ANY behavioral handler change. Every success result echoes it as
+// outputs.handlersRev so the MCP server detects an outdated installed module
+// generically (client.ts EXPECTED_HANDLERS_REV must match; the drift test
+// enforces equality). Per-feature markers (save_image outputs.hints) remain
+// for gaps that must hard-error.
+var HANDLERS_REVISION = 1;
+
 function handleListOpenImages(command) {
    var windows = ImageWindow.windows;
    var images = [];
@@ -64,6 +71,11 @@ function handleSaveImage(command) {
    var overwrite = command.parameters.overwrite || false;
    // Default compressed. On a 6159x7396 float RGB master: 521.7 MB -> 384.2 MB.
    var compression = command.parameters.compression || "zlib+sh";
+   // Same list the MCP tool's enum enforces; direct bridge callers get a clean
+   // rejection instead of writer-defined behavior on a typo.
+   var validCodecs = ["zlib", "zlib+sh", "zstd", "zstd+sh", "lz4", "lz4+sh", "lz4hc", "lz4hc+sh", "none"];
+   if (validCodecs.indexOf(compression) < 0)
+      throw new Error("Unknown compression codec: " + compression + " (valid: " + validCodecs.join(", ") + ")");
 
    var window = findWindowByViewId(viewId);
    if (!window) {
@@ -73,6 +85,8 @@ function handleSaveImage(command) {
       throw new Error("File already exists (set overwrite=true): " + filePath);
    }
 
+)MCPJS"
+R"MCPJS(
    // ALWAYS pass an explicit codec for XISF. An empty hints string means "format defaults",
    // and those defaults are SESSION-MUTABLE: one saveAs with a codec hint changes them, so a
    // later empty-hint save silently inherits it (probed live: the same image wrote 16.95 MB
@@ -85,8 +99,6 @@ function handleSaveImage(command) {
    // File.size() does NOT exist in PJSR; FileInfo carries the size.
    var bytes = -1;
    try { bytes = new FileInfo(filePath).size; } catch (e) {}
-)MCPJS"
-R"MCPJS(
 
    return {
       status: "success",
@@ -155,6 +167,8 @@ function handleRunPixelMath(command) {
    P.useSingleExpression = command.parameters.useSingleExpression !== false;
    P.createNewImage = command.parameters.createNewImage || false;
    if (command.parameters.newImageId) {
+)MCPJS"
+R"MCPJS(
       P.newImageId = command.parameters.newImageId;
    }
 
@@ -167,8 +181,6 @@ function handleRunPixelMath(command) {
    }
    return {
       status: "success",
-)MCPJS"
-R"MCPJS(
       outputs: {},
       message: "PixelMath executed: " + command.parameters.expression
    };
@@ -237,6 +249,8 @@ function handleRunProcess(command) {
 }
 
 function handleGetProcessParameters(command) {
+)MCPJS"
+R"MCPJS(
    var p = command.parameters || {};
    var processId = p.processId;
    var P = instantiateProcess(processId);
@@ -249,8 +263,6 @@ function handleGetProcessParameters(command) {
    return {
       status: "success",
       outputs: { processId: processId, parameters: params },
-)MCPJS"
-R"MCPJS(
       message: processId + ": " + Object.keys(params).length + " parameter(s)"
    };
 }
@@ -319,6 +331,8 @@ function handleGetFullHistory(command) {
       var out = [];
       try {
          var lines = String(p.toSource()).split("\n");
+)MCPJS"
+R"MCPJS(
          for (var i = 0; i < lines.length; ++i) {
             var ln = lines[i].replace(/^\s+/, "");
             if (ln.substring(0, 2) === "P." || ln.substring(0, 2) === "P[") {
@@ -331,8 +345,6 @@ function handleGetFullHistory(command) {
       return out;
    }
 
-)MCPJS"
-R"MCPJS(
    var steps = [];
    // Base state (index 0), usually a ProcessContainer (the WBPP/integration).
    // Its source can be enormous, so we list inner process names but skip params.
@@ -401,6 +413,8 @@ function handleRedo(command) {
    var viewId = command.parameters.viewId;
    var steps = command.parameters.steps || 1;
    var w = findWindowByViewId(viewId);
+)MCPJS"
+R"MCPJS(
    if (!w) throw new Error("Image not found: " + viewId);
    var v = w.mainView;
    var done = 0;
@@ -413,8 +427,6 @@ function handleRedo(command) {
 }
 
 function handleSnapshot(command) {
-)MCPJS"
-R"MCPJS(
    var viewId = command.parameters.viewId;
    var snapId = command.parameters.snapshotId || (viewId + "_snap");
    var w = findWindowByViewId(viewId);
@@ -483,6 +495,8 @@ function findViewById(viewId) {
    for (var i = 0; i < windows.length; ++i) {
       if (windows[i].mainView.id === viewId) {
          return windows[i].mainView;
+)MCPJS"
+R"MCPJS(
       }
       for (var j = 0; j < windows[i].previews.length; ++j) {
          if (windows[i].previews[j].id === viewId) {
@@ -495,8 +509,6 @@ function findViewById(viewId) {
 
 // ============================================================================
 // Reproducibility export, write a loadable ProcessContainer .xpsm from a view's
-)MCPJS"
-R"MCPJS(
 // process-history slice. .xpsm is plain XML; PixInsight opens it -> icon appears.
 // The scripting API CANNOT mint icons (writeIcon only overwrites an existing one),
 // so we write the file directly. Format cracked from a real PI 1.9.4 save.
@@ -565,6 +577,8 @@ function handleExportContainer(command) {
    return {
       status: "success",
       outputs: { path: outPath, count: procs.length, processes: ids, fromIndex: from, toIndex: to },
+)MCPJS"
+R"MCPJS(
       message: "Wrote " + procs.length + "-process container '" + iconName + "' (" + ids.join(", ") + ") to " + outPath
    };
 }
@@ -577,12 +591,17 @@ function handleExportContainer(command) {
 // command after its timeout (default 5 min); anything older is a leftover from
 // a dead session, and executing it minutes/days later (e.g. a queued save or
 // close firing on watcher start) would be a surprising side effect. Matches the
-)MCPJS"
-R"MCPJS(
 // client-side cleanStaleCommands threshold.
 var STALE_COMMAND_MS = 10 * 60 * 1000;
 
 function dispatchCommand(command) {
+   var result = routeCommand(command);
+   if (!result.outputs) result.outputs = {};
+   result.outputs.handlersRev = HANDLERS_REVISION;
+   return result;
+}
+
+function routeCommand(command) {
    var tool = command.tool;
 
    if (command.timestamp) {
