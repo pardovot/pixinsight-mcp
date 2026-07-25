@@ -38,6 +38,16 @@ misrouting narrowband to a broadband playbook calibrates color wrongly. Genuinel
 | mono Ha+LRGB | `docs/workflows/mono-halrgb.md` |
 | mono SHO / narrowband palette | `docs/workflows/mono-sho.md` |
 
+⛔ **ALWAYS read `docs/workflows/_common.md` too, on every run.** It holds the cross-category facts
+(SPCC filter/QE axis, the SCNR protection-method rule, the star-colour gate, order-of-operations,
+the measurement traps). It is written as decision **axes**, so find your row, do not assume a
+universal value.
+
+⛔ **The mono delta playbooks are NOT self-contained.** `mono-lrgb.md`, `mono-halrgb.md` and
+`mono-sho.md` are deltas on the **mono-RGB spine**, so **read `docs/workflows/mono-rgb.md` as well**.
+The SPCC rules (real filter curves + real sensor QE, never a "Sony Color Sensor" entry) are stated
+ONLY in the spine, and applying the OSC Ideal-QE rule to mono double-counts sensor response.
+
 **MULTI-PANEL / MOSAIC?** Read **`docs/workflows/mosaic.md` IN ADDITION to** the category playbook
 above. It is a cross-cutting *stage* (panel combination), not a category, so the category file
 still governs colour/stretch. It owns: what runs per-panel vs once on the mosaic, registration,
@@ -332,24 +342,62 @@ why (cite the playbook), what's next. Pause more often early in a run, less as c
 **Everything below goes to `result-tests/<TargetName>/`, never a scratch/working dir.** The run is
 NOT finished until all of it exists. Do not report completion first and produce these on request.
 
-**Images, 6 minimum.** The layer pairs are the point: linear (pre-stretch) and final, for both
-starless and stars, so any later run can restart from either side of the stretch.
+**Layout, by PIPELINE STAGE keyed to combination boundaries** (mirrors the KB's pre/post-combine
+model, so it generalises to channels, panels, or both):
 
-| File | State |
-|---|---|
-| `linear.xisf` | mosaic/master, post BXT+NXT, pre-SXT (the post-linear checkpoint) |
-| `linear_starless.xisf` | post-SXT, still LINEAR |
-| `linear_stars.xisf` | post-SXT, still LINEAR |
-| `final_starless.xisf` | fully stretched + colour-corrected |
-| `final_stars.xisf` | fully stretched + colour-corrected |
-| `final.xisf` + `final.jpg` | the recombined result |
+```
+result-tests/<Target>/
+├── HISTORY.md  metrics.json  replay.js
+├── final.xisf  final.jpg
+├── 01-precombine/     per-CHANNEL and/or per-PANEL, before any combination
+│   ├── L_lin.xisf  R_lin.xisf  G_lin.xisf  B_lin.xisf   (or P1_lin.xisf …, or L_P1_lin.xisf …)
+│   └── precombine.xpsm
+├── 02-linear/         combined, still linear
+│   ├── linear.xisf            post BXT+NXT, pre-SXT
+│   ├── linear_starless.xisf  linear_stars.xisf
+│   └── linear.xpsm
+├── 03-nonlinear/
+│   ├── final_starless.xisf  final_stars.xisf
+│   └── starless.xpsm  stars.xpsm  recombine.xpsm
+├── critic/            the packs + reports for EVERY gate (post-linear/, post-stretch-*/, final/)
+└── gate-runs/         kb-gate reports
+```
 
-**Process containers, 4**, via `export_container` (see the index off-by-one trap above):
-`linear.xpsm`, `starless.xpsm`, `stars.xpsm`, `recombine.xpsm`.
+- **The layer pairs are the point:** linear (pre-stretch) and final, for both starless and stars, so
+  a later run can restart from either side of the stretch. A single-image OSC run has an empty
+  `01-precombine/`; mono has one file per filter; a mosaic has one per panel.
+- **Containers: ONE PER STAGE BOUNDARY, not a fixed count.** Single-image OSC = 4; mono-LRGB = 5
+  (it has an extra combination point, the L application). Use `export_container` (mind the index
+  off-by-one trap above).
+- **`critic/` is mandatory**, the packs are end-of-run artifacts and belong with the run record.
+  Do NOT leave them in a scratch dir, they get wiped.
+- **Records, 3:** `metrics.json`, `replay.js` (empty→final reproducer), `HISTORY.md` (pipeline as
+  run + the warts).
+- **`metrics.json` checkpoint keys must be FLAT strings**, `gate-compare.mjs` does
+  `baseline.checkpoints[name]`. So `pre-combine-L`, `pre-combine-R`, …, `post-linear`, `final`.
+  Never nest per-channel objects. `checkpointViews` values are free-form, so they carry subpaths.
+- Legacy targets (`Rho-Ophiuchi-Panel-1/2`, `-2Panel-Mosaic`) are FLAT. Do not migrate them.
 
-**Records, 3:** `metrics.json` (kb-gate baseline: per-checkpoint metrics + critic scores; see an
-existing target for the schema), `replay.js` (empty→final reproducer), `HISTORY.md` (pipeline as
-run + the warts).
+**Pre-combination checkpoint (multi-input runs).** Save each channel/panel and record its metrics
+under `pre-combine-<track>` BEFORE combining. Gradient, registration and LinearFit errors are far
+cheaper to catch here than after. A metrics checkpoint is enough, do **not** run a blind critic per
+channel (N x cost, low yield); the critic gates stay at post-linear / post-stretch / final.
+
+### ⛔ File-writing rules (every save, no exceptions)
+
+- **XISF: ALWAYS compressed.** `save_image` does NOT expose compression, so write via `run_script`:
+  ```js
+  ImageWindow.windowById(id).saveAs(path, false, false, false, false, "compression-codec zlib+sh");
+  ```
+  Measured on a 6159x7396 float RGB master: **521.7 MB → 384.2 MB (−26%)**, about 140 MB per image.
+  `zlib+sh` (deflate + byte shuffling) is the best of the codecs tested; `zstd+sh` is within ~1%;
+  plain `lz4`/`lz4hc` are markedly worse (−23/−25%), and **unshuffled** codecs lose a further ~16%
+  on smaller frames. Byte shuffling is what makes float data compress, always keep the `+sh`.
+  ⚠️ An empty hints string means "format defaults", NOT "no compression". Be explicit.
+- **JPEG: ALWAYS quality 100.** `render_view(..., quality: 100)`. These are deliverables and review
+  artifacts, not web assets.
+- **Verify the write, do not assume:** re-open and assert non-zero saturation somewhere in the frame
+  (the `selectedChannel` trap above silently produced a mono JPEG that passed every critic gate).
 
 Rules that make the above actually correct:
 - **Export containers LIVE**, before saving/closing the view. `view.processing` resets on
