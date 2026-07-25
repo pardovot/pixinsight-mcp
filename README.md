@@ -104,11 +104,11 @@ The methodology is baked into the tool descriptions and
 
 ## Tools
 
-22 tools. The ones that matter are in bold.
+21 tools. The ones that matter are in bold.
 
 | Category | Tools |
 |---|---|
-| Generic execution | **`run_process`**, **`get_process_parameters`**, **`run_script`**, `run_pixelmath` |
+| Generic execution | **`run_process`**, **`get_process_parameters`**, **`run_script`** |
 | Image management | `list_open_images`, `open_image`, `save_image`, `close_image`, **`get_image_statistics`** |
 | Measurement | **`get_noise`**, **`get_background_gradient`**, `get_background_neutrality`, **`get_star_metrics`** |
 | Rendering | **`render_view`**, **`render_critic_pack`** |

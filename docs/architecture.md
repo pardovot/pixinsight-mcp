@@ -36,8 +36,10 @@ is **post-processing** (after WBPP/pre-processing).
 - Registers **14 tools** in three groups (see README for the table):
   image management (`open_image`, `save_image`, `close_image`,
   `list_open_images`, `get_image_statistics`), processing (`run_process`,
-  `get_process_parameters`, `run_pixelmath`, `run_script`), and session
-  (`get_history`, `undo`, `redo`, `snapshot`, `restore`).
+  `get_process_parameters`, `run_script`), and session
+  (`get_history`, `undo`, `redo`, `snapshot`, `restore`). (`run_pixelmath`
+  was removed as an MCP tool 2026-07-26, use `run_process("PixelMath")`; the
+  bridge verb remains for direct bridge callers.)
 - **Generic-runner design**: `run_process` runs *any* PixInsight process by
   class name; `get_process_parameters` introspects its settable parameters.
   There are deliberately no per-process tools (removed 2026-07-22), every
