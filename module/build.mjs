@@ -14,6 +14,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import * as cfg from "./config.mjs";
 import { generate } from "./gen-handlers.mjs";
+import { syncVersion } from "./version.mjs";
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: "inherit", shell: false, ...options });
@@ -73,6 +74,9 @@ function writeBuildTimestamp() {
 }
 
 function main() {
+  const v = syncVersion();
+  console.log(`Module version: ${v.version}${v.action ? ` [${v.action}]` : ""}`);
+
   console.log("Regenerating embedded handlers ...");
   const { output, lines } = generate();
   console.log(`  ${output} (${lines} lines)`);

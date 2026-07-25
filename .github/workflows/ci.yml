@@ -27,3 +27,12 @@ jobs:
         run: |
           node module/gen-handlers.mjs
           git diff --exit-code module/src/BridgeHandlersJS.h
+      # Version bump guard: if module sources changed, module:build (which
+      # auto-bumps Version.h via module/version.mjs) must have been run and its
+      # bump committed. A dirty diff here means "run node module/build.mjs and
+      # commit Version.h + version.lock.json".
+      - name: Module version guard
+        if: runner.os == 'Linux'
+        run: |
+          node module/version.mjs
+          git diff --exit-code module/src/Version.h module/version.lock.json
