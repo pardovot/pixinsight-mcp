@@ -235,6 +235,29 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     → align the indexing with `get_full_history`, or make the returned process-name list the documented
     verification step. Related: a non-contiguous kept path cannot be expressed as a range at all (R9 had to
     rebuild the starless on a copy to get a clean container).
+22. **`save_image` cannot compress, and `render_view` defaults below quality 100 `[tooling, HIGH, Run 9,
+    user-raised]`.** XISF written through `save_image` is **uncompressed**: 521.7 MB vs **384.2 MB** with
+    `compression-codec zlib+sh`, i.e. **~140 MB wasted per image**, and a run writes 6+ of them. There is no
+    compression parameter on the tool, so the only route today is `run_script` + `ImageWindow.saveAs(path,
+    false,false,false,false, "compression-codec zlib+sh")`, which every future run has to remember.
+    → **add a `compression` param to `save_image` (default `zlib+sh`)** and default `render_view` JPEG quality
+    to 100. Measured codec ranking on a 6159x7396 float RGB master: zlib+sh 384.2 MB ≈ zstd+sh, lz4hc 393.5 MB,
+    lz4 400.1 MB, none 521.7 MB. **Byte shuffling is the load-bearing part** for float data (on a 1500x1500
+    crop, unshuffled zlib gave 22.10 MB vs 18.53 MB shuffled, a further ~16%). PixInsight's GUI "zlib deflate"
+    already shuffles (byte-identical to `zlib+sh` within 82 bytes), but an empty hints string means "format
+    defaults", NOT "no compression", so always be explicit.
+23. **Shared-knowledge layer `[tooling/method, HIGH, Run 9, user-raised]` ✅ SEEDED as
+    `docs/workflows/_common.md`.** Cross-category facts were living wherever they were discovered, which
+    produced a real near-miss: the mono SPCC rule (real filter curves + real sensor QE, never a "Sony Color
+    Sensor" entry) exists ONLY in `mono-rgb.md` and a build-handoff README, while `mono-lrgb.md` has **zero**
+    QE mentions and the skill's SPCC guidance is entirely OSC-flavoured. An LRGB run reading skill + LRGB
+    playbook would plausibly apply the OSC Ideal-QE rule and double-count sensor response.
+    **Design rule that answers "what if a future category contradicts it": shared entries record the DECISION
+    AXIS, not a universal value** (not "use Ideal QE" but "QE depends on sensor type: OSC → Ideal, mono →
+    real"), so a new category ADDS A ROW instead of contradicting. Every entry carries `Verified on:` so a
+    contradiction is a visible event, not silent rot. Skill now routes to `_common.md` on every run and tells
+    the mono delta playbooks to read the spine. → remaining work: migrate the stretch discipline out of
+    `osc-hoo.md` steps 10-12 into `_common.md` once a second category validates it.
 21. **kb-gate Tier-1 is mislabeled, and the real gate is missing `[tooling, HIGH, Run 9, user-raised]`.**
     Tier-1 replays `replay.js`, a **hardcoded list of process instances that never reads the skill or the
     playbook**. So a KB batch consisting of prose edits produces byte-identical pixels and Tier-1 passes
