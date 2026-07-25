@@ -49,6 +49,40 @@ baseline requirement, not a later "port" and not a nice-to-have.
 - Rationale: every PixInsight process is `new X; set params; executeOn(view)`. One generic tool covers all of them with zero per-process maintenance. Adding `run_bxt`-style tools is the **anti-pattern we deliberately moved past**.
 - The per-process tools (`run_bxt`, `run_nxt`, `run_sxt`, `sharpen`, `denoise`, `stretch_image`, `remove_gradient`, …) were **legacy convenience wrappers and were removed 2026-07-22** (along with `search_processing_recommendations`). Don't re-add them. `run_script` remains the raw PJSR escape hatch.
 
+## ⛔ WHERE LOGIC LIVES, and never let build cost decide it
+There are two legitimate homes for tool logic. Pick by **what the thing is**, never by what is
+cheaper to ship.
+
+| Home | For | Cost to change |
+|---|---|---|
+| **Embedded JS handler** (`pjsr/pixinsight-mcp-watcher.js` → `BridgeHandlersJS.h`) | **Primitives**: the bridge protocol's own verbs. `open_image`, `save_image`, `close_image`, `run_process`, `run_script`, `export_container`. Stable, rarely change. | `module:build` → `module:sign` → close PI → `module:install` (admin) → reopen → restart MCP |
+| **TS-generated PJSR** (`src/pjsr/*.ts` + `execPjsrJson`) | **Composites** built on those primitives that evolve with the knowledge base: the measurement tools, `render_view`, `render_critic_pack`. | `npm run build` + MCP restart |
+
+**The test:** does the bridge expose this as a command? Then it is a primitive and the handler is
+its ONE implementation. Is it analysis/rendering logic layered on top, expected to change as the
+playbooks change? Then TS-side is right.
+
+⛔ **"I'll do it TS-side to avoid the rebuild-sign-admin-install cycle" is not an architecture
+argument.** It is a cost argument, and it produces the actual failure mode: **two implementations of
+the same verb that drift**, with the handler left silently wrong. Real example (2026-07-26):
+`save_image` was reimplemented TS-side to add compression, leaving `handleSaveImage` calling the
+5-arg `saveAs` with no hints, i.e. a known-wrong primitive kept in the tree because fixing it was
+inconvenient. Corrected by putting it back in the handler.
+
+**Smells that you are making a cost call and calling it architecture:**
+- You are about to leave a handler you *know* is wrong, and describe it as "a trap for direct callers".
+- You justify placement by "there is precedent" without checking whether the precedent is a
+  *composite* (legitimate) or a primitive that drifted (not).
+- The reason a parameter is missing is that it was never plumbed, not that the logic is evolving.
+
+**The rebuild cycle is routine, budget it.** It is the same loop `get_full_history` and
+`export_container` used. Batch several handler changes into one cycle rather than avoiding it.
+
+**If a handler change must roll out in stages, make the gap FAIL LOUDLY.** Have the handler echo a
+capability marker in its `outputs` and have the MCP server check it, so an older installed module
+reports "your module predates this" instead of silently doing the old thing. `save_image` returns
+`outputs.hints` for exactly this.
+
 ## Processing methodology (baked into the `run_process` tool description + `docs/PROCESSING_GUIDE.md`)
 Never run a process blind:
 1. `get_process_parameters` first; reason about what the settings mean.

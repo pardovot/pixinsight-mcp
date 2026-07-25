@@ -1,45 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { execPjsrJson } from "../pjsr/exec.js";
-
-/**
- * Save a view via PJSR so we can pass XISF format hints, which the module's
- * `save_image` handler cannot (it calls the 5-arg saveAs). Measured on a
- * 6159x7396 float RGB master: 521.7 MB uncompressed -> 384.2 MB with zlib+sh.
- * Byte shuffling is the load-bearing part for float data; an EMPTY hints string
- * means "format defaults", NOT "no compression", so we always pass it explicitly.
- * The hint is XISF-only, other writers reject an unknown codec hint.
- */
-function saveScript(
-  viewId: string,
-  filePath: string,
-  overwrite: boolean,
-  compression: string
-): string {
-  const id = JSON.stringify(viewId);
-  const out = JSON.stringify(filePath);
-  const codec = JSON.stringify(compression);
-  return `(function(){
-  var w = ImageWindow.windowById(${id});
-  if (!w || w.isNull) throw new Error("Image not found: " + ${id});
-  var path = ${out};
-  if (File.exists(path) && !${overwrite ? "true" : "false"})
-     throw new Error("File already exists (set overwrite=true): " + path);
-  // ALWAYS emit an explicit codec for XISF. Empty hints means "format defaults", and those
-  // defaults are SESSION-MUTABLE: a previous saveAs with a codec hint changes them, so an
-  // empty-hint save silently inherits it (probed live: "" gave 16.95 MB, then 12.07 MB after
-  // one zlib+sh save of the same image). Explicit hints keep file sizes deterministic.
-  var isXisf = /\\.xisf$/i.test(path);
-  var codec = ${codec};
-  var hints = isXisf ? ("compression-codec " + codec) : "";
-  w.saveAs(path, false, false, false, false, hints);
-  // File.size() does NOT exist in PJSR (probed live); FileInfo carries the size.
-  var bytes = -1;
-  try { bytes = new FileInfo(path).size; } catch (e) {}
-  return JSON.stringify({ viewId: ${id}, filePath: path, hints: hints, bytes: bytes });
-})()`;
-}
 
 export function registerImageManagementTools(server: McpServer, bridge: BridgeClient): void {
 
@@ -114,22 +75,36 @@ export function registerImageManagementTools(server: McpServer, bridge: BridgeCl
         ),
     },
     async ({ viewId, filePath, overwrite, compression }) => {
-      try {
-        const out = await execPjsrJson(
-          bridge,
-          saveScript(viewId, filePath, overwrite, compression)
-        );
-        const mb = out.bytes > 0 ? ` (${(out.bytes / 1048576).toFixed(1)} MB)` : "";
-        const how = out.hints ? ` [${compression}]` : "";
+      const result = await bridge.sendCommand("save_image", "__internal__", {
+        viewId, filePath, overwrite, compression,
+      });
+      if (result.status === "error") {
         return {
-          content: [{ type: "text", text: `Saved **${viewId}** to ${filePath}${mb}${how}` }],
-        };
-      } catch (e: any) {
-        return {
-          content: [{ type: "text", text: `Error saving image: ${e?.message ?? String(e)}` }],
+          content: [{ type: "text", text: `Error saving image: ${result.error.message}` }],
           isError: true,
         };
       }
+      const out = (result as any).outputs ?? {};
+      // Capability check: the handler echoes the hints it applied. An older installed module
+      // silently ignores `compression` and writes UNCOMPRESSED, so fail loudly instead.
+      if (out.hints === undefined) {
+        return {
+          content: [{
+            type: "text",
+            text:
+              `Saved **${viewId}** to ${filePath}, but the installed MCPWatcher module predates ` +
+              `compression support, so the file is UNCOMPRESSED and \`compression\` was ignored. ` +
+              `Rebuild and reinstall the module (npm run module:build, module:sign, then ` +
+              `module:install as admin with PixInsight closed).`,
+          }],
+          isError: true,
+        };
+      }
+      const mb = out.bytes > 0 ? ` (${(out.bytes / 1048576).toFixed(1)} MB)` : "";
+      const how = out.hints ? ` [${compression}]` : "";
+      return {
+        content: [{ type: "text", text: `Saved **${viewId}** to ${filePath}${mb}${how}` }],
+      };
     }
   );
 
