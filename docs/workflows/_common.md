@@ -100,6 +100,14 @@ Both branches key on green vs the R-B midpoint, measured on star pixels:
 The second reduces to **`G_new = max(G, (R+B)/2)`**, the mirror of SCNR-neutral, and is likewise a
 no-op where green already sits at/above the midpoint.
 
+⚠️ **Deficit-branch strength cap on BROADBAND (research 2026-07-26):** the invert-SCNR-invert
+technique is sourced from narrowband magenta-star repair; on broadband the clamp `G >= (R+B)/2`
+sits ~on the blackbody locus, so at amount 1.0 it starts desaturating the REDDEST stars, exactly
+the reddened background stars a dark-nebula field should keep. Cap the inverted pass at
+**amount 0.3-0.5** on broadband, and treat a STRONG post-SPCC magenta cast as a symptom to
+diagnose first (calibration, chromatic aberration, or star-layer floors, R10's cause WAS the
+floors) rather than clamp away. (R10 ran it at 1.0 pre-correction; datapoint, not a default.)
+
 ⛔ **Do NOT gate the deficit branch on "magenta" (`R>G && B>G`).** That requires green to be the
 *minimum* channel and misses `B < G < (R+B)/2`. Measured on one image: the magenta test read
 **0.17%** ("skip") while the correct test read **74.2%** of lit pixels.
@@ -117,12 +125,36 @@ fired *opposite* branches. *Verified on: OSC-RGB `[live]`, three images.*
 
 ## 4. Order of operations (tool-level, category-independent)
 
+- ⛔ **Gradient-model subtractions: run the MINIMUM, never retry a converged pass.** Each GC/MGC
+  pass leaves channel-differential residue over large dark structure even when it no-ops at its
+  target scale; downstream pedestal removal (SPCC neutralizeBackground) then amplifies all local
+  contrasts ~1/(1−pedestal fraction) (R10: ~4x), turning invisible residues into visible color
+  blobs on the subject. R10: two redundant passes → dust rims at R/B 2.0 vs a ~1% raw
+  differential, AND suppressed real Ha. *Verified on: mono-LRGB `[live]` (R10 stage trace +
+  sandbox reproduction).*
 - **BXT before NXT.** BXT performs worse on de-noised data (author's rule).
 - **BXT Correct-Only early, sharpening late.** On multi-input work (mosaic panels, mono channels),
   correct aberrations per input *before* combination and sharpen *once* after.
 - **Gauge denoising with the MRS noise estimator, never stdDev.** stdDev is signal/star dominated and
   can *rise* after a correct denoise.
 - **Starless/SXT is an OPTIONAL branch, never a baseline step.**
+
+---
+
+## 4b. Star-layer floors (SXT), subtract before any star stretch
+
+**SXT star layers carry small per-channel CONSTANT floors** (residue of the starless subtraction),
+and they are **unequal across channels**, so the star MTF amplifies the imbalance into a global
+color wash on faint stars. Measured: R 14.1e-6 / G 9.1e-6 / B 6.1e-6 (2.3x R:B) → orange wash,
+B median exactly 0 across whole rows while R sat at 9e-4.
+**Rule (research-corrected 2026-07-26):** measure each channel's floor = median of the
+`0 < lum < 0.003` population. **The established remedy is per-channel MIDTONES equalization in
+the star stretch (+ SCNR), NOT a black-point raise**, NightPhotons warns explicitly that star-layer
+backgrounds are near-clipped and any black-point adjustment loses faint stars. Subtract a floor
+directly ONLY when it is measurably above zero with margin (R10's 6-14e-6 pedestals qualified;
+`max(0, $T - floor_c)`); never as a default black-point move.
+*Verified on: mono-LRGB `[live]` (R10 Barnard 150, subtraction path). Midtones-equalization
+variant is the sourced standard, untested here.*
 
 ---
 
@@ -137,6 +169,24 @@ fired *opposite* branches. *Verified on: OSC-RGB `[live]`, three images.*
   while the result looks *noisier*, because removing a glow lowers the background beneath it.
 - **Equal channel medians do NOT prove neutrality**, and the ±8% sky-band metric is only valid
   pre-stretch, and is not actionable at all when blank patches disagree in sign across the frame.
+- **SCALAR background summaries are blind to antisymmetric chromatic ramps** (research-narrowed
+  2026-07-26: a per-channel box-median MAP resolves them fine; what failed in R10 was reading only
+  the scalar cornerSpread/whole-frame-spread numbers). A real warm-left/cyan-right ramp cancels in
+  whole-frame averages. Checks in cost order: (1) **inspect the gradient tool's own background
+  model / difference map** (the standard visual check); (2) the **per-channel sky-band X/Y
+  PROFILE** (10-16 column/row bands, 40th-pct sky), professional practice states the criterion as
+  *residuals flat across BOTH spatial dimensions with no trend in either*. ⚠️ The profile's
+  *correction* has holes: mask coherent dark structure out of the fit; when subtracting a fitted
+  model keep the level (subtract `model - median(model)`); and independent X + Y fits assume a
+  SEPARABLE gradient, a true diagonal tilt needs a 2D fit.
+  *Verified on: mono-LRGB `[live]` (R10: scalar metrics said flat while the r0 critic saw a 1.9x
+  render ramp).*
+- **"Flat enough" for a LIGHTNESS-CARRYING layer (L): peak-to-peak profile residual < 1% of sky,
+  aim ~0.4%** (professional-reduction bar; research 2026-07-26). Structural reason: LRGB combine
+  takes lightness from L, so L's gradient survives 1:1 while achromatic RGB gradients are
+  discarded; and the stretch's near-black MTF slope ((1-m)/m ≈ 30-50x at autostretch midtones)
+  makes small absolute residuals visible. R10: a 1.4% L ramp became the final's dominant ramp.
+  *Verified on: mono-LRGB `[live]` (R10).*
 - **Judge by the RENDER.** Where a metric and the render disagree, the render wins and the metric is
   the thing to fix.
 

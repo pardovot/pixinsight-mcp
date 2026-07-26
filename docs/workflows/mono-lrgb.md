@@ -59,6 +59,15 @@
 - **Confidence: medium. Consensus** on direction. *(NXT-after-BXT is a reasonable default, not a settled order, denoise-first has real practitioner support.)*
 
 ### L-5. Stretch (separate track)
+- ⛔ **FLATTEN L FIRST, to a stricter standard than any other layer [R10 live + research-verified,
+  2026-07-26].** The structural reason: LRGBCombination works in CIE L*a*b*, taking LIGHTNESS from
+  L and CHROMINANCE from RGB, so an achromatic gradient in the RGB is **discarded** at combine
+  while ANY gradient in L survives into the final 1:1. R10: a 1.4% L ramp (accepted as "flat")
+  became the final image's dominant ramp and inverted the tonal hierarchy. **Gate: peak-to-peak
+  profile residual < 1% of sky level on L before stretching** (professional reduction literature
+  treats ~0.4% as satisfactory; aim there). The stretch's amplification of *absolute* near-black
+  differences (MTF slope (1-m)/m, ~30-50x at autostretch midtones) is why small residuals become
+  visible; measure the profile, don't eyeball. (See `_common.md` measurement traps.)
 - **Goal:** Optimize L purely for detail + dynamic range; bring L to a brightness that matches the RGB luminance it will replace.
 - **Process:** HistogramTransformation / GHS / STF-based stretch, **independent** of RGB.
 - **Brightness-match rule (mechanical, objective):** LRGBCombination *substitutes* L for the RGB's own luminance. If L is much **brighter** than the replaced RGB luminance → washed-out/desaturated result. If much **darker** → over-saturated/dim. Target: match L's background/median and highlight rolloff to ~the stretched RGB luminance. Many deliberately keep L *slightly under-stretched* to protect saturation (recovering it later via the Saturation slider or CurvesTransformation). Exact target is preference.
@@ -72,7 +81,11 @@
 Both L and RGB **nonlinear (stretched)** and brightness-matched. See Debate #2. Sequence:
 1. RGB spine: SPCC while linear → stretch RGB (own path)
 2. L track: gradient → BXT → NXT → stretch (own path)
-3. **LinearFit L to RGB luminance** (or match stretches) so brightness matches
+3. **LinearFit L to the RGB-extracted luminance, IN THE LINEAR STAGE** (research-verified
+   2026-07-26: this is the prescribed brightness match, done linear so both then stretch
+   compatibly in brightness AND contrast; post-stretch histogram-peak matching is a
+   VERIFICATION check, not the method, it aligns only the background and can leave
+   midtone/highlight contrast mismatched. R10 used peak-matching alone: worked, but weaker.)
 4. LRGBCombination, both nonlinear
 
 ### Settings
@@ -83,7 +96,7 @@ Core sliders range 0-1, default **0.50**, and are **counterintuitive: LOWER valu
 | Application domain | **Nonlinear**, brightness-matched | Prevents luminance-color mismatch (muddy/dark or washed regions) |
 | Lightness slider | ~**0.50**; lower (0.40-0.45) pushes **more** L in (brighter/more detail); raise to hold L back (some use 0.55-0.60 to reduce L dominance in highlights / protect star cores) | Balances L transfer |
 | Saturation slider | Lower to ~**0.40-0.45** | LRGB inherently desaturates (luminance replacement flattens color); lower slider **increases** retained saturation |
-| Chrominance Noise Reduction | Common practice: **OFF**, use dedicated NXT/masked MMT on RGB before combine; enable only for quick cleanup of noisy RGB | External chroma NR gives more control |
+| Chrominance Noise Reduction | **A reasoned option, not settled best practice** (research 2026-07-26: tutorials describe the built-in NR as useful at defaults). OFF is fine **when** dedicated NXT covers chroma elsewhere (R10 did); record the reason | External chroma NR gives more control |
 | Transfer functions / Layers | **Defaults** (L\*a\*b\*) | Wavelet layers only affect built-in chroma NR |
 | Pre-combine | LinearFit L→RGB luminance; pre-boost RGB saturation (CurvesTransformation) | Match brightness; offset desaturation |
 
@@ -116,7 +129,7 @@ The presence of L **relaxes** the RGB track, RGB only carries color (low-frequen
 **Mitigations (rough consensus order):**
 1. **Brightness-match L to RGB before combine** + use the Lightness slider (raise toward 0.55-0.60 to weaken L transfer in highlights) rather than raw 0.5.
 2. Reduce saturation loss via the Saturation slider; keep chroma NR modest so color isn't smeared.
-3. **Star-separated / starless workflow (strongest, ascendant 2024-2026 method):** StarXTerminator splits **both** L and RGB into starless + stars; run LRGBCombination only on the **starless** layers; recombine the **RGB stars** (full color, correct profile) via screen/PixelMath. Stars never receive the L lightness → **structural guarantee** of star-color preservation (not a tuning tradeoff). Cost: more steps, possible recombination seams if star removal is imperfect.
+3. **Star-separated / starless workflow (strongest, ascendant 2024-2026 method):** StarXTerminator splits **both** L and RGB into starless + stars; run LRGBCombination only on the **starless** layers; recombine the **RGB stars** (full color, correct profile) via screen/PixelMath. Stars never receive the L lightness → **structural guarantee** of star-color preservation (not a tuning tradeoff). Cost: more steps, possible recombination seams if star removal is imperfect. **Recombination operator: SCREEN is the default** (`starless*~stars + stars`); the NightPhotons additive-after-relinearize variant exists but plain addition clips [research-verified 2026-07-26; R10 used screen, correct].
 4. Alternatively: build L without/reduced stars before combining, or protect star cores with a star mask.
 5. Pre-boost RGB saturation before combine (some deliberately over-saturate RGB stars).
 6. Ensure RGB is SPCC-calibrated before combine so star colors are physically correct going in.

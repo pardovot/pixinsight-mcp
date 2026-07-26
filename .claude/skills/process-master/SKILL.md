@@ -111,7 +111,29 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 
 ## Traps, linear half
 
-- **ABE defaults are a no-op** (`targetCorrection=0` + `replaceTarget=false` → model only). To
+- ⛔ **Flatness gate for lightness carriers: < 1% of sky peak-to-peak, aim ~0.4% [R10 +
+  research-verified].** LRGBCombination takes lightness from L 1:1 (achromatic RGB gradients get
+  DISCARDED at combine; L's survive whole), and the stretch's near-black MTF slope (~30-50x at
+  autostretch midtones) makes small absolute residuals visible: R10's 1.4% L ramp became the
+  final's dominant defect. **Scalar summaries (cornerSpread %, whole-frame channel spread) are
+  blind to antisymmetric chromatic ramps**, read the box-median MAP or, better, the per-channel
+  sky-band X/Y PROFILE (10-16 bands, 40th-pct sky; criterion: flat in BOTH dimensions, no trend
+  in either). Cheapest first check: inspect the gradient tool's own background model.
+- ⛔ **Run the MINIMUM number of gradient-model subtractions; NEVER "try again" on a converged
+  pass [R10, the red-blob root cause, stage-traced + sandbox-reproduced].** Every per-channel
+  background-model subtraction (GC, MGC) leaves channel-differential residue over large dark
+  structure even when it no-ops at its target ramp scale. R10 ran GC twice on R and MGC twice;
+  the redundant passes injected ~+23e-3 of red differential onto the dark nebula, which SPCC's
+  pedestal removal then amplified ~4x (legitimate: the additive sky is ~75% of the raw level, so
+  removing it multiplies ALL local contrasts, including injected errors) and BXT/NXT compounded.
+  Final result: dust rims at R/B 2.0 vs ~1% raw differential, plus the extra passes SUPPRESSED
+  real Ha. If a gradient pass converges with a residual you dislike, the answer is a different
+  tool or a measured profile fix, not a second pass of the same model.
+- **Profile-fit corrections: mask coherent structure out of the fit** (seahorse/galaxy exclusion
+  boxes in R10 v2). A 40th-pct "sky" percentile inside columns holding a dark nebula is pulled
+  down channel-differentially and the fit bends into it. (Note: R10's unmasked fits measured only
+  −2e-3 actual injection, the hazard is real but was NOT the blob's cause; keep the masking as
+  cheap insurance, and sanity-check the fitted correction over the subject before applying.) (`targetCorrection=0` + `replaceTarget=false` → model only). To
   correct: `{ targetCorrection: 1, replaceTarget: true }`. But prefer the playbook's
   MGC/GradientCorrection, ABE/DBE sampling eats real nebulosity on nebula-filling targets.
 - **⛔ SPCC narrowband mode HARD-DEADLOCKS PixInsight on OSC data [R7, 3× forced restarts].**
@@ -250,6 +272,10 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   midpoint, and a smooth continuum puts G at ~the midpoint, so a deficit is non-physical on a
   continuum source (Antares verified unchanged: hue 29.7→30.0°, sat 0.700→0.702). → **broadband +
   stars layer: treat (b) as default ON**, gate = magnitude sanity check, not permission.
+  ⚠️ **Amount cap on broadband [research 2026-07-26]: run the inverted pass at 0.3-0.5, not 1.0.**
+  The clamp sits ~on the blackbody locus, so full strength starts desaturating the reddest
+  (reddened-background) stars. And a STRONG post-SPCC magenta cast is a symptom, diagnose the
+  cause first (star-layer floors did it in R10; also calibration / chromatic aberration).
   ⛔ **HARD EXCLUSION, emission lines (not red stars).** Where red is Hα, G is legitimately below
   the midpoint (R9 Sh2-9 arc: G 0.357 vs midpoint 0.385, (b) would bleach it) → **never on
   narrowband/duoband, never on a starless holding emission nebulosity.** Gates are **per-image,
@@ -262,6 +288,30 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   the star layer wasn't a natural MTF stretch, not a combine bug [R4].
 - **Open research gaps, do NOT invent numbers** (`process-retro` them): in-place OSC gold/teal
   (Foraxx) and natural duoband star color. `snapshot` before the stretch so iterating is cheap.
+
+**R10 additions (mono-LRGB, first live mono run):**
+- ⛔ **SXT star layers carry unequal per-channel constant FLOORS (subtraction residue); equalize
+  them BEFORE the star MTF [R10; remedy research-corrected].** R10 measured R 14.1e-6 / G 9.1e-6 /
+  B 6.1e-6 (2.3x R:B); the MTF amplified that into an orange wash on every faint star. Measure:
+  per-channel median of the 0 < lum < 0.003 population. **Remedy: prefer per-channel MIDTONES
+  equalization in the star stretch (+SCNR), the sourced standard; a star layer's background is
+  near-clipped and black-point raises lose faint stars** (NightPhotons). Direct subtraction
+  `max(0, $T - floor_c)` only when the floor is measurably above zero with margin (R10's was).
+- **The "star pixel median vs 0.35-0.45" target moves its own goalposts post-stretch:** every
+  extra MTF floods the >threshold footprint with wing pixels and drags the median DOWN (R10:
+  39k → 111k px, median 0.112 → 0.106 after MORE stretch). Set the amount ONCE from the
+  pre-stretch star-pixel M, then judge renders; do not iterate against the post-stretch median.
+- ⛔ **Luminance-only-gated shadow corrections concentrate in the darkest REAL structure, i.e.
+  the subject [R10, made the dark nebula's red blob worse].** A dark-nebula core IS the L<0.13
+  population, so "equalize the shadow medians" pushed +R exactly onto it (blob rex +28%). The
+  Stage-1 leveling |rex| gate has the complementary hole: it EXCLUDES the strongly-cast pixels
+  it should fix. Any shadow-population color op needs a chroma-aware term (don't push a channel
+  UP where it is already the max channel / don't operate on coherent structure), and must be
+  render-checked ON THE SUBJECT, not only on the global metric.
+- **GHS `stretchFactor` (process param, range 0-20) is the LOG slider**, actual D = exp(v)-1;
+  v=8 lifted bg 0.0009→0.31 in one pass. Iterate with undo; ~6.5-7 was the useful zone on R10.
+- **PixelMath `newImageColorSpace`: 2 = GRAY, not RGB.** Use 0 = SameAsTarget. R10's first
+  recombine silently produced a MONO final; the always-verify-saturation rule caught it.
 
 ## Reliability & API notes
 
@@ -329,7 +379,22 @@ never the transcript or parameter values (blindness is the design; see the skill
 - **The critic is blind to your process, but it is also blind to the SKY**, and only the first is
   the design goal. Every wrong R9 call came from missing subject facts (dust-filled field, no empty
   sky, two globulars, an emission arc), not bad judgment. Weigh its background/gradient verdicts
-  accordingly on wide dusty fields.
+  accordingly on wide dusty fields. **Give the critic a factual target card** (sky facts only:
+  field type, known objects, known-real features like reflection halos or an Ha region), R10's
+  crop misfire came from a critic that did not know the left edge held real Ha.
+- ⛔ **A critic CROP/geometry recommendation is a USER decision, never execute it yourself [R10,
+  user had to interrupt].** The r2 critic argued "red-deficient band cannot be sky, dust reddens" +
+  a noise rise = stack edge, and prescribed a 300px crop; the band was a real faint Ha region.
+  Two rules: (a) verify any "this cannot be sky" spectral claim against the RAW masters first
+  (per-channel spot/annulus differential, an Ha region shows R-specific excess in the raw R
+  master, R10: R 1.006 vs G 1.002 local, R +8.7% vs G +0.9% global); (b) geometry changes
+  invalidate every saved checkpoint and lose field, pause for the user.
+- ⛔ **When a gate closes at max revise cycles, the remedy is LOG AND PROCEED, never a new
+  corrective action.** R10 hit cycle-2 closure and started executing the crop anyway; closure
+  means the axis is recorded for process-retro, full stop.
+- **Spot-verify a critic's quantitative claim yourself before acting on it** (one measurement
+  script). R10's cyan-shadow numbers verified and were right; the crop rationale did not and
+  was wrong.
 
 ## Checkpoints & when you finish
 
@@ -352,16 +417,27 @@ result-tests/<Target>/
 ├── 01-precombine/     per-CHANNEL and/or per-PANEL, before any combination
 │   ├── L_lin.xisf  R_lin.xisf  G_lin.xisf  B_lin.xisf   (or P1_lin.xisf …, or L_P1_lin.xisf …)
 │   └── precombine.xpsm
-├── 02-linear/         combined, still linear
-│   ├── linear.xisf            post BXT+NXT, pre-SXT
-│   ├── linear_starless.xisf  linear_stars.xisf
-│   └── linear.xpsm
+├── 02-linear/         combined, still linear. MULTI-TRACK runs (LRGB/HaLRGB/SHO): prefix EVERY
+│   │                  file with its track (rgb_, L_, Ha_...), never a bare `linear.xisf` [R10,
+│   │                  user: "linear and L_linear is confusing"]
+│   ├── rgb_combined.xisf      right after ChannelCombination, pre-calibration (cheap, lets the
+│   │                          user re-run calibration themselves; R10 user asked for exactly this)
+│   ├── rgb_calibrated.xisf    post SPFC/MGC/SPCC, pre BXT/NXT (the color-decision boundary)
+│   ├── rgb_linear.xisf        post BXT+NXT (+ any measured fixes), pre-SXT
+│   ├── L_linear.xisf          the L track's same stage (parallel track, merges only at nonlinear
+│   │                          LRGBCombination, that is WHY it lives here and not in 01-)
+│   ├── rgb_linear_starless.xisf  rgb_linear_stars.xisf  L_linear_starless.xisf
+│   └── rgb_linear.xpsm  L_linear.xpsm
 ├── 03-nonlinear/
-│   ├── final_starless.xisf  final_stars.xisf
-│   └── starless.xpsm  stars.xpsm  recombine.xpsm
+│   ├── final_starless.xisf  final_stars.xisf  (+ final_L.xisf on LRGB)
+│   └── starless.xpsm  stars.xpsm  L_stretch.xpsm  recombine.xpsm
 ├── critic/            the packs + reports for EVERY gate (post-linear/, post-stretch-*/, final/)
 └── gate-runs/         kb-gate reports
 ```
+
+- **A run README.md in the target dir is part of the deliverable on multi-track runs:** one line
+  per file saying what stage it is and which track it belongs to. The stage layout is obvious to
+  the agent that wrote it and to nobody else [R10 user feedback].
 
 - **The layer pairs are the point:** linear (pre-stretch) and final, for both starless and stars, so
   a later run can restart from either side of the stretch. A single-image OSC run has an empty
