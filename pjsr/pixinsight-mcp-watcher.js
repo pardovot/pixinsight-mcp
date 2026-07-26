@@ -28,7 +28,26 @@ CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 // Configuration
 // ============================================================================
 
-var BRIDGE_DIR = File.homeDirectory + "/.pixinsight-mcp/bridge";
+// Per-instance bridge slot, so N PixInsight instances never poll the same
+// commands dir. Precedence mirrors the native module + MCP server:
+//   PIXINSIGHT_MCP_INSTANCE env  >  CoreApplication.instance (-n=N)  >  slot 1.
+// Kept OUTSIDE the __MCP_HANDLERS_* block below, so the embedded-handler hash
+// (scripts/handlers-rev.lock.json) is untouched, no HANDLERS_REVISION bump.
+function resolveBridgeSlot() {
+   try {
+      var env = getEnvironmentVariable( "PIXINSIGHT_MCP_INSTANCE" );
+      if ( env && parseInt( env, 10 ) > 0 )
+         return parseInt( env, 10 );
+   } catch ( e ) {}
+   try {
+      if ( CoreApplication.instance > 0 )
+         return CoreApplication.instance;
+   } catch ( e ) {}
+   return 1;
+}
+var BRIDGE_SLOT = resolveBridgeSlot();
+var BRIDGE_DIR = File.homeDirectory + "/.pixinsight-mcp/bridge"
+   + (BRIDGE_SLOT > 1 ? ("-" + BRIDGE_SLOT) : "");
 var COMMANDS_DIR = BRIDGE_DIR + "/commands";
 var RESULTS_DIR = BRIDGE_DIR + "/results";
 var LOGS_DIR = BRIDGE_DIR + "/logs";
@@ -785,6 +804,18 @@ function processNextCommand() {
    return true;
 }
 
+// Heartbeat, mirrors the native module (BridgePoller::WriteHeartbeat). The MCP
+// server reads bridge/heartbeat.json's mtime to auto-detect which instances are
+// live; the JSON payload is identity only. Written directly, mtime is the signal.
+function writeHeartbeat() {
+   try {
+      var hb = "{\"slot\":" + BRIDGE_SLOT
+             + ",\"pid\":" + CoreApplication.pid
+             + ",\"version\":\"" + WATCHER_VERSION + "\"}";
+      File.writeTextFile(BRIDGE_DIR + "/heartbeat.json", hb);
+   } catch (e) {}
+}
+
 function runWatcher() {
    // Ensure directories exist
    ensureDirectory(BRIDGE_DIR);
@@ -800,6 +831,7 @@ function runWatcher() {
    console.noteln("===========================================");
 
    var commandCount = 0;
+   var lastHeartbeat = 0;
 
    console.show();
 
@@ -820,6 +852,12 @@ function runWatcher() {
    for (;;) {
       // Yield to PixInsight UI
       CoreApplication.processEvents();
+
+      // Refresh heartbeat ~every 2 s (server auto-detect signal).
+      if (Date.now() - lastHeartbeat >= 2000) {
+         writeHeartbeat();
+         lastHeartbeat = Date.now();
+      }
 
       // Check abort or shutdown signal
       if (shouldShutdown()) {
@@ -847,6 +885,7 @@ function runWatcher() {
       }
    }
 
+   deleteFile(BRIDGE_DIR + "/heartbeat.json");   // signal "down" immediately
    console.noteln("[MCP Watcher] Stopped. Processed " + commandCount + " command(s).");
 }
 

@@ -88,6 +88,7 @@ void MCPWatcherInterface::StopWatcher()
       return;
 
    m_timer->Stop();
+   m_poller.RemoveHeartbeat();   // signal "down" to the MCP server immediately
    Console().NoteLn( "<end><cbr>[MCP Watcher] Stopped. Processed "
                      + String( m_poller.TotalProcessed() ) + " command(s)." );
    UpdateStatus();
@@ -101,6 +102,10 @@ void MCPWatcherInterface::e_Timer( Timer& sender )
 {
    if ( m_timer.IsNull() || &sender != m_timer.Ptr() )
       return;
+
+   // Refresh the heartbeat first, so it stays fresh even if a long command
+   // below blocks this tick (the server reads it to auto-detect live instances).
+   m_poller.WriteHeartbeat();
 
    int n = m_poller.ProcessPending( /*maxPerTick=*/10 );
    if ( n > 0 )
@@ -130,6 +135,10 @@ void MCPWatcherInterface::UpdateStatus()
    bool running = IsRunning();
    GUI->Status_Label.SetText( running ? "Watcher: running (non-blocking)"
                                       : "Watcher: stopped" );
+   // Resolved per-instance bridge dir (populated once StartWatcher runs). Shown
+   // so a multi-instance setup can confirm each panel owns a distinct slot.
+   if ( !m_poller.BridgeDir().IsEmpty() )
+      GUI->Bridge_Label.SetText( "Bridge: " + m_poller.BridgeDir() );
    GUI->Count_Label.SetText( "Processed: " + String( m_poller.TotalProcessed() ) + " command(s)" );
    GUI->Start_Button.Enable( !running );
    GUI->Stop_Button.Enable( running );
@@ -141,6 +150,7 @@ MCPWatcherInterface::GUIData::GUIData( MCPWatcherInterface& w )
 {
    Version_Label.SetText( "v" MCPWATCHER_VERSION_STR "  (built " MCPWATCHER_BUILD_STR ")" );
    Status_Label.SetText( "Watcher: stopped" );
+   Bridge_Label.SetText( "Bridge: (resolved on start)" );
    Count_Label.SetText( "Processed: 0 command(s)" );
 
    Start_Button.SetText( "Start" );
@@ -158,6 +168,7 @@ MCPWatcherInterface::GUIData::GUIData( MCPWatcherInterface& w )
    Global_Sizer.SetSpacing( 6 );
    Global_Sizer.Add( Version_Label );
    Global_Sizer.Add( Status_Label );
+   Global_Sizer.Add( Bridge_Label );
    Global_Sizer.Add( Count_Label );
    Global_Sizer.AddSpacing( 4 );
    Global_Sizer.Add( Buttons_Sizer );

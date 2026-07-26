@@ -115,6 +115,50 @@ Add to your project's `.mcp.json` or use the CLI:
 claude mcp add pixinsight node /absolute/path/to/pixinsight-mcp/build/index.js
 ```
 
+## Running a Second Instance (parallel sessions)
+
+Two PixInsight instances on one machine, isolated so commands never cross (see
+`docs/bridge-protocol.md` for the dir convention). **No env vars, no extra MCP
+registration** - the server auto-detects the live instance from its heartbeat.
+
+1. Launch the second PixInsight with a distinct slot; the module auto-derives
+   its bridge dir (`~/.pixinsight-mcp/bridge-2`) from `CoreApplication.instance`:
+
+   ```powershell
+   # Windows
+   & "C:\Program Files\PixInsight\bin\PixInsight.exe" -n=2
+   ```
+   ```bash
+   # macOS / Linux
+   <PixInsight> -n=2
+   ```
+
+   Open `Process > Utilities > MCP Watcher` in each; the panel's `Bridge:` line
+   shows which slot it owns (`.../bridge` vs `.../bridge-2`).
+
+2. Use the normal single registration in every session (no per-instance env):
+
+   ```bash
+   claude mcp add pixinsight node /absolute/path/to/pixinsight-mcp/build/index.js
+   ```
+
+3. How the session targets an instance:
+   - **One instance live** → auto-targeted, nothing to do (startup banner:
+     `Auto-detected PixInsight instance N`).
+   - **Two+ live** → just say **"use instance 2"** in the prompt; the agent calls
+     the `use_instance` tool to route there. `list_instances` shows what's live
+     and which is active.
+
+**Manual override** (optional, pins a session and skips auto-detect): set
+`PIXINSIGHT_MCP_INSTANCE=N` or `PIXINSIGHT_MCP_BRIDGE_DIR=<path>` when registering
+that server. Rarely needed.
+
+> Caution: two instances share one GPU, so parallel BXT/SXT/NXT contend (a
+> throughput fact, not a bug). And parallel *training* runs must serialize the
+> retro + kb-gate phases, those write shared files (`docs/PROCESSING_JOURNAL.md`,
+> playbooks) and kb-gate uses fixed view ids; only the processing phase
+> parallelizes.
+
 ## Testing the Bridge Manually
 
 You can test the file bridge without the MCP server:
