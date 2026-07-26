@@ -55,9 +55,11 @@
 - If used: run AFTER per-channel gradient removal, channels registered; reference = lowest-sigma channel; fit the two non-reference masters to the third (NOT to an L master, no L here).
 - Remaining value: neutral pre-SPCC preview / determinism (hygiene, not accuracy).
 
-### 1.5 BXT "Correct Only", per-channel is the EXCEPTION · pre-combine when used · Medium · Contested
+### 1.5 BXT "Correct Only", per-channel is the EXCEPTION · pre-combine when used · High · Vendor-documented
 - **Default = a single Correct Only pass on the combined RGB (Stage 3).** Run per-channel pre-combine ONLY when star shapes differ between channels (per-filter tilt/collimation/dispersion). Matters more for mono than OSC.
 - Settings: Correct Only, Sharpen Stars=0, Nonstellar=0, Adjust Star Halos=0, Auto PSF on. (BXT estimates PSF; does not require a WCS.)
+- **Upgraded from Medium/Contested 2026-07-26**: the shipped RC Astro manual states this directly. BXT's AI "was trained to correct color images with all channels present simultaneously: it looks for relationships between the color channels", so "best results will therefore be obtained by processing RGB images rather than individual channels", and a mono channel "won't be able to do any cross-channel corrections, such as for chromatic aberration or differing FWHM in each channel". The documented exception is precisely ours: aberrations **inconsistent** between channels (rotation between channels, differing collimation/tilt) → Correct Only per mono channel, combine, then BXT again with sharpening. `[vendor-doc]`
+  - Note the axis: *different* per-channel aberration is expected and BXT handles it (refractors aberrate per wavelength); it is *inconsistent* aberration, from a changed instrument configuration, that breaks the assumption.
 - The 2025 "STOP separating channels" video = one imager's efficiency test for well-corrected rigs, not evidence per-channel is wrong.
 
 ---

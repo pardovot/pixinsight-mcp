@@ -298,8 +298,8 @@ The following URLs were inaccessible during research (403 / SSL / not loaded). R
 |---|---|
 | https://pixinsight.com/tutorials/narrowband/ | **Primary source.** Vicent Peris "New Approach to Combination of Broadband and Narrowband Data", that continuum subtraction is "mandatory," the exact `k` formula, that it is done linear before stretch, and the max/mix operators + Ha-boost ×2..×12 (chrominance) wording |
 | https://pixinsight.com/examples/M31-Ha/ | Worked M31 Ha example: continuum-subtraction `k` factor and combine placement |
-| https://www.rc-astro.com/software/bxt/ | BXT amount / Sharpen Stars / Sharpen Nonstellar defaults; per-channel narrowband guidance |
-| https://www.rc-astro.com/blurxterminator-2-0-ai4-release/ | Exact BXT AI4 release date (Dec 14 vs Dec 17 2023) and change list |
+| ~~https://www.rc-astro.com/software/bxt/~~ | **RESOLVED 2026-07-26 from the shipped manual** (`<PixInsight>/doc/tools/BlurXTerminator/`, v2.0.0/AI4). Per-channel + narrowband guidance confirmed, see `_common.md` §4 and `mono-rgb.md` §1.5. ⛔ **Stop re-queueing the numeric defaults: the manual states none.** It documents only what each slider *means* (notably `Sharpen Nonstellar 1.00` = the maximum possible sharpening). Numbers can only come from the installed GUI / `get_process_parameters`, and are already user-confirmed in `_common.md` §4. |
+| https://www.rc-astro.com/blurxterminator-2-0-ai4-release/ | Exact BXT AI4 release date (Dec 14 vs Dec 17 2023) and change list. *(Partially resolved: the shipped manual's version table gives **2.0.0 / AI4 = 14 Dec 2023**, matching the Dec-14 reading.)* |
 | https://www.rc-astro.com/starxterminator-usage-notes/ | SXT linear vs nonlinear, unscreen-off, subtraction extraction, screen recombine |
 | https://www.lightvortexastronomy.com/tutorial-combining-lrgb-with-narrowband.html | Canonical LRGB+NB tutorial: Ha→L and Ha→R placement, bandwidth-weighted subtraction formulas |
 | https://www.lightvortexastronomy.com/tutorial-preparing-monochrome-images-for-colour-combination-and-further-post-processing.html | Luminance as alignment reference; LinearFit for mono color-combination |
