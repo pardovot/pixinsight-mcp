@@ -133,7 +133,8 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   boxes in R10 v2). A 40th-pct "sky" percentile inside columns holding a dark nebula is pulled
   down channel-differentially and the fit bends into it. (Note: R10's unmasked fits measured only
   −2e-3 actual injection, the hazard is real but was NOT the blob's cause; keep the masking as
-  cheap insurance, and sanity-check the fitted correction over the subject before applying.) (`targetCorrection=0` + `replaceTarget=false` → model only). To
+  cheap insurance, and sanity-check the fitted correction over the subject before applying.)
+- **ABE defaults are a no-op** (`targetCorrection=0` + `replaceTarget=false` → model only). To
   correct: `{ targetCorrection: 1, replaceTarget: true }`. But prefer the playbook's
   MGC/GradientCorrection, ABE/DBE sampling eats real nebulosity on nebula-filling targets.
 - **⛔ SPCC narrowband mode HARD-DEADLOCKS PixInsight on OSC data [R7, 3× forced restarts].**
