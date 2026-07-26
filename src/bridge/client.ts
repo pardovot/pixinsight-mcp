@@ -25,17 +25,35 @@ export const EXPECTED_HANDLERS_REV = 1;
 
 export class BridgeClient {
   private config: BridgeConfig;
-  private commandsDir: string;
-  private resultsDir: string;
-  private logsDir: string;
+  // Set via setBridgeDir() in the constructor (and on runtime instance switches).
+  private commandsDir!: string;
+  private resultsDir!: string;
+  private logsDir!: string;
   private revWarned = false;
 
   constructor(config?: Partial<BridgeConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    const bridgeDir = expandHome(this.config.bridgeDir);
-    this.commandsDir = join(bridgeDir, "commands");
-    this.resultsDir = join(bridgeDir, "results");
-    this.logsDir = join(bridgeDir, "logs");
+    this.setBridgeDir(this.config.bridgeDir);
+  }
+
+  /**
+   * Retarget every subsequent command at a different bridge dir. Used to switch
+   * the active PixInsight instance at runtime (auto-detect on startup, or a
+   * "use instance N" request), so one server can drive whichever instance is
+   * named without re-registering. Commands are issued serially, so switching
+   * between calls is safe.
+   */
+  setBridgeDir(bridgeDir: string): void {
+    this.config = { ...this.config, bridgeDir };
+    const expanded = expandHome(bridgeDir);
+    this.commandsDir = join(expanded, "commands");
+    this.resultsDir = join(expanded, "results");
+    this.logsDir = join(expanded, "logs");
+  }
+
+  /** Absolute (home-expanded) bridge dir this client currently targets. */
+  getBridgeDir(): string {
+    return expandHome(this.config.bridgeDir);
   }
 
   async ensureDirectories(): Promise<void> {

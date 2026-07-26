@@ -59,6 +59,7 @@ private:
       VerticalSizer Global_Sizer;
          Label      Version_Label;
          Label      Status_Label;
+         Label      Bridge_Label;
          Label      Count_Label;
          HorizontalSizer Buttons_Sizer;
             PushButton Start_Button;

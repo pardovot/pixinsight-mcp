@@ -8,7 +8,7 @@ The bridge protocol defines how the MCP server and the watcher (native module, o
 
 ```
 ~/.pixinsight-mcp/
-  bridge/
+  bridge/         # slot 1 (default)
     commands/     # MCP server writes here, watcher reads + deletes
     results/      # Watcher writes here, MCP server reads + deletes
     logs/         # Reserved (created but currently unused)
@@ -17,6 +17,52 @@ The bridge protocol defines how the MCP server and the watcher (native module, o
 Both sides write files atomically: content goes to `<id>.tmp` (outside every
 `*.json` glob) and is then renamed to `<id>.json`, so a reader never sees a
 partial file.
+
+### Per-instance isolation (multiple PixInsight instances)
+
+To run N PixInsight instances against N Claude sessions on one machine, each
+pair polls a per-slot bridge dir so commands never cross instances. The slot is
+keyed on the PixInsight instance number (`PixInsight.exe -n=N`):
+
+```
+~/.pixinsight-mcp/bridge      # slot 1 (default, unchanged)
+~/.pixinsight-mcp/bridge-2    # slot 2
+~/.pixinsight-mcp/bridge-N    # slot N
+```
+
+The **watcher** (module or PJSR) resolves its own slot; the **server**
+auto-detects which slot to talk to (below). Watcher slot precedence:
+
+| Precedence | Native module + PJSR watcher |
+|---|---|
+| 1. explicit path | `PIXINSIGHT_MCP_BRIDGE_DIR` |
+| 2. slot env | `PIXINSIGHT_MCP_INSTANCE=N` |
+| 3. native slot | `CoreApplication.instance` (from `-n=N`) |
+| 4. default | slot 1 |
+
+Typical setup: just launch the second instance with `-n=2`; the module derives
+slot 2 and owns `bridge-2`. The panel shows its resolved `Bridge:` dir.
+
+### Heartbeat + server auto-detect
+
+Each running watcher refreshes `<bridgeDir>/heartbeat.json` every ~2 s:
+
+```json
+{ "slot": 2, "pid": 12345, "version": "1.3.2" }
+```
+
+Liveness is judged by the file's **mtime** (fresh < 6 s = live); the JSON is
+identity only. The watcher deletes the file on stop for a prompt "down" signal.
+
+The MCP server, at startup, scans `~/.pixinsight-mcp/` for these heartbeats
+(`src/bridge/discover.ts`) and picks its target:
+- **one live instance** → target it automatically;
+- **several live** → default to the lowest slot, switchable at runtime by the
+  `use_instance` tool (the agent calls it when the user says "use instance N");
+- **none live** → default to slot 1.
+
+A user can still pin a session explicitly with `PIXINSIGHT_MCP_BRIDGE_DIR` or
+`PIXINSIGHT_MCP_INSTANCE`, which skips auto-detect entirely.
 
 ## Command File Format
 

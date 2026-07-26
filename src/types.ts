@@ -104,10 +104,38 @@ const envInt = (name: string, fallback: number): number => {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
 
+/**
+ * Resolve the bridge directory, shared convention with the C++ module and the
+ * PJSR watcher (both resolve the same slot the same way). Precedence:
+ *   1. PIXINSIGHT_MCP_BRIDGE_DIR  explicit path, wins over everything.
+ *   2. PIXINSIGHT_MCP_INSTANCE=N  slot convention (matches PixInsight -n=N).
+ *   3. default slot 1.
+ * Slot 1 keeps the historical path (full back-compat); slot N>1 gets a
+ * per-slot suffix so two instances never poll the same commands dir.
+ */
+export function resolveBridgeDir(): string {
+  const explicit = process.env.PIXINSIGHT_MCP_BRIDGE_DIR;
+  if (explicit) return explicit;
+  const slot = Number.parseInt(process.env.PIXINSIGHT_MCP_INSTANCE ?? "", 10);
+  if (Number.isFinite(slot) && slot > 1) return `~/.pixinsight-mcp/bridge-${slot}`;
+  return "~/.pixinsight-mcp/bridge";
+}
+
+/**
+ * True when the user pinned a bridge target via env (explicit dir or slot).
+ * When pinned, the server honors it verbatim and skips heartbeat auto-detection;
+ * when not, it auto-detects the live PixInsight instance at startup.
+ */
+export function hasExplicitBridgePin(): boolean {
+  return Boolean(process.env.PIXINSIGHT_MCP_BRIDGE_DIR || process.env.PIXINSIGHT_MCP_INSTANCE);
+}
+
 export const DEFAULT_CONFIG: BridgeConfig = {
-  // Single canonical location, the C++ module and watcher hardcode it, so a
-  // server-only override would silently break the bridge.
-  bridgeDir: "~/.pixinsight-mcp/bridge",
+  // Per-instance bridge location, kept in lockstep with the C++ module and the
+  // PJSR watcher via the shared slot convention in resolveBridgeDir(). An
+  // out-of-band server-only override would still break the bridge, so both
+  // sides must agree; that is why this is a convention, not a free-form path.
+  bridgeDir: resolveBridgeDir(),
   pollIntervalMs: envInt("PIXINSIGHT_MCP_POLL_INTERVAL_MS", 200),
   // Timeouts are hardware- and framesize-dependent; a slow machine or very
   // large frames legitimately need more than these defaults.

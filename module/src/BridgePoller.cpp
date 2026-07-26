@@ -3,10 +3,13 @@
 // ----------------------------------------------------------------------------
 #include "BridgePoller.h"
 #include "BridgeHandlersJS.h"
+#include "Version.h"
 
 #include <pcl/File.h>
 #include <pcl/MetaModule.h>
 #include <pcl/Variant.h>
+
+#include <cstdlib>   // std::getenv, std::atoi
 
 namespace pcl
 {
@@ -16,13 +19,89 @@ BridgePoller::BridgePoller()
 }
 
 // ----------------------------------------------------------------------------
+// Per-instance slot, so N PixInsight instances (PixInsight.exe -n=N) never poll
+// the same commands dir. Precedence mirrors the MCP server (src/types.ts
+// resolveBridgeDir) so both ends of the bridge agree:
+//   1. PIXINSIGHT_MCP_INSTANCE=N   explicit override (also the fallback if the
+//      native instance number ever misreports).
+//   2. CoreApplication.instance    the -n=N slot, read via a one-shot
+//      EvaluateScript. Legal here: ResolveSlot runs from Initialize(), which
+//      runs at StartWatcher on the root thread, long past module-install time
+//      (the same reason HandleCommandFile's EvaluateScript is legal).
+//   3. slot 1.
+// ----------------------------------------------------------------------------
+int BridgePoller::ResolveSlot()
+{
+   const char* envSlot = std::getenv( "PIXINSIGHT_MCP_INSTANCE" );
+   if ( envSlot != nullptr && *envSlot != '\0' )
+   {
+      int n = std::atoi( envSlot );
+      if ( n > 0 )
+         return n;
+   }
+
+   try
+   {
+      Variant v = Module->EvaluateScript( "CoreApplication.instance", "JavaScript" );
+      if ( v.IsValid() && v.CanConvertToInt() )
+      {
+         int n = v.ToInt();
+         if ( n > 0 )
+            return n;
+      }
+   }
+   catch ( ... )
+   {
+      // Fall through to slot 1 if the instance number can't be read.
+   }
+   return 1;
+}
+
+// ----------------------------------------------------------------------------
+// PixInsight PID, for the heartbeat identity payload (informational; the server
+// judges liveness by heartbeat mtime, not this). One-shot EvaluateScript, same
+// safe context as ResolveSlot.
+// ----------------------------------------------------------------------------
+int BridgePoller::ResolvePid()
+{
+   try
+   {
+      Variant v = Module->EvaluateScript( "CoreApplication.pid", "JavaScript" );
+      if ( v.IsValid() && v.CanConvertToInt() )
+         return v.ToInt();
+   }
+   catch ( ... )
+   {
+   }
+   return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+String BridgePoller::ResolveBridgeDir( int slot )
+{
+   // Explicit path wins over everything, must match the server's
+   // PIXINSIGHT_MCP_BRIDGE_DIR when that override is used.
+   const char* explicitDir = std::getenv( "PIXINSIGHT_MCP_BRIDGE_DIR" );
+   if ( explicitDir != nullptr && *explicitDir != '\0' )
+      return String( explicitDir );
+
+   String base = File::HomeDirectory() + "/.pixinsight-mcp/bridge";
+   if ( slot > 1 )
+      return base + "-" + String( slot );  // slot 1 keeps the historical path
+   return base;
+}
+
+// ----------------------------------------------------------------------------
 
 bool BridgePoller::Initialize()
 {
-   String home = File::HomeDirectory();
-   m_bridgeDir   = home + "/.pixinsight-mcp/bridge";
+   m_slot        = ResolveSlot();
+   m_pid         = ResolvePid();
+   m_bridgeDir   = ResolveBridgeDir( m_slot );
    m_commandsDir = m_bridgeDir + "/commands";
    m_resultsDir  = m_bridgeDir + "/results";
+   m_heartbeatTicks = 0;   // write a heartbeat on the very first tick after Start
 
    try
    {
@@ -35,6 +114,48 @@ bool BridgePoller::Initialize()
    catch ( ... )
    {
       return false;
+   }
+}
+
+// ----------------------------------------------------------------------------
+
+void BridgePoller::WriteHeartbeat()
+{
+   // Timer ticks ~every 300 ms; refresh the heartbeat ~every 2 s (every 7th
+   // tick), and on the first tick after Start so liveness appears promptly.
+   // Written directly (no temp+rename): the freshness signal is the file's
+   // mtime, which is always valid; a reader that catches a partial JSON body
+   // just skips the identity fields and still sees a fresh mtime.
+   if ( m_heartbeatTicks++ % 7 != 0 )
+      return;
+   if ( m_bridgeDir.IsEmpty() )
+      return;
+   try
+   {
+      String hb = "{\"slot\":" + String( m_slot )
+                + ",\"pid\":" + String( m_pid )
+                + ",\"version\":\"" MCPWATCHER_VERSION_STR "\"}";
+      File::WriteTextFile( m_bridgeDir + "/heartbeat.json", hb.ToUTF8() );
+   }
+   catch ( ... )
+   {
+   }
+}
+
+// ----------------------------------------------------------------------------
+
+void BridgePoller::RemoveHeartbeat()
+{
+   if ( m_bridgeDir.IsEmpty() )
+      return;
+   try
+   {
+      String path = m_bridgeDir + "/heartbeat.json";
+      if ( File::Exists( path ) )
+         File::Remove( path );
+   }
+   catch ( ... )
+   {
    }
 }
 
@@ -128,16 +249,24 @@ void BridgePoller::HandleCommandFile( const String& fileName )
    // evaluation inside the engine while executing; that clobbers the outer
    // EvaluateScript completion value, so v.ToString() comes back as unrelated raw
    // text (e.g. "true\n<Gaia temp path>") instead of our JSON. __out is a local
-   // computed AFTER the process returns, so it is immune. The result path is
-   // derived in JS the same way C++ derives resPath.
+   // computed AFTER the process returns, so it is immune. The results dir is
+   // injected from m_resultsDir (NOT re-derived from File.homeDirectory) so the
+   // JS writes into THIS instance's per-slot bridge, matching resPath above.
+   String resDirLit = m_resultsDir;
+   resDirLit.ReplaceString( String( "\\" ), String( "\\\\" ) ); // escape for a JS
+   resDirLit.ReplaceString( String( "\"" ), String( "\\\"" ) ); //   string literal
+
    String script = String( MCP_HANDLERS_JS );
    script += "\n;(function(){"
              "var __start=Date.now();"
              "var __cmd=";
    script += rawJson;
    script += ";"
-             "var __resPath=File.homeDirectory+\"/.pixinsight-mcp/bridge/results/\"+__cmd.id+\".json\";"
-             "var __tmpPath=File.homeDirectory+\"/.pixinsight-mcp/bridge/results/\"+__cmd.id+\".tmp\";"
+             "var __resDir=\"";
+   script += resDirLit;
+   script += "\";"
+             "var __resPath=__resDir+\"/\"+__cmd.id+\".json\";"
+             "var __tmpPath=__resDir+\"/\"+__cmd.id+\".tmp\";"
              "var __out;"
              "try{"
                "var __r=dispatchCommand(__cmd);"
