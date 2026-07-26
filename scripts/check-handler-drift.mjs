@@ -3,7 +3,7 @@
 // Guards the failure mode behind the 2026-07-26 save_image incident: a TS tool
 // sends a bridge parameter the embedded handler never reads, so the primitive
 // silently ignores it. Two checks:
-//   1. Every parameter key a src/tools/*.ts sendCommand() sends to a handler
+//   1. Every parameter key a src/**/*.ts sendCommand() sends to a handler
 //      verb must be read by that verb's handler in pjsr/pixinsight-mcp-watcher.js
 //      (as `command.parameters.<key>` or `<alias>.<key>` where
 //      `var <alias> = command.parameters`).
@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const watcherPath = path.join(repoRoot, "pjsr", "pixinsight-mcp-watcher.js");
 const clientPath = path.join(repoRoot, "src", "bridge", "client.ts");
-const toolsDir = path.join(repoRoot, "src", "tools");
+const srcDir = path.join(repoRoot, "src");
 
 const errors = [];
 
@@ -112,8 +112,17 @@ function extractSends(source) {
   return sends;
 }
 
-for (const file of fs.readdirSync(toolsDir).filter((f) => f.endsWith(".ts"))) {
-  const source = fs.readFileSync(path.join(toolsDir, file), "utf8");
+function* tsFiles(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) yield* tsFiles(p);
+    else if (e.name.endsWith(".ts")) yield p;
+  }
+}
+
+for (const filePath of tsFiles(srcDir)) {
+  const file = path.relative(srcDir, filePath);
+  const source = fs.readFileSync(filePath, "utf8");
   for (const { tool, keys } of extractSends(source)) {
     if (tool === "run_script") continue;
     const handler = toolToHandler.get(tool);
