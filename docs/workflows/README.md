@@ -91,6 +91,23 @@ EOF
 Then commit and summarize highlights from the notification's truncated preview only.
 
 ## Primary-source cross-check (browser, not subject to the search cap)
+
+⛔ **Check the LOCAL doc set BEFORE queueing anything for the browser.** PixInsight ships the
+reference manuals on disk at `<PixInsight>/doc/` (derive the root, never hardcode): `tools/<Tool>/`
+per process, `scripts/<Script>/`, and `pjsr/objects/` for the PJSR API. These are the *same*
+documents as `pixinsight.com/doc/...`, which 403s WebFetch, so a `needsBrowser` entry pointing at
+a pixinsight.com tool page is usually already answerable offline with `Read`/`Grep`. Third-party
+modules install their manuals here too (BlurXTerminator, GraXpert, StarNet2), which is the only
+copy of the RC Astro text that is not behind a 403.
+
+⚠️ **Coverage is partial and install-dependent.** The local set has 44 tool manuals; it does
+**not** include PixelMath, ABE, DBE, SPCC, MGC, NXT, SXT, Deconvolution, SCNR, MT, HDRMT,
+ImageIntegration, StarAlignment or LRGBCombination. Absence on disk is not evidence the page
+doesn't exist online, fall through to the browser.
+
+⚠️ **The manuals give semantics, not `run_process` parameter ids.** They use GUI labels. Get real
+ids from `get_process_parameters` and remember the BXT dead-alias trap (`_common.md` §4).
+
 **This is step 8 of the pattern above, do it automatically, don't wait to be asked.** When a run flags authoritative pages under `needsBrowser` (they 403 the WebFetch/WebSearch tools), verify the load-bearing ones via `claude-in-chrome` (navigate + read_page) as a serial post-research pass. Confirmed primary facts already captured: SPCC narrowband lines (Hα 656.0, [OIII] 500.7, [SII] 674.2, [NII] 658.4, Hβ 486.1); OSC → Ideal QE, mono → real QE; MGC = observational additive gradient (needs plate-solve + SPFC + MARS); MARS DR2 ~1.35 GB (1 Aug 2025).
 
 ## To resume (fresh session)

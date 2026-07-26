@@ -17,6 +17,9 @@ If an entry turns out to be category-specific, **demote it** into that category'
 leave a one-line pointer here. Do not leave a contradicted rule standing.
 
 `[live]` = confirmed on a real run. `[researched]` = from the research passes, not yet run.
+`[vendor-doc]` = stated by the tool's own author in the shipped PixInsight reference
+(`<PixInsight>/doc/tools/<Tool>/<Tool>.html`). Outranks forum consensus on what a parameter
+*means*; says nothing about what suits a given image.
 
 ---
 
@@ -132,9 +135,52 @@ fired *opposite* branches. *Verified on: OSC-RGB `[live]`, three images.*
   blobs on the subject. R10: two redundant passes → dust rims at R/B 2.0 vs a ~1% raw
   differential, AND suppressed real Ha. *Verified on: mono-LRGB `[live]` (R10 stage trace +
   sandbox reproduction).*
-- **BXT before NXT.** BXT performs worse on de-noised data (author's rule).
+- **BXT before NXT.** BXT performs worse on de-noised data (author's rule). Reason, from the
+  manual: noise reduction "alters or destroys information needed for deconvolution" and
+  "produces a falsely-high SNR that will usually result in over-sharpening". Decon applied to
+  denoised data "can't truly be called deconvolution. It is sharpening." `[vendor-doc]`
+- ⚠️ **Give BXT clipping headroom BEFORE sharpening.** BXT is trained to conserve flux, so
+  concentrating a star's light into fewer pixels makes those pixels brighter, and anything
+  already near 1.0 clips. The manual's own remedy: add headroom with the **high range**
+  function of `HistogramTransformation` first. Stronger sharpening = more risk. Check the
+  bright-star population for a saturated count that grew across the BXT step.
+  `[vendor-doc, untested here]`
 - **BXT Correct-Only early, sharpening late.** On multi-input work (mosaic panels, mono channels),
   correct aberrations per input *before* combination and sharpen *once* after.
+- **BXT defaults are good, don't tone them down.** Run sharpening with auto PSF and the GUI
+  defaults: `sharpen_stars 0.5`, `sharpen_nonstellar 1.0` (user-confirmed on the installed
+  build; RC Astro's manual text and older writeups cite 0.25/0.90, they lag, don't "correct"
+  back down) unless artifacts appear at 1:1.
+  ⚠️ A fresh `run_process` instance does NOT carry the GUI defaults (introspected 0.30/0.25),
+  always pass the amounts explicitly. Extra aggression beyond that comes from an oversized
+  PSF, which is off-model, the manual calls a fictitious PSF diameter "no longer
+  deconvolution" (over-sharpens smooth nebulosity, curdles faint stars).
+  ⚠️ Know what `sharpen_nonstellar 1.0` is: the manual defines 1.00 as "attempt to reduce the
+  nonstellar PSF to zero size, an ideal point PSF, and **the maximum possible amount of
+  sharpening**". It is the top of the range, not a mild default. Right starting point on this
+  build, but it leaves no headroom, so artifacts at 1:1 mean going *down*, never up.
+  `[vendor-doc]`
+  *User-confirmed + verified on Barnard150 L 2026-07-26.*
+- **Check sampling before sharpening at all.** The manual's thresholds, by star FWHM in px
+  (`get_star_metrics`): **3-4 = generously sampled**; **4-6 = oversampled, but don't downsample
+  unless the data is noisy**; **>6-8 = more than 2x oversampled, downsample 2x with
+  `IntegerResample` in Average mode** (no significant information loss, higher SNR, ~4x faster
+  downstream). BXT's `PSF Diameter` maxes at 8 px for exactly this reason. Converse trap:
+  **2x drizzle only recovers anything on undersampled data, FWHM < 2-3 px.** These thresholds
+  do not depend on aperture, focal length, f-ratio, pixel size or seeing.
+  `[vendor-doc, untested here]`
+- ⛔ **NEVER run BXT with auto PSF on a STARLESS image.** No stars to sense → it guesses from
+  nonstellar features and badly overestimates (measured: behaved like ~6-8 px on true ~2.2 px
+  data, the harshest carving of all variants). Prefer BXT *before* SXT (author's rule); if
+  sharpening starless data, uncheck auto and set the PSF diameter to the star FWHM measured
+  **before** star removal. The manual prescribes exactly this, and gives the same failure mode
+  for star-poor *regions* of a star-bearing image: BXT tiles at 512x512 and falls back to
+  guessing the PSF from nonstellar features per tile, so a starless corner gets sharpened
+  differently from the rest. Manual PSF diameter also fixes that. `[vendor-doc]`
+  *Verified on: mono-LRGB L starless, 2026-07-26.*
+- ⚠️ **BXT via `run_process`: `auto_nonstellar_psf`/`nonstellar_psf_diameter` are DEAD aliases**
+  (setting them changes nothing, byte-identical output). The live pair is
+  **`auto_nonstellar_radius`/`nonstellar_diameter`**; set both pairs to be version-safe.
 - **Gauge denoising with the MRS noise estimator, never stdDev.** stdDev is signal/star dominated and
   can *rise* after a correct denoise.
 - **Starless/SXT is an OPTIONAL branch, never a baseline step.**
@@ -155,6 +201,84 @@ directly ONLY when it is measurably above zero with margin (R10's 6-14e-6 pedest
 `max(0, $T - floor_c)`); never as a default black-point move.
 *Verified on: mono-LRGB `[live]` (R10 Barnard 150, subtraction path). Midtones-equalization
 variant is the sourced standard, untested here.*
+
+---
+
+## 4c. GradientCorrection, documented defaults and tuning ladder `[vendor-doc]`
+
+From the shipped manual (Edoardo Luca Radice, PTeam). Everything here is *what the knobs mean and
+in what order to reach for them*, not a prescription, the right values stay image-dependent.
+
+**Preconditions (all three, or expect suboptimal/odd results):** image is **linear**; the gradient
+is **purely additive** (light pollution); **the frame edges have no sudden brightness change.**
+⚠️ The edge rule is concrete and it is a crop gate: multiscale analysis is sensitive to abrupt
+edge steps, so dark/low-SNR stacking borders produce bright or dark edge artifacts. **Pure black
+(exactly zero) edge pixels are fine, very dim non-zero or very bright ones must be cropped out
+first.** So "crop before gradient work" is not hygiene here, it is a documented requirement.
+
+**GUI label → `run_process` id, with defaults.** Introspected live 2026-07-26; every value the
+manual states matches the installed process, so the ladder below is directly usable.
+
+| Manual's label | `run_process` id | Default |
+|---|---|---|
+| Low threshold | `lowThreshold` | `0.2` |
+| Low tolerance | `lowTolerance` | `0.5` |
+| High threshold | `highThreshold` | `0.05` |
+| High tolerance | `highTolerance` | `0` |
+| Scale | `scale` | `5` |
+| Smoothness | `smoothness` | `0.4` |
+| Automatic convergence | `automaticConvergence` | `false` |
+| Generate gradient model | `generateGradientModel` | `false` |
+| Simplified Model | `useSimplification` | `false` |
+| Model degree | `simplificationDegree` | `1` |
+| Generate simplified model | `generateSimpleModel` | `false` |
+| Structure protection | `protection` | **`true`** |
+| Protection threshold | `protectionThreshold` | `0.1` |
+| Protection amount | `protectionAmount` | `0.5` |
+| Generate protection masks | `generateProtectionMasks` | `false` |
+
+⚠️ **Structure protection is ON by default**, so ladder step 2 ("turn protection off to find the
+High threshold") is an explicit `protection: false`, not a no-op.
+⚠️ **`highTolerance` defaults to `0`**, the floor of its range, i.e. bright structures contribute
+minimally to the model out of the box. The manual only says "the default value is generally
+suitable" and never prints the number, so raising it is the documented move for *moderate*
+under-correction, before reaching for High threshold.
+
+Not in the manual at all, leave alone unless you have a reason: `simplificationScale` 1024,
+`protectionSmoothingFactor` 16, `iterations` 15, `maxIterations` 10, `convergenceLimit` 1e-5,
+`downsamplingFactor` 16, `gridSamplingDelta` 16, `lowClippingLevel` 7.63e-5, `reference` 0.5.
+
+**Tuning ladder, in the manual's own order.** The decision axis is *which failure you are seeing*:
+
+| Symptom | Move |
+|---|---|
+| Default result is fine | stop, this is the common case by design |
+| Gradient not solved | **structure protection OFF**, simplified model ON at degree 1, re-apply; then raise the degree |
+| Gradient still present | **raise High threshold** until background is flat (the manual's single most critical knob; examples go 0.05 → **0.4** on M101, → **0.8** on M42) |
+| Overcorrection on the bright subject | protection ON, tune **protection threshold** (inspect the generated mask, it must cover the subject), then **protection amount** (up if outer subject regions are overcorrected, down if under) |
+| Dark nebulae flattened | **lower Low threshold** (0.2 → 0.05 in the IC2087 example) to exclude them from the model |
+| Bright halos around dark nebulae | **raise Low tolerance** (0.5 → 0.65), but expect contrast loss, pair it with the Low-threshold move above |
+| Sharp/sudden gradient structure | **lower scale and smoothness** (5 → 2, 0.4 → 0.1), at the cost of overcorrecting smaller objects |
+| Smooth gradient + large-scale nebulosity | **raise scale and smoothness**, preserves the faintest nebulosity |
+| Protection is over-protecting (residual gradient under the subject) | **enable automatic convergence** (3-6 iterations), it fixed the Milky Way case at otherwise-default settings |
+
+⛔ **Never use the simplified model when the "gradient" is natural**, e.g. the Milky Way filling one
+side of the frame. The manual is explicit: you will always get signal loss.
+
+✅ **This corroborates our R10 rule** (§4, "run the MINIMUM, never retry a converged pass"):
+GradientCorrection "is always applied in a single step to the original image", and the manual's
+prescribed way to explore parameters is a **full-image preview** (drag the view label onto the
+grey band), not repeated applications to the real image. Independent vendor confirmation of a
+rule we learned the expensive way.
+
+⚠️ **Do not cite the manual's per-example summary lists.** They contradict their own prose in at
+least two places (Example 3: body lowers Low threshold 0.2 → **0.1**, the summary says "0.2 to
+**0.5**"; Example 5: body raises smoothness to **0.56**, the summary says **0.65**; Example 6's
+protection line is garbled outright). Trust the prose.
+
+*Source: `<PixInsight>/doc/tools/GradientCorrection/GradientCorrection.html`, doc compiler
+1.7.3, 2026-05-22. Parameter ids + defaults verified live against the installed process
+2026-07-26. The ladder itself is untested here, no GC run has yet been driven from it.*
 
 ---
 

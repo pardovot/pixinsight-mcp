@@ -38,6 +38,7 @@
 - **Goal:** Flat neutral background only (no color calibration, L bypasses SPCC).
 - **Process:** **GradientCorrection** (2024+ DBE/ABE successor, preferred for complex gradients) or classic **DBE** (valid, manual sample control). Run on the **linear** L, **before** BXT/stretch.
 - **Rules:** Independent pass on L (do not share samples/model with RGB, L is a separate master with its own vignetting/LP gradient). DBE correction type = **Subtraction** (gradients are additive). An uncorrected L gradient dominates the final image post-combine, so flatten L at least as carefully as color.
+- **GC defaults + tuning ladder + the edge-crop precondition: `_common.md` §4c** (from the shipped GradientCorrection manual). Read it before touching a GC slider.
 - **Confidence: medium. Consensus.** *(GradientCorrection-vs-DBE is preference. Numeric params are object-dependent, not prescribed.)*
 
 ### L-3. Deconvolution / Sharpening, **on L, linear, once**
