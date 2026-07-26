@@ -291,6 +291,27 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     for recombine halos/seams, both R9 critics had to improvise one from a 5× downsample); `stars.png` defaults
     to a subset of `corner-tl` so it adds no independent sampling; starless packs have no recombine preview,
     which caused 2 of 3 false artifact findings; pack PNGs are effectively uncompressed (~5× oversized).
+24. **`get_background_profile(viewId, axis, bands?)` `[tooling, HIGH, Run 10]`**, the per-channel sky-band
+    X/Y profile was the ONLY metric that caught R10's real chromatic ramps (box-median gradient and the ±8%
+    band are both blind to antisymmetric ramps), and it was improvised in `run_script` 6+ times in one run.
+    Ship it first-class WITH the two hard-won caveats built in: (a) a structure mask / structure-clipped sky
+    estimator (the 40th-pct percentile is contaminated inside columns holding a dark nebula, and a fit
+    through the fake dip paints complementary color onto the subject, R10's red blob); (b) report ramp as a
+    fraction AND as "post-stretch projected %" given a target peak, so the flat-enough judgment is explicit
+    (1.4% linear = 55% stretched on R10). A companion `flatten_profile` actuator should require an explicit
+    structure-mask ack.
+25. **Critic economy `[tooling/method, HIGH, Run 10, user-raised]`**, user: critics "take very long, probably
+    waste a lot of tokens, not sure I'm confident about their benefits." R10 data: 6 critic subagents; 5 real
+    catches (chromatic ramp, L-lightness ramp, star floors, green annuli, cyan shadows) vs 1 costly misfire
+    (crop over real Ha) + repeated findings across gates + slow sequential turnaround. Directions to evaluate:
+    (a) invariants + cheap deterministic metrics FIRST (backlog #18, #24), critic only where numbers can't
+    judge; (b) fewer gates by default (post-linear + final; post-stretch layer packs only when the driver is
+    uncertain); (c) sky-facts target card (R9 research Q, now with a second confirming datapoint); (d) smaller/
+    cheaper model or reduced effort for the critic subagent; (e) driver spot-verifies quantitative claims
+    before acting (now a skill rule). Do NOT silently drop gates, agree the default with the user first.
+26. **`Crop` headless semantics `[tooling, LOW, Run 10]`**, `mode:1` + negative margins silently no-op'd on an
+    RGB view and returned an empty error on a mono view. Map the mode enum / margin sign convention properly
+    before anyone needs a scripted crop (R10's was vetoed, so unresolved).
 
 ---
 
@@ -448,6 +469,31 @@ playbook `osc-hoo.md` steps 10-12 rewritten. Summary of what landed:
   lower) and both are identical no-ops where green is legitimately low. Baked into `osc-rgb.md` step 10 + skill.
   ⚠️ Legacy-doc trap: the 2010 PixInsight LE page says "the Amount parameter is not used for neutral
   protection", **modern PixInsight DOES honour it** (amount 0.5 left G above the midpoint, i.e. partial).
+
+- **Dust color fidelity `[quality, R10, RESEARCH-SETTLED with an open aesthetic tension]`.** My
+  claim "R/B 2.0 final vs ~1% linear differential = over-saturated" was **contradicted** by the
+  verification pass (2026-07-26): comparing a LINEAR differential against a POST-STRETCH ratio is
+  a category error (the stretch exists to turn small linear differences into large visible ones),
+  and physically interstellar dust IS "saturated orange to brownish-red" (Clarkvision; the common
+  amateur failure is UNDER-saturating dust, rendering it yellow). So strong red-brown B150 rims
+  are plausibly FAITHFUL. What remains true: R10's redundant gradient passes injected a real
+  spurious component (stage-traced, sandbox-proven), and the v2 rebuild removed it. **Fidelity
+  check going forward: verify SPCC ran + sky background neutral, then judge dust hue against
+  calibrated references, NEVER against the linear differential.** Open tension: the user prefers
+  less red than even physically-faithful rendering; that is an aesthetic preference to honor
+  per-target, not a fidelity rule.
+- **Chroma-aware shadow color correction `[quality/method, R10, OPEN]`.** Both R10 shadow ops had
+  complementary holes: luminance-only gating concentrates the correction in the darkest REAL
+  structure (the subject), while |rex|-gating excludes exactly the strongly-cast pixels needing
+  the fix. Design a shadow neutralization that (a) never pushes a channel above the local max
+  channel, (b) excludes coherent structure, (c) verifies on the subject render, not the global
+  shadow-median metric. Until then: shadow ops are suspect-by-default near dark nebulae.
+- **Mauve / G-deficit spatial residual `[quality, R10, OPEN]`.** The passed final retains a top-row
+  G-below-both-neighbours tilt (5-9.6% of midpoint, critic-measured; reads lilac). The corrective
+  (gated G-lift, `G=max(G,(R+B)/2)`) is hard-excluded near emission regions (left-edge Ha), so a
+  global application is unsafe. Needs a spatially-bounded approach (fit the tilt as a smooth field
+  on non-emission sky, or region-mask). Second datapoint for the R9 "green survives calibration"
+  question, on MONO this time (G filter airglow).
 
 ---
 
@@ -916,3 +962,114 @@ linear|starless|stars|recombine.xpsm, 6 images}`.
 **OSC-RGB pipeline state:** linear half solid and now mosaic-capable; the nonlinear half has a **second** good
 datapoint (R8 + R9) and the star-colour gate is materially better specified. **Mosaic support is real but
 undocumented**, the playbook is the highest-value open item.
+
+### Run 10, 2026-07-26, mono-LRGB (FIRST mono run), Barnard 150 / Seahorse (384mm f/4.8, ASI2600MM, Optolong LRGB)
+**Outcome:** complete autonomous run, final blind-critic **PASS (4/3/4/4/4)**, user: "the ending
+result is looking pretty good, I like what you did", with four substantive user findings. Full
+artifacts + warts in `result-tests/Barnard150/HISTORY.md`. Star-separated LRGB path (SXT both
+layers, LRGBCombination on starless only, RGB stars screened back) worked structurally.
+All critic gates ran live: post-linear (2 revise cycles + user closure), post-stretch (1 each
+layer), final (1 cycle → pass).
+
+**Findings**
+- `[method]` ⛔ **Nearly executed a critic-recommended 300px crop over a real Ha region; the user
+  had to interrupt.** The r2 critic's "red-deficient band cannot be sky" was spectrally wrong
+  (raw R master: spot/annulus R 1.006 vs G 1.002, global R +8.7% where G +0.9% = real Ha), and I
+  executed instead of pausing. Compounding error: the gate had closed at max revise cycles, whose
+  remedy is LOG AND PROCEED, and the crop was also a geometry change (invalidates checkpoints).
+  → skill: crop/geometry = user decision; verify "cannot be sky" claims against raw masters;
+  closure means log, not act; give the critic a sky-facts target card.
+- `[method]` **"Flat enough" must be judged against stretch amplification** (the run's dominant
+  defect): L's 1.4% linear ramp, accepted as flat, was amplified ~50x by GHS and became the
+  combined image's lightness via LRGBCombination (55% render ramp, tonal hierarchy inverted,
+  dark nebula brighter than sky). Fixed in-run by undoing LRGB, cubic-flattening linear starless
+  L, restretching, recombining. → skill + `_common.md` + `mono-lrgb.md` L-5: lightness carriers
+  gate at ~0.3% profile ramp.
+- `[method]` **Both standing background metrics (box-median gradient, ±8% band) were blind to a
+  real antisymmetric chromatic ramp** the r0 critic saw instantly (R -10.1% / G -7.0% / B -6.7%
+  linear X-profile; raw R master carries the same -9.4%). The catching metric, per-channel
+  sky-band X/Y profile, was improvised in-run 6+ times. → `_common.md` + backlog #24.
+- `[method]`+`[quality]` ⛔ **The red blob's ROOT CAUSE (user-forced second pass; my first two
+  attributions were WRONG).** Attempt 1: a global red-hue desaturation "fix", REJECTED by the
+  user (killed all reds incl. real Ha, blob still structurally present), symptomatic hack, not a
+  fix. Attempt 2: blamed the improvised profile fits, DISPROVED analytically (their contribution
+  measured −2e-3). The real chain, established by a scale-invariant stage trace (blob-vs-refs red
+  differential D x1e-3: raw −15 → GC −7 → SPFC/MGC1 +8 → SPCC +27 → MGC2 +45 → BXT/NXT +64, and
+  a sandbox replay reproduced the shipped +64.3 exactly):
+  (a) **REDUNDANT gradient passes (GC 2x on R, MGC 2x) injected channel-differential residue over
+  the dark structure** (~+23e-3 combined), each retry no-op'd at its target ramp scale but left
+  local chroma error on the nebula; (b) SPCC pedestal removal amplified ALL local contrasts ~4x,
+  LEGITIMATE physics (the additive sky is ~75% of the raw level; dust genuinely extincts B >> R);
+  (c) BXT/NXT compounded (+19). **Rule: run the MINIMUM number of gradient-model subtractions;
+  never "try again" on a converged pass.** v2 rebuild (single passes + structure-masked fits):
+  blob R/B 2.00 → 1.52 with the Ha strip STRONGER (rex 72 → 99, the extra passes had been
+  suppressing real signal too). → skill + `_common.md` + research Q below.
+- `[method]` **Luminance-only-gated shadow color ops concentrate in the darkest REAL structure =
+  the subject.** The final-polish "equalize shadow medians" pushed +R exactly onto the dark
+  nebula (blob rex +28% from polish alone); the Stage-1 leveling |rex| gate has the complementary
+  hole (excludes the strongly-cast pixels it should fix). Global metric passed while the subject
+  got tinted. → skill trap + research Q (chroma-aware shadow gating).
+- `[correctness]` **SXT star layers carry unequal per-channel constant floors** (R 14.1e-6 /
+  G 9.1e-6 / B 6.1e-6 = 2.3x R:B); the star MTF amplified them into an orange wash on all faint
+  stars (post-stretch critic: B median exactly 0 in whole rows). Fixed by floor subtraction +
+  rebuild. → `_common.md` 4b + skill.
+- `[method]` **"Star pixel median vs 0.35-0.45" is a moving goalpost post-stretch:** each MTF pass
+  floods the >threshold footprint with wing pixels and drags the median DOWN (39k → 111k px,
+  0.112 → 0.106 after MORE stretch). Chasing it numerically diverges. → skill: set amount once
+  from pre-stretch M, judge renders.
+- `[correctness]` **PixelMath `newImageColorSpace: 2` = GRAY** (not RGB) silently produced a mono
+  recombine; caught by the R9 always-verify-saturation rule (which earned its keep). Use 0 =
+  SameAsTarget. → skill trap.
+- `[correctness]` **Deliverables layout confused the user on a multi-track run** ("linear and
+  L_linear?", "no in-between steps?"): bare `linear.xisf` names don't say which track, and there
+  was no checkpoint between ChannelCombination and the fully-processed linear. → skill DELIVERABLES
+  reworked: track prefixes (rgb_/L_/Ha_), added `rgb_combined.xisf` (post-combine pre-cal,
+  user-requested so they can re-run calibration themselves) + `rgb_calibrated.xisf` (post-SPCC
+  pre-BXT), and a per-run README.md mapping every file.
+- `[tooling]` `get_star_metrics` returns `measured=0` / null FWHM on BXT-tightened images (PSF fit
+  fails; worked pre-BXT on the same views), and `brightestStars` degrades to tie-order at
+  peak=1.0. Extends backlog #16.
+- `[tooling]` `Crop` headless: `mode:1` + negative margins silently no-op'd on an RGB view and
+  errored empty on mono. Semantics unresolved (moot this run, crop vetoed). Backlog #26.
+- `[tooling]` GHS `stretchFactor` param (0-20) is the LOG slider (exp(v)-1), not raw D, v=8 lifted
+  bg 0.0009→0.31. Documented in skill; the measured-stretch helper (#8) would absorb this.
+- `[method]` **Critic cost/benefit, user-raised, mixed verdict.** 6 subagent critics ran; r0
+  post-linear + post-stretch + final r0 each caught real, fixable defects my metrics missed (the
+  chromatic ramp, the L-lightness ramp, star floors, green annuli, cyan shadows), but: the crop
+  misfire cost a user interrupt, findings repeat across critics (NGC 6946 desaturation x3, mauve
+  x2), each gate is slow (subagent reads 8 PNGs + rubric) and token-heavy, and polish driven by
+  critic findings created part of the red-blob problem (over-correction risk). The reliable
+  pattern remains R9's: **A/B and concrete measurable defects good, absolute aesthetic scores and
+  sky interpretation weak.** → backlog #25 (critic economy) + existing R9 research Q.
+
+**Changed this entry:** `process-master` (critic-crop/geometry rule, gate-closure rule, spot-verify
+rule, target card, L-flatness gate, profile-contamination trap, R10 nonlinear traps block, reworked
+DELIVERABLES layout); `_common.md` (4b star-layer floors, profile metric + blindspot, flatness-vs-
+amplification); `mono-lrgb.md` (L-5 flatten-first gate); backlog #16 extended, **#24-#26 added**;
+research questions +3 (dust-rim color fidelity, chroma-aware shadow gating, mauve/G-deficit spatial
+residual). **Repro artifacts:** `result-tests/Barnard150/` (full stage tree, 7 critic packs with
+reports, metrics.json, replay.js, HISTORY.md).
+
+**Verification-research addendum (2026-07-26, web pass over the R10 improvised rules; full report
+in the session record):** 6 of 7 claims needed corrections, all applied to skill/playbooks:
+(1) L-flatten rationale corrected (the structural reason is the L*a*b* lightness/chrominance split:
+achromatic RGB gradients are DISCARDED at combine, L's survive 1:1; the 30-50x figure is absolute
+near-black MTF slope, not fractional) + numeric bar adopted (<1% of sky, aim ~0.4%);
+(2) star-floor remedy reversed to the sourced standard (per-channel midtones equalization; a star
+layer's background is near-clipped, black-point raises lose faint stars; direct subtraction only
+for measurably-positive floors);
+(3) "box-median blind to chromatic ramps" narrowed to SCALAR summaries (the map resolves them; R10
+read only the scalars); model-inspection added as the cheap first check;
+(4) profile-subtraction confirmed; added level add-back + X/Y-separability caveats;
+(5) deficit-branch (invert-SCNR-invert) demoted from broadband default-at-1.0 to a bounded 0.3-0.5
+correction (the clamp sits on the blackbody locus; strong magenta post-SPCC = diagnose first);
+(6) LinearFit-in-linear is the prescribed LRGB brightness match (peak-matching = verification
+only); chrominance NR off = reasoned option not best practice; screen = default recombination;
+(7) my "R/B 2.0 = over-saturated vs 1% linear differential" claim CONTRADICTED (category error +
+dust physics; see the settled research question above). The redundant-gradient-pass root cause is
+UNAFFECTED by (7): the injected component was independently proven by the stage trace.
+**Mono-LRGB pipeline state:** linear spine solid on first contact (registration/WCS reuse, real
+Optolong curves + IMX571 QE via SPCC/SPFC, MARS-MGC killed a ramp blind GC refused); the
+star-separated combine is structurally sound; the new failure class is **ramp/floor amplification
+through the stretch and the L transfer**, now gated. Nonlinear judgment quality remains the
+open axis (same as OSC), plus the new shadow-color-op question.
