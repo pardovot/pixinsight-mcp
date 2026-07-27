@@ -12,7 +12,7 @@
  *  - "auto": PI's documented autostretch (linked): c0 = med + (-2.8)·1.4826·MAD,
  *    m = mtf(0.25, med − c0), computed on the FULL image so crops share the full-field
  *    stretch. DEGENERATE-MEDIAN CLAMP: a stars-only layer has median≈0, and the naive
- *    formula maps noise to 0.25 (journal-documented blowout). The criterion is RELATIVE
+ *    formula maps noise to 0.25 (a live-observed blowout). The criterion is RELATIVE
  *    (verified live: linear master med/1.4826MAD ≈ 4.8, star layer ≈ 0.7): if
  *    med < 2·1.4826·MAD the image is mostly empty, fall back to a gentle fixed MTF
  *    (c0=0, m=0.01) and warn. Never judge a star layer on "auto".

@@ -86,20 +86,6 @@ One generic pair covers every process with zero per-process maintenance. **Addin
 `run_bxt`-style tools is the anti-pattern this project deliberately moved past.** The legacy
 per-process wrappers (`run_bxt`, `sharpen`, `stretch_image`, …) were removed 2026-07-22.
 
-### Never run a process blind
-
-The methodology is baked into the tool descriptions and
-[`docs/PROCESSING_GUIDE.md`](docs/PROCESSING_GUIDE.md):
-
-1. **`get_process_parameters` first**, reason about what the settings mean.
-2. **Watch for no-op output defaults.** Canonical case: `AutomaticBackgroundExtractor` defaults
-   to `targetCorrection=0` + `replaceTarget=false`, so it builds a background *model* and leaves
-   your image **untouched**. To actually correct: `{ targetCorrection: 1, replaceTarget: true }`.
-3. **Choose settings by measuring *this* image** (`get_image_statistics`, `run_script`), not by
-   copying fixed numbers.
-4. **Execute, then re-measure.** Byte-identical statistics mean a no-op, stop and fix it; never
-   build the next step on a no-op.
-
 ---
 
 ## Tools
@@ -122,64 +108,6 @@ which is signal-dominated on astro frames and produces false alarms; and
 sky-band metric lies once the transfer curve is applied.
 
 Authoritative definitions live in `src/tools/*.ts`.
-
----
-
-## Workflow knowledge base
-
-`docs/workflows/` holds **per-acquisition-category playbooks**, how to process each kind of
-data, with confidence / consensus / contested grading on every claim:
-
-[`osc-hoo.md`](docs/workflows/osc-hoo.md) · [`osc-rgb.md`](docs/workflows/osc-rgb.md) ·
-[`mono-rgb.md`](docs/workflows/mono-rgb.md) · [`mono-lrgb.md`](docs/workflows/mono-lrgb.md) ·
-[`mono-halrgb.md`](docs/workflows/mono-halrgb.md) · [`mono-sho.md`](docs/workflows/mono-sho.md)
-
-Deliberate conventions encoded there:
-
-- **Starless / SXT is an optional branch, never a baseline step.**
-- **Never fabricate numeric settings**, measure, configure, verify.
-- **Newer ≠ better**, recency traps are flagged explicitly.
-
-See [`docs/workflows/README.md`](docs/workflows/README.md) for the research method and
-verification status.
-
----
-
-## Autonomy
-
-The knowledge base improves from its own runs, with the human reviewing **per batch** instead of
-per image. The loop:
-
-```
-  process-master  ──▶  render_critic_pack + measurement tools
-        │                        │
-        │                        ▼
-        │                 image-critic  ── judged against docs/CRITIC_RUBRIC.md
-        │                        │          BLIND to the transcript, parameters, provenance
-        │                        ▼
-        └──────────────  process-retro  ── types findings, applies safe fixes, queues research
-                                 │
-                                 ▼
-                             kb-gate  ── replays the reference target, re-measures every
-                                         checkpoint, A/B critic vs. the stored baseline
-                                 │
-                       PASS ─────┴───── FAIL → escalate to human
-```
-
-Two invariants hold this together, and both exist to prevent reward hacking:
-
-- **The critic is blind.** It sees only the rendered pack and the rubric - never how the image was
-  made. A critic that knows the parameters grades the reasoning, not the picture.
-- **`docs/CRITIC_RUBRIC.md` is human-owned.** It *is* the objective function. The loop may propose
-  rubric edits as queued findings; it may never apply them. Letting a system edit its own judge is
-  exactly the failure this rule prevents.
-
-`kb-gate` PASS is required before any knowledge-base edit auto-commits; FAIL always escalates.
-The human still does a sampled eyeball audit of roughly 1 run in 10 - that sampling is the drift
-detector, so it is not skipped because recent runs looked fine.
-
-Full protocol, including what stays human and when to re-baseline:
-[`docs/AUTONOMY.md`](docs/AUTONOMY.md).
 
 ---
 
@@ -355,19 +283,12 @@ pjsr/
   pixinsight-mcp-watcher.js   JS watcher, SOURCE OF TRUTH for handler logic
 pi-repo/              PixInsight update repository (currently unsigned - see above)
 docs/
-  workflows/          per-category processing playbooks (the knowledge layer)
-  PROCESSING_GUIDE.md measure → configure → verify methodology
-  AUTONOMY.md         the autonomy loop: what stays human, when to re-baseline
-  CRITIC_RUBRIC.md    the objective function - HUMAN-OWNED, loop may only propose
-  PROCESSING_JOURNAL.md  pipeline state + backlogs + run index (per-run entries: docs/journal/)
   POST-CDP-SIGNING.md re-enable checklist for distribution signing
   RELEASING.md        tag-driven module release
   bridge-protocol.md  bridge wire format
 scripts/
   ping-watcher.mjs    bridge round-trip test
   build-pi-repo.mjs   rebuild the update repo zip (leave updates.xri unsigned)
-  gate-compare.mjs    kb-gate checkpoint comparison
-.claude/skills/       process-master, process-retro, image-critic, kb-gate
 .github/workflows/    ci, module-build, module-release
 ```
 
@@ -384,8 +305,7 @@ outcome, the agent selects and configures the processes itself.
 
 - **M1** - one full agent-driven run on a real master, documented warts and all ✅ *done*
 - **M2** - first-class measurement tools (MRS noise, gradient residual, background neutrality,
-  star metrics) ✅ *done 2026-07-24*, plus `render_view` / `render_critic_pack`, the blind
-  `image-critic`, and the `kb-gate` replay regression - see [Autonomy](#autonomy)
+  star metrics) ✅ *done 2026-07-24*, plus `render_view` / `render_critic_pack`
 - **M3** - acquisition-category detection + executable per-category step lists *(next)*
 - **M4** - enforced verification gates (no-op, clipping, star-count collapse) and checkpoints
 - **M5** - a `/process <master>` entry point
@@ -408,8 +328,7 @@ from the original), and the **MCP server skeleton**.
 
 What replaced the rest: the native module (the original had none), the generic
 `run_process` / `get_process_parameters` design in place of per-process tools,
-`docs/workflows/`, the measurement and autonomy layer, the update repository, the Windows
-platform layer, and npm packaging.
+the measurement layer, the update repository, the Windows platform layer, and npm packaging.
 
 The original's `giga-run.mjs` pipeline, `scripts/run-pipeline.mjs`, config editor, sample target
 configs, and `agents/` are **not** part of this codebase. They described a different product - a

@@ -86,14 +86,6 @@ is **post-processing** (after WBPP/pre-processing).
   execute arbitrary code inside PixInsight, that is the bridge's job. Keep the
   directory user-private; do not point it at a shared or synced location.
 
-### 5. Knowledge layer (`docs/workflows/`, skills)
-
-- Per-acquisition-category playbooks (OSC-HOO, OSC-RGB, mono-RGB/LRGB/HaLRGB/
-  SHO) that tell the agent *how* to process each data type; the
-  `process-master` skill routes to the right playbook and drives the
-  measure → configure → verify loop. This is data, not code, the tool surface
-  stays generic.
-
 ## Delivery channels
 
 1. **npm**, `@pardovot/pixinsight-mcp` (the MCP server).

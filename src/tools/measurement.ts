@@ -9,7 +9,7 @@ import { starMetricsScript } from "../pjsr/measure-stars.js";
 import { structureColorScript } from "../pjsr/measure-structure-color.js";
 
 /**
- * M2 measurement tools (journal backlog #3/#9/#13). Delivered via run_script -
+ * M2 measurement tools. Delivered via run_script -
  * the PJSR bodies live in src/pjsr/measure-*.ts (promotion-ready as embedded
  * handlers if run_script delivery ever shows a problem). These replace the
  * per-run hand-rolled measurement code the agent previously improvised.
@@ -36,7 +36,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
   server.tool(
     "get_background_gradient",
     "Background map: per-channel medians over a grid of boxes + corner spread + least-squares " +
-      "plane fit. Use before/after gradient correction, corner spread should drop (R8: ~halved) " +
+      "plane fit. Use before/after gradient correction, corner spread should drop (typically ~halved) " +
       "while the center (nebula) median stays put. Box medians are star-robust; boxes on nebula " +
       "read high and show in maxDeviationPct.",
     {
@@ -106,8 +106,8 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     "The two chroma checks that region medians and bgChroma CANNOT do. (1) structure = colour of " +
       "the NEBULOSITY rather than the sky it sits on: (bright population - dark population) split " +
       "by luminance with stars excluded. A region's median IS the sky, so on a field with a global " +
-      "cast the median hides an inverted signal completely (R12 shipped red Ha turned cyan while " +
-      "the median said 'preserved'). Track structure.RoverG/RoverB across pipeline stages; on an " +
+      "cast the median hides an inverted signal completely (a real run shipped red Ha turned cyan " +
+      "while the median said 'preserved'). Track structure.RoverG/RoverB across pipeline stages; on an " +
       "Ha field a fall toward or below 1.0 means red structure is being neutralized. (2) " +
       "spatialChroma = per-tile saturation + the exactly-achromatic fraction, because bgChroma is a " +
       "magnitude-only scalar and scored an image as better-than-reference while 72.5% of one corner " +

@@ -11,10 +11,10 @@ import { neutralityScript } from "../pjsr/measure-neutrality.js";
 import { starMetricsScript } from "../pjsr/measure-stars.js";
 
 /**
- * Rendering for QA: "the render is the judge; metrics corroborate" (journal R6/R7).
- * render_view produces what eyes (human or critic subagent) actually evaluate;
- * render_critic_pack emits the standard image set + metrics.json the image-critic
- * skill consumes (blind: pack + rubric only, no transcript).
+ * Rendering for QA: the render is the judge; metrics corroborate.
+ * render_view produces what eyes (human or reviewer subagent) actually evaluate;
+ * render_critic_pack emits a standard image set + metrics.json for blind review
+ * (pack only, no transcript).
  */
 export function registerRenderTools(server: McpServer, bridge: BridgeClient): void {
 
@@ -51,7 +51,7 @@ export function registerRenderTools(server: McpServer, bridge: BridgeClient): vo
       "corner-{tl,tr,bl,br}.png + core.png (1:1), stars.png (1:1 at the brightest star), and " +
       "metrics.json (noise, gradient, neutrality, star metrics + render manifest). " +
       "phase:'linear' renders with autostretch; 'poststretch'/'final' render as-is. " +
-      "Feed the pack directory to the image-critic skill (blind: no transcript).",
+      "Feed the pack directory to a blind reviewer (no transcript).",
     {
       viewId: z.string().describe("View ID to pack"),
       outputDir: z.string().describe("Absolute directory for the pack (created if missing)"),

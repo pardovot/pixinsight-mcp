@@ -154,10 +154,7 @@ registration** - the server auto-detects the live instance from its heartbeat.
 that server. Rarely needed.
 
 > Caution: two instances share one GPU, so parallel BXT/SXT/NXT contend (a
-> throughput fact, not a bug). And parallel *training* runs must serialize the
-> retro + kb-gate phases, those write shared files (`docs/PROCESSING_JOURNAL.md`,
-> playbooks) and kb-gate uses fixed view ids; only the processing phase
-> parallelizes.
+> throughput fact, not a bug).
 
 ## Testing the Bridge Manually
 
@@ -187,8 +184,8 @@ cat ~/.pixinsight-mcp/bridge/results/test-001.json
 
 See the repository-layout block in the README for the authoritative tree. In brief: `src/` (MCP
 server, TypeScript → `build/`), `module/` (native C++ module, the runtime), `pjsr/` (the watcher
-JS that the module's handlers are generated from), `docs/` (this knowledge base + `workflows/`
-playbooks), `pi-repo/` (the update-repo channel), `scripts/`, `test/`.
+JS that the module's handlers are generated from), `docs/` (engineering docs), `pi-repo/` (the
+update-repo channel), `scripts/`, `test/`.
 
 ## Troubleshooting
 

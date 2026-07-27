@@ -60,7 +60,7 @@ cheaper to ship.
 | **TS-generated PJSR** (`src/pjsr/*.ts` + `execPjsrJson`) | **Composites** built on those primitives that evolve with the knowledge base: the measurement tools, `render_view`, `render_critic_pack`. | `npm run build` + MCP restart |
 
 **The test (all three must hold for the handler; any failure means TS-side):**
-1. **Stability**: semantics do not evolve with `docs/workflows/` or the critic rubric.
+1. **Stability**: semantics do not evolve with the knowledge layer.
 2. **Contract value**: useful to any bridge client, not just the MCP agent loop.
 3. **Boundary fit**: benefits from validation/error semantics at the PixInsight edge.
 
@@ -100,21 +100,6 @@ reports "your module predates this" instead of silently doing the old thing. `sa
   two revision constants disagree, and, via the hash lock `scripts/handlers-rev.lock.json`,
   when the handler section changes without a rev bump (a forgotten bump would silently
   disarm the detector). The lock auto-updates on a bump; commit it.
-
-## Processing methodology (baked into the `run_process` tool description + `docs/PROCESSING_GUIDE.md`)
-Never run a process blind:
-1. `get_process_parameters` first; reason about what the settings mean.
-2. **Watch for no-op output defaults.** Canonical case: `AutomaticBackgroundExtractor` defaults to `targetCorrection=0` + `replaceTarget=false` → it only builds a background *model* and leaves the image untouched. To actually correct: `{ targetCorrection: 1, replaceTarget: true }`.
-3. Choose settings by **measuring THIS image** (`get_image_statistics` / `run_script`), not fixed defaults.
-4. Execute, then **re-measure**. Byte-identical stats = a no-op → stop and fix; never build the next step on it.
-
-## The end goal (what we're building toward)
-**Autonomous processing from a SHORT, goal-driven prompt**, the user states an outcome ("process this master: clean the gradient, tighten stars, reduce noise"), and the agent selects and configures the processes itself. **Not** step-by-step per-process instructions.
-- ⛔ **Before processing ANY master, invoke the `process-master` skill (or, failing that, read the matching `docs/workflows/` playbook IN FULL first).** Do NOT plan a processing run from general astrophotography knowledge, that produces plausible-but-wrong choices (e.g. reaching for ABE on a nebula-filling target when the playbook prescribes MGC/GradientCorrection) and trips documented traps. The playbook is the source of truth for tool choice, order, and settings.
-- The knowledge layer is **`docs/workflows/`**, per-acquisition-category playbooks (OSC-HOO, OSC-RGB, mono-RGB, mono-LRGB, mono-HaLRGB, mono-SHO; all Tier-1 verified). They tell the agent *how* to process each data type, with confidence/consensus/contested grading. See `docs/workflows/README.md` for the research method + status.
-- Human-in-the-loop review is practical **because the module is non-blocking**, Claude pauses, you inspect live, then continue.
-- **Autonomous quality loop (2026-07-24):** measurement tools (`get_noise`, `get_background_gradient`, `get_background_neutrality`, `get_star_metrics`) + `render_view`/`render_critic_pack` + the blind `image-critic` skill (judged against human-owned `docs/CRITIC_RUBRIC.md`) + the `kb-gate` replay-regression skill. Human review moved from per-image to per-batch, protocol in `docs/AUTONOMY.md`.
-- Deliberate conventions: **starless/SXT is an OPTIONAL branch, never a baseline step**; never fabricate numeric settings (measure → configure → verify); newer ≠ better (flag recency traps).
 
 ---
 
