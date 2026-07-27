@@ -359,7 +359,7 @@ docs/
   PROCESSING_GUIDE.md measure → configure → verify methodology
   AUTONOMY.md         the autonomy loop: what stays human, when to re-baseline
   CRITIC_RUBRIC.md    the objective function - HUMAN-OWNED, loop may only propose
-  PROCESSING_JOURNAL.md  dated per-run findings, the source retro reads from
+  PROCESSING_JOURNAL.md  pipeline state + backlogs + run index (per-run entries: docs/journal/)
   POST-CDP-SIGNING.md re-enable checklist for distribution signing
   RELEASING.md        tag-driven module release
   bridge-protocol.md  bridge wire format

@@ -1,9 +1,15 @@
 # Autonomy protocol, how the loop runs without per-image human review
 
 Since 2026-07-24 the training loop is: **process-master** (with blind critic gates at phase
-boundaries) → **image-critic** findings → **process-retro** (types + routes) → **kb-gate**
-(regression) → auto-commit or queue. The human moved from per-image inspection to per-batch
-review. This file defines exactly what stays human.
+boundaries) → **image-critic** findings → **process-retro** (types + routes) → auto-commit or
+queue. The human moved from per-image inspection to per-batch review. This file defines exactly
+what stays human.
+
+**kb-gate repurposed 2026-07-26 (human decision):** Tier-1 replay never consults the playbook,
+so pure KB edits cannot fail it, gating them on it was vacuous. Tier-1 is now required for
+**code-side batches** (module/handlers, measurement tools, render pipeline), where it is the
+only end-to-end test on real data. Pure KB edits (`[correctness]`/`[method]`) auto-commit
+without it; `[quality]` playbook changes still need **Tier-2** or human review.
 
 ## The pieces
 
@@ -12,7 +18,7 @@ review. This file defines exactly what stays human.
 | `render_critic_pack` + measurement tools | produce the evidence (renders + metrics) |, |
 | `image-critic` skill (subagent) | judge packs against `docs/CRITIC_RUBRIC.md` | transcript, parameters, provenance |
 | `process-retro` skill | type findings, apply safe fixes, queue research |, |
-| `kb-gate` skill | replay-based regression before any KB commit | which pack is candidate vs baseline (A/B randomized) |
+| `kb-gate` skill | replay-based regression for code-side changes; Tier-2 for `[quality]` playbook changes | which pack is candidate vs baseline (A/B randomized) |
 | `docs/CRITIC_RUBRIC.md` | the objective function | **human-owned, loop may only propose** |
 
 ## What the human still does

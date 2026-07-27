@@ -1,14 +1,20 @@
 ---
 name: kb-gate
-description: Regression gate for knowledge-base changes (playbooks, process-master skill, CLAUDE.md processing rules). Replays the reference target, re-measures every checkpoint, compares against the stored baseline with tolerances, and runs a blind A/B critic against the baseline final. Run once per KB-change BATCH (it takes 10-20 min), never per edit. PASS is required before auto-committing KB edits; FAIL always escalates to the human.
+description: Regression gate for CODE-SIDE changes (module/handlers, measurement tools, render pipeline) and Tier-2 for [quality] playbook changes. Replays the reference target, re-measures every checkpoint, compares against the stored baseline with tolerances, and runs a blind A/B critic against the baseline final. Run once per change BATCH (it takes 10-20 min), never per edit. Pure KB edits do NOT require Tier-1 (repurposed 2026-07-26, the replay never consults the playbook); FAIL always escalates to the human.
 ---
 
 # KB gate, replay, re-measure, compare, A/B judge
 
-Purpose: knowledge edits (playbook steps, skill rules, measurement methodology) must not
-silently degrade a previously-approved result. The reference target's replay is
-deterministic (verified: two clean-room runs → identical output), so Tier-1 deltas mean
-real pixel changes or an environment change, either way, a human decision.
+Purpose: code-side changes (module/handler edits, measurement-tool changes, render pipeline)
+must not silently degrade a previously-approved result; this is the project's only end-to-end
+test on real data. The reference target's replay is deterministic (verified: two clean-room
+runs → identical output), so Tier-1 deltas mean real pixel changes or an environment change,
+either way, a human decision.
+
+**Repurposed 2026-07-26 (human decision):** the replay never consults the playbook, so pure
+KB edits cannot fail Tier-1, do not run it for them. `[correctness]`/`[method]` KB edits
+auto-commit directly (per process-retro); `[quality]` playbook changes need Tier-2 or human
+review.
 
 ## Preconditions
 
@@ -18,7 +24,7 @@ real pixel changes or an environment change, either way, a human decision.
   see `sourceMaster` in the baseline `result-tests/<target>/metrics.json`).
 - ~20 minutes of wall clock (BXT/NXT/SXT run at full resolution).
 
-## Tier-1 (required for every KB batch)
+## Tier-1 (required for every CODE-SIDE batch)
 
 1. **Replay.** Run the reference reproducer via `run_script` with an extended timeout:
    `eval(File.readTextFile("<abs path to result-tests/<target>/replay.js>"))`
@@ -68,8 +74,9 @@ expensive and its verdicts are softer.
 - **Never adjust the baseline or a tolerance to make a run pass.** A FAIL is information
   for the human. Re-baselining is a human decision (typically after a PI/XT upgrade -
   compare `piVersion` first).
-- A gate PASS clears `[correctness]`/`[method]` KB edits for auto-commit (per
-  process-retro); `[quality]` playbook changes additionally need Tier-2 or human review.
+- `[correctness]`/`[method]` KB edits auto-commit WITHOUT Tier-1 (it cannot see them);
+  `[quality]` playbook changes need Tier-2 or human review. Tier-1 PASS clears code-side
+  batches.
 - An **ADVISORY** verdict does NOT auto-revert and does NOT auto-commit, it holds the batch
   for a human glance (the human confirms the metric-only drift is benign, then commits or
   re-baselines). Never silently treat ADVISORY as PASS.

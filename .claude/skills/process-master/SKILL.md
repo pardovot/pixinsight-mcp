@@ -15,7 +15,8 @@ You are about to process a real master into a finished image. **Do not plan from
 astrophotography knowledge.** The per-acquisition-category playbook in `docs/workflows/` is the
 source of truth for *what* to do and in *what order*; your job is to apply it to THIS image by
 measuring, configuring, and verifying each step. `[R#]` tags cite run entries in
-`docs/PROCESSING_JOURNAL.md`, read there for the story behind any rule.
+`docs/journal/R<nn>.md` (index at the bottom of `docs/PROCESSING_JOURNAL.md`), read the run file
+for the story behind any rule.
 
 ## Step 0, prerequisites (once)
 
@@ -117,6 +118,14 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 5. **Verify, a gate, not a formality:** byte-identical stats = no-op → stop, diagnose (wrong
    output default? separate output view? mask?), fix, re-run. Watch for clipping (values pinned
    to 0/1), star-count collapse, background sign flips.
+
+⛔ **RUNLOG.md, write it as you go, never at the end.** After every step, append to
+`result-tests/<Target>/RUNLOG.md`: the before/after numbers that drove the decision, the decision
+plus a one-line why (playbook cite), anything that surprised you (friction, wrong docs, tool
+warts), and candidate findings pre-tagged with process-retro's types. This file, NOT the chat
+transcript, is what `process-retro` reads (it runs in a fresh session), and it is the
+crash/`/clear` recovery point: a run whose context is lost resumes from RUNLOG.md + the stage
+checkpoints. Keep it (and every critic report) out of the critic pack dirs, blindness.
 
 ## Traps, linear half
 
@@ -431,15 +440,25 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 
 ## Critic gates (phase boundaries, the autonomous quality loop)
 
-At each of these three boundaries, run the blind critic before moving on:
+Two boundaries run the blind critic by DEFAULT before moving on:
 1. **post-linear**, after gradient correction + color calibration + BXT/NXT, before SXT/stretch;
-2. **post-stretch**, starless and stars layers judged as separate packs (never `stf:"auto"`
-   on the star layer, pack them `poststretch`);
-3. **final**, the recombined result.
+2. **final**, the recombined result.
+
+**post-stretch** (starless and stars judged as separate packs, `poststretch`, never `stf:"auto"`
+on the star layer) is CONDITIONAL, not default [backlog #25, user-agreed 2026-07-27]: run it when
+(a) the category's nonlinear half is not yet run-validated (first runs of a playbook), (b) a
+nonlinear step surprised you or a measurement is borderline, or (c) the user asked for it. The
+final gate still judges the recombined result either way; a clean run skips the loop's slowest,
+token-heaviest gate.
 
 Procedure per gate: `render_critic_pack(viewId, <scratch dir>, phase)` → launch the
 `image-critic` skill as a **subagent given ONLY the pack dir + `docs/CRITIC_RUBRIC.md`** -
 never the transcript or parameter values (blindness is the design; see the skill).
+- **Run the critic subagent SYNCHRONOUSLY and write its report yourself** to
+  `result-tests/<Target>/critic/reports/<gate>.md`, NEVER inside a pack dir (a later blind critic
+  is one Read away from the narrative) [R11-R12; backlog #30/#33].
+- **Scrub tool/process names from task subjects before spawning a critic**, the harness leaks
+  the task list to subagents via system reminders [R12; backlog #40].
 - `pass` → proceed; keep the report for the run record.
 - `revise: <axis>` → re-enter the measure→configure→verify loop on that axis. **Max 2 revise
   cycles per boundary**, then log the unresolved axis as a finding and proceed, a stuck axis
@@ -494,7 +513,7 @@ model, so it generalises to channels, panels, or both):
 
 ```
 result-tests/<Target>/
-├── HISTORY.md  metrics.json  replay.js
+├── HISTORY.md  metrics.json  replay.js  RUNLOG.md
 ├── final.xisf  final.jpg
 ├── 01-precombine/     per-CHANNEL and/or per-PANEL, before any combination
 │   ├── L_lin.xisf  R_lin.xisf  G_lin.xisf  B_lin.xisf   (or P1_lin.xisf …, or L_P1_lin.xisf …)
@@ -513,7 +532,7 @@ result-tests/<Target>/
 ├── 03-nonlinear/
 │   ├── final_starless.xisf  final_stars.xisf  (+ final_L.xisf on LRGB)
 │   └── starless.xpsm  stars.xpsm  L_stretch.xpsm  recombine.xpsm
-├── critic/            the packs + reports for EVERY gate (post-linear/, post-stretch-*/, final/)
+├── critic/            packs for every gate that RAN + reports/ (reports never inside a pack dir)
 └── gate-runs/         kb-gate reports
 ```
 
@@ -529,8 +548,8 @@ result-tests/<Target>/
   off-by-one trap above).
 - **`critic/` is mandatory**, the packs are end-of-run artifacts and belong with the run record.
   Do NOT leave them in a scratch dir, they get wiped.
-- **Records, 3:** `metrics.json`, `replay.js` (empty→final reproducer), `HISTORY.md` (pipeline as
-  run + the warts).
+- **Records, 4:** `metrics.json`, `replay.js` (empty→final reproducer), `HISTORY.md` (pipeline as
+  run + the warts), `RUNLOG.md` (the incremental run log, written DURING the run; the retro's input).
 - **`metrics.json` checkpoint keys must be FLAT strings**, `gate-compare.mjs` does
   `baseline.checkpoints[name]`. So `pre-combine-L`, `pre-combine-R`, …, `post-linear`, `final`.
   Never nest per-channel objects. `checkpointViews` values are free-form, so they carry subpaths.
