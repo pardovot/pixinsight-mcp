@@ -164,9 +164,25 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 - **SCNR is NOT a default step** [R1 pink, R2 blue casts]. Apply only if the measured rule fires,
   and even then not blindly at 100%, equal medians ≠ neutral. **⛔ Never stack SCNR + a mask
   chasing a metric [R7 worst result].**
+  ⚠️ **BUT: "not a default" has become a SKIP-BIAS, and it is now a documented failure mode**
+  [R11, user: "it feels like you have a bias towards not doing it"]. This KB records SCNR being
+  correctly skipped in R3-R6, and that history reads as a prior. It is not one. **"Not a default"
+  means gate it, not avoid it.** The gate must be evaluated **per region** (sky, object, dust,
+  companions) with the right discriminator for each source type, and on a **broadband galaxy it
+  usually SHOULD fire**. If you are about to skip SCNR, state the number that justifies it and
+  which region you measured, and if the number is `gex` on a continuum source, you measured the
+  wrong thing (see above).
   - **Gate on the midpoint axis, `gex = G − (R+B)/2 > 0`** [R9 corrected], NOT "G ≥ both R and B".
     The old gate misses the common case where R is a hair above G yet G sits well above the R-B
     midpoint (R9 nebula: gate said skip, `gexRel` was **+0.17** and the dust read visibly olive).
+  - ⛔ **On a CONTINUUM source (galaxy, stars) `gex > 0` is NOT sufficient, use `G vs R` [R11].**
+    Warm stellar light *necessarily* sits above the R-B midpoint, so the gate fires on legitimate
+    yellow. The physical constraint is `R > G > B`, so **`G >= R` is a hard fail = green cast.**
+    ⛔ And **do not argue that SCNR would "bleach" a warm object**: `G' = min(G, 0.5(R+B))` edits
+    only G, so **`R − B` is preserved exactly** and warm hue survives by construction. The
+    emission-line exclusion applies to the DEFICIT branch (which raises G), never to this one.
+    R11 skipped SCNR on M31 with exactly that wrong argument while M110 measured **G 0.482 > R
+    0.472**; the user's SCNR at amount 1.0 fixed every region and read clearly better.
   - ⛔ **ALWAYS use a NEUTRAL protection method** (`protectionMethod` 2 = AverageNeutral, default;
     3 = MaximumNeutral). **NEVER the mask methods** (0 = MaximumMask, 1 = AdditiveMask) on a field
     with real colour diversity. Counter-intuitive but measured [R9]:
@@ -218,12 +234,26 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   An A/B where absolute speckle σ *halved* (2.4e-4 → 1.1e-4) still read as "a tad more noisy" to
   the user, because removing the core glow dropped the background under those leftovers (3.11× →
   1.58×), raising their contrast. Report speckle-over-local-background, and let the render decide.
-- **⛔ Dim stretch = over-black-pointing, the #1 recurring failure [R1-R4].** END at histogram
-  peak ≈ 0.20-0.25. The black point is a **gentle true-black set** (shave only the few % of empty
-  sky below the histogram rise), NOT a background crush; each GHS pass re-lifts shadows → pair
-  with a separate linear black point `($T-BP)/(1-BP)`. **Hard gate: after your LAST step, if the
-  peak is < ~0.18 you over-black-pointed, undo the black point(s) and redo gently.** Prefer more
-  D or a second GHS pass over any black point beyond a minimal one.
+- **⛔ Dim stretch = over-black-pointing, the #1 recurring failure [R1-R4].** The black point is a
+  **gentle true-black set** (shave only the few % of empty sky below the histogram rise), NOT a
+  background crush; each GHS pass re-lifts shadows → pair with a separate linear black point
+  `($T-BP)/(1-BP)`. Prefer more D or a second GHS pass over any black point beyond a minimal one.
+  - ⚠️ **The 0.20-0.25 peak band is a WAYPOINT for the stretch step, NOT an acceptance gate on the
+    final** [user, R12; band overridden by the user on R11 *and* R12, the latter a nebula-filling
+    target, which killed the old "tuned for nebula-filling fields" excuse].
+    *User: "I don't think 0.2 or 0.25 matters, even after stretch we can always use s curve to
+    darken the background, increase the highlights."* **Global tone is freely reshapeable after the
+    stretch, so the peak is an intermediate state, not the deliverable.** R12 shipped at peak
+    **0.146** and was accepted. Do not undo a good result to chase the number.
+  - ⛔ **What the gate was actually protecting is FAINT-SIGNAL SURVIVAL, so gate on that directly.**
+    Measure faint-over-sky separation before and after any darkening; if it improves, the darkening
+    is safe regardless of where the peak lands (R12: 0.073 → 0.096 while the peak fell 0.170 →
+    0.146). If it degrades, the black point is too hard, whatever the peak says.
+  - **Acceptance = DATA + VISUAL COMPARISON, together** [user, R12]. Neither alone was sufficient in
+    this project's history: metrics passed three rejected R11 versions, and eyeballing without
+    measurement is what let R12's colour inversion ship. Pair a measured comparison (percentile
+    ladders / band profile against a reference or an earlier accepted result) with a side-by-side
+    render at matched luminance.
 - **The target is a band, not an edge [R5 milky / R6 too-dark bracket it].** Before accepting the
   nonlinear result, run a **faint-nebula-survival check**: inspect known faint outer regions ON
   THE RENDER and confirm they read clearly above background. `min>0` is NOT preservation [R6].
@@ -239,8 +269,33 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 - **Post-stretch background neutralization IS legitimate** (the old "never after stretch" was too
   broad, it came from blind SCNR@100%): see `docs/background-work.md` [R7, user-validated].
   Recipe: (1) luminance-dependent per-channel curves leveling, then (2) pull teal pixels toward
-  their OWN luminance, gated to `rex = R−(G+B)/2 < 0`, preserves brightness, red untouched by
-  construction. Signal hue is the per-target knob.
+  their OWN luminance, gated to `rex = R−(G+B)/2 < 0`, preserves brightness. Signal hue is the
+  per-target knob.
+  - ⛔⛔ **"red untouched by construction" IS FALSE on a globally cool field, and this step DESTROYED
+    real Ha on R12.** `rex` is an ABSOLUTE test, so where the whole background sits below the R-B
+    midpoint the red nebulosity does too and the gate fires on the SIGNAL. **Measure `% of the region
+    with rex < 0` first: above ~80% means a global cast, and this is the WRONG TOOL** (R12 measured
+    99.6%, structure `R/G` 1.602 → 1.053 in one step). Fix the balance per-channel instead.
+  - ⛔ **Cap the gate at `strength ≤ 0.75`.** `gate = 1.0` sets chroma to EXACTLY zero (R12: 72.5% of
+    a corner at R=G=B, shipped). Tuning `w` only moves the threshold, it cannot prevent it.
+  - ⛔ **Verify with a SPATIAL chroma check, never `bgChroma`** - it read 0.0252 ("better than the
+    0.05 reference") on the damaged image.
+- ⛔ **DO COLOUR IN ONE MEASURED STEP. Gated saturation ops MULTIPLY** [R12]: 6-8 individually gentle
+  boosts with overlapping luminance gates compounded to ~**x2.6**, each verified in isolation and
+  none cumulatively. Track the cumulative factor, or better, use **per-channel percentile matching**
+  against a reference (`osc-rgb.md` §10b-3), which fixes tone + colour + saturation in one step.
+- ⛔ **Never stack shadow-compressing `CurvesTransformation` K curves** [R12]. K applies the same
+  curve to R/G/B individually, so the systematically-lower channel is crushed by *each* one: two
+  stacked curves gave dark-population **R 0.043 vs G 0.166** and inverted red structure to cyan. Use
+  a single CIE-`L` curve for tone, or deliberate per-channel curves.
+- ⛔ **SCNR-green MANUFACTURES magenta and can drive the background blue** [R12]. `G' = min(G,(R+B)/2)`
+  drives G to/below the R-B midpoint, which IS the magenta axis (G-is-min on bright px: 42.8% with
+  SCNR vs 15.2% without). **User rule: SCNR only earns its place if it leaves the background neutral
+  AND clean.** Stars layer at 1.0 stays correct; the distinction is scope, not strength. See
+  `osc-rgb.md` §10b-4.
+- ⛔ **"Was the colour preserved?" cannot be answered from region MEDIANS** on a field with a global
+  cast (R12 got this wrong twice). The median is the SKY; measure the **structure** colour =
+  `(bright population − dark population)` per channel, split by luminance, stars excluded.
 - **Saturation: restraint** [R6 fixed S-curve "way too much" on an already-saturated SPCC
   result]. Gentle, verify on the render; never a fixed aggressive curve.
 - **Stars: NEVER GHS/arcsinh/STF-autostretch on the star layer, the wash is inherent** (RC-Astro:
@@ -262,6 +317,17 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 - **VERIFY STARS AT 1:1, global stats lie** (star-layer median≈0 hides too-dim stars) [R5].
   `render_view(viewId, path, stf:"asis", rect:[…])` centered on a bright star from
   `get_star_metrics().brightestStars` (~600×400) and LOOK before calling the star step done.
+  ⛔ **Render it at the MEASURED WORST-CASE location, not a region you picked** [R11]. Whatever
+  metric gates the step already knows where the worst offender is, return its coordinates and crop
+  THERE. R11 rendered a clean star field, passed the step, and shipped a purple star that sat
+  elsewhere in the frame.
+- ⛔ **CLAMP-type operations are accepted on RESIDUAL FRACTION + WORST CASE, never on the mean**
+  [R11]. SCNR-neutral and invert-SCNR both reduce to clamps (`min`/`max` against the R-B midpoint),
+  and a correctly applied clamp empties the violating population *by construction*. At `amount < 1`
+  it only moves part of the way, so the mean improves while a large outlier survives. R11 read the
+  mean (−4.28% → −0.96%) as success while **51.3% of lit star pixels were still violating, worst
+  case 80.5%**; the residual fraction had barely moved (53.6% → 52.7%) and was right there in the
+  same measurement. Report `% still violating` + `worst case`, and only then look at the mean.
 - **Star COLOR correction, gated + measured [R8; metric CORRECTED in R9].** Both branches gate on
   ONE axis, green vs the R-B midpoint, measured on star pixels:
   (a) **green EXCESS** `gex = G−(R+B)/2 > 0` → `SCNR` green (Average Neutral);
@@ -273,10 +339,16 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
   midpoint, and a smooth continuum puts G at ~the midpoint, so a deficit is non-physical on a
   continuum source (Antares verified unchanged: hue 29.7→30.0°, sat 0.700→0.702). → **broadband +
   stars layer: treat (b) as default ON**, gate = magnitude sanity check, not permission.
-  ⚠️ **Amount cap on broadband [research 2026-07-26]: run the inverted pass at 0.3-0.5, not 1.0.**
-  The clamp sits ~on the blackbody locus, so full strength starts desaturating the reddest
-  (reddened-background) stars. And a STRONG post-SPCC magenta cast is a symptom, diagnose the
-  cause first (star-layer floors did it in R10; also calibration / chromatic aberration).
+  ⛔ **AMOUNT = 1.0 IS THE DEFAULT** [user directive, R11]. Reserve 0.3-0.5 for the deliberate case
+  where you only want to *slightly* tone something down, and say why. The old "cap the inverted pass
+  at 0.3-0.5 on broadband" rule was a research *inference* (the clamp sits ~on the blackbody locus,
+  so full strength might desaturate the reddest stars) that was **never measured on-image**, and at
+  0.3 R11 left 51.3% of lit star pixels deficient with an 80.5% worst case and a visible purple
+  star. Both branches are self-gating no-ops wherever the channel is already on the right side of
+  the midpoint, which is why full strength is safe by default. Still worth *checking* the reddest
+  star afterwards, just not a reason to start below 1.0.
+  A STRONG post-SPCC magenta cast is separately a symptom, diagnose the cause first (star-layer
+  floors did it in R10; also calibration / chromatic aberration).
   ⛔ **HARD EXCLUSION, emission lines (not red stars).** Where red is Hα, G is legitimately below
   the midpoint (R9 Sh2-9 arc: G 0.357 vs midpoint 0.385, (b) would bleach it) → **never on
   narrowband/duoband, never on a starless holding emission nebulosity.** Gates are **per-image,

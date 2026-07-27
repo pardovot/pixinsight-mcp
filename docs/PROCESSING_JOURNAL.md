@@ -41,7 +41,7 @@ Confidence reflects real-run evidence, not just the playbook's grading.
 | **Bg neutrality** | linear additive offset (primary) **+ post-stretch background work** | ✅ **R3 VALIDATED (linear)**, diffuse-sky band (±8% of lum median), NOT darkest-N%. Null residual with additive-offset PixelMath. Don't use the `BackgroundNeutralization` *process* (blew up ×100). **R7: post-stretch neutralization is a legit supplement** (doctrine softened) → `docs/background-work.md`: luminance-dependent curves leveling + teal-toward-own-luminance gated to `rex<0` (gray not black, red preserved). ⚠️ **the ±8% spread metric LIES post-stretch**, judge on the render. |
 | **Stretch** | **native GHS** + a pinned lift-curve (measurement-driven, iterative) | ⚠️ **R5=too bright/milky, R6=too dark/faint-crushed, the two bracket the target (it's a BAND).** R6 fix for R5 milkiness: SP just *above* the bg peak (bg compresses down, dark) + a `CurvesTransformation` pinned at the bg rising above it → decoupled bg-darkness from object-lift, killed the milkiness. **But overshot:** user "nebulosity too dim; fainter nebulosity VANISHED with the background." **Method gap:** "no clipping (min>0)" ≠ faint-nebula preserved (R6 mins>0 yet faint gone) → add an explicit **faint-nebula-survival check** on the render. Don't trade object brightness for a dark bg. Exact levels = OPEN (objective function). |
 | **Star stretch** | **single MTF + ColorSaturation** (SetiAstro Execute, replayed) | ✅ **method solid (R5-R6): star-PIXEL median (`>~0.005`) not layer median (≈0); include the `ColorSaturation` pass; verify at 1:1.** ⚠ **amount is per-target and wants to go HARDER than first guess:** R5 `a≈4.5`; **R6 user: `amount=6, satAmount=1.3` for NAN/Pelican** (my `a=4.0/sat=1.0` too soft). T≈0.35-0.45 is a *starting point*, push harder + confirm 1:1; darker bg tolerates harder stretch. **Per-object datapoint, NOT a default** (user: "other targets might not be as good"). SetiAstro installed (`star_stretch.js`); replay ops, don't `#include`. |
-| **Color shaping** | gated SCNR, gentle saturation | ⚠️ **SCNR correctly skipped R3-R6** (rule never fired). **R6: saturation "way too much"**, a strong S-curve `[[0,0],[0.35,0.5],[0.7,0.83],[1,1]]` over-cooks an already-saturated SPCC result → keep gentle + verify on render. gold/teal recipe + duoband star color still OPEN. |
+| **Color shaping** | gated SCNR, gentle saturation | ⚠️ **SCNR correctly skipped R3-R6** (rule never fired). ⛔ **But R11 shows this row reads as a SKIP-BIAS**: on a broadband GALAXY the gate should have fired and the agent talked itself out of it with an invalid argument (`gex > 0` is trivially true for warm colour; the real test is `G vs R`, and SCNR-neutral preserves `R−B` so it cannot "bleach" a yellow core). "Not a default" means **gate it per region**, not avoid it. **R6: saturation "way too much"** on an already-saturated SPCC nebula → gentle; ⚠️ **R11 the opposite on a galaxy**, "restrained" was read as minimal and two critics flagged colourless arms, the masked-S-curve floor is higher than R11 assumed. gold/teal recipe + duoband star color still OPEN. |
 | Recombine | `starless*~stars + stars` (≡ screen) | ✅ formula correct. **R3 "star artifacts" reframed (R4): they were the GHS star-WASH, not SXT residual** → fixed by a natural HT star layer, not a combine change. |
 
 **One-line read:** the *linear* pipeline is solid. Nonlinear-half after Run 6: **star-stretch METHOD is
@@ -312,6 +312,97 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
 26. **`Crop` headless semantics `[tooling, LOW, Run 10]`**, `mode:1` + negative margins silently no-op'd on an
     RGB view and returned an empty error on a mono view. Map the mode enum / margin sign convention properly
     before anyone needs a scripted crop (R10's was vetoed, so unresolved).
+27. **`metrics.stars` / `get_star_metrics` must be LAYER-AWARE `[tooling, HIGH, Run 11]`**, on a starless it
+    named the **M32 nucleus** the brightest "star" (peak 0.993) and returned medianFWHM 12.37 / ecc 0.839, i.e.
+    galaxy structure presented as star metrics; on a stars layer it escalated the threshold 4x and measured 56
+    of a claimed 10016. **Two independent critics tripped on it** and had to override by render. It already
+    emits a degenerate-median warning for stars-only layers → add the same for "detector latched onto an
+    extended object" (e.g. flag when measured FWHM >> the pre-split FWHM, or when the top peak is resolved).
+    Also: it **excludes saturated peaks, so it goes blind exactly when clipping starts** (returned
+    `measured: 0`, `medianFWHM: null` at the moment BXT pinned the cores, the step where it was most needed) →
+    report a saturated-star count and a fallback FWHM from unsaturated stars.
+28. **Clamp-op acceptance metric `[tooling/method, MED, Run 11]`**, the SCNR / invert-SCNR gates report a mean
+    relative excess/deficit, and R11 accepted a bad result on it (mean −0.96% while 51.3% of pixels still
+    violated, worst case 80.5%). A measurement helper for these ops should return **`% still violating`,
+    `worst-case relative`, and the `(x,y)` of the worst case** as first-class outputs, and the render helper
+    should take those coordinates directly. Turns a skill rule into a tool guarantee.
+29. **BXT clipping-headroom calculator `[tooling, MED, Run 11]`**, `_common.md` says "add headroom" without an
+    amount; R11 burned 3 iterations (1.0x → 1.5x → 3.0x) because correcting an ecc-0.52 PSF concentrates peak
+    flux ~1.78x. Derivable as `(FWHM_before/FWHM_after)²` from a cheap pre-pass, or just measure the saturated
+    count before/after and auto-retry. Should be a pre-flight guard, not a lesson.
+30. **⛔ Critic-pack blindness hygiene `[tooling, HIGH, Run 11]`**, the deliverables spec puts critic reports in
+    `critic/`, and the natural path `critic/<gate>/report.md` places the processing narrative **inside the pack
+    directory a later blind critic is pointed at**. A gate caught this itself ("a blind critic is one Read away
+    from the processing narrative"). Fixed by convention here (`critic/reports/<gate>.md`), but
+    `render_critic_pack` should own it: emit packs into a directory that holds renders + metrics only, or the
+    deliverables spec should mandate reports outside the pack tree. Pairs with the task-list leak noted in
+    the session memory (the harness can leak stage names to critics through task subjects too).
+31. **`full.png` is anti-diagnostic at downsample 5 `[tooling, MED, Run 11]`**, in both directions: it averaged
+    the ring/undershoot defect away completely (0% ringed sources vs 10-35% at 1:1, so an overview-only review
+    would pass a defective frame) and it box-averages a 2-3 px star over 25 px so a **stars layer reads far too
+    dark**. → peak/max-preserving downsample for the overview, or an explicit "not diagnostic for point sources
+    or star layers at this scale" note in the pack manifest.
+32. **Masks are invisible to `export_container` `[tooling, MED, Run 11]`**, both saturation passes ran through a
+    window mask, so `starless.xpsm` / `final_colour.xpsm` cannot reproduce them and `replay.js` is the only
+    faithful reproducer. Minimum: flag a container whose source history contains steps applied under a mask as
+    INCOMPLETE. Better: capture the mask as a companion image + a sidecar note.
+33. **Synchronous-only critic gating `[tooling, MED, Run 11]`**, background subagents completed analysis and
+    returned nothing (3 of them; `SendMessage` did not revive them), and the subagent `Write` tool is blocked by
+    a report-file policy so "have the agent save its own report" fails silently too. Only synchronous `Agent`
+    calls delivered. Cost ~40 min and 3 wasted launches. Either make background agent results reliably
+    retrievable or encode "gates run synchronously, caller persists the report" in the skill.
+
+34. **⛔ Never overwrite a delivered final `[tooling/process, HIGH, Run 11]`**, the deliverables spec
+    names a single `final.xisf` / `final.jpg`, so successive revisions overwrote it in place. When the
+    user rejected v3 and asked to return to baseline, v1 existed only as an in-memory view and was
+    one window-close from being gone. **Fix adopted:** a `versions/` directory that is never
+    overwritten (`final_v1.xisf`, `final_v3_grainy.xisf`, … plus matching starless files and a README
+    of the measurements), with `final.*` merely mirroring the current pick. Should be in the
+    `process-master` DELIVERABLES section, not improvised per-run.
+35. **Local-contrast metric as a first-class measurement `[tooling, MED, Run 11]`**, "the galaxy looks
+    hazy" was diagnosable only after hand-rolling `mean |px − local median(15px)| / local level` in
+    `run_script`. It is the metric that distinguishes *under-textured* from *over-glowing*, and the
+    radial-profile check (the obvious first guess) actively misleads: it was near-identical between a
+    good and a bad image. Belongs next to `get_noise` / `get_star_metrics`.
+36. **⛔ "Curve aggressiveness" guard `[tooling/method, HIGH, Run 11]`**, the agent has no signal telling
+    it that a tone curve is too violent, and shipped three rejected versions whose *outcome* metrics
+    all looked fine. Cheap and computable before executing: **number of control points**, **max local
+    slope**, **max single-step level change** (`|out/in − 1|` at the background), and **cumulative
+    slope excursion** across the whole nonlinear chain. On R11 the accepted (user) chain used 4-point
+    curves with ~10% deltas and max slope near 1; every rejected agent version used 8-11 points with
+    slopes to 1.86 and a −38% single-step background move. A warning at, say, >5 control points or
+    >1.3 local slope or >15% background move would have caught all three. Pairs with #35.
+37. **⛔ Structure-colour metric `[tooling, HIGH, R12]`**, "did processing preserve the colour of this
+    nebulosity?" has no tool, and the obvious substitute (region medians, `bgChroma`,
+    `get_background_neutrality`) answered **wrong twice in one run** because the median of a region is
+    the SKY, not the structure in it. The correct primitive: split a region by LUMINANCE, exclude
+    stars, return `(bright population − dark population)` per channel = the colour of the structure.
+    On R12 it read `R/G` 1.547 (linear input) vs 0.917 (delivered) where medians showed no change.
+    Pairs with #35 (local contrast); same shape of gap, colour instead of detail.
+38. **Spatial chroma check `[tooling, HIGH, R12]`**, `bgChroma` is magnitude-only and scored a
+    damaged image as *better than reference* (0.0252 vs a 0.05 bar) while **72.5% of one corner was
+    at exactly R=G=B**. Need per-tile/per-corner saturation and the fraction of exactly-achromatic
+    pixels. Also needed to catch cast DIRECTION, which `bgChroma` cannot express. Blocking a real
+    defect class: any operation that pulls pixels toward luminance can silently zero chroma.
+39. **Cumulative-saturation guard `[tooling/method, HIGH, R12]`**, sibling of #36 (curve
+    aggressiveness) for colour. 6-8 individually gentle gated saturation ops multiplied to ~**x2.6**
+    in overlapping luminance bands, and nothing in the loop tracked the product. Cheap: accumulate
+    the per-band effective factor across the chain and warn above ~1.5x, or simply require colour to
+    be done in one measured step.
+40. **⛔ Critic blindness is breached by the harness `[tooling, HIGH, R12]`**, **two** critics
+    disclosed, unprompted, that the session TASK LIST reached them via system reminders naming
+    BXT/NXT/SPCC/SXT/MGC stage by stage. `docs/AUTONOMY.md` and the `image-critic` skill both rest on
+    the critic being blind to process. One critic also confirmed that renaming tasks mid-run works but
+    only for reminders delivered *after* the rename. Fixes, in order: (a) harness should not share the
+    parent task list with subagents, or allow opt-out; (b) failing that, keep tool names out of task
+    subjects before spawning any critic; (c) make "declare and disregard side-channel process info" a
+    REQUIRED instruction in the skill rather than the lucky behaviour it was here.
+41. **Critic pack renders are 8-bit `[tooling, MED, R12]`**, so an "exactly achromatic" test is
+    quantization-floor limited (the `sat<0.01` fraction equalled the exact-achromatic fraction in all
+    eight crops). 16-bit renders, or a per-crop chroma statistic shipped in `metrics.json`, would make
+    that check reliable. Also: `render_critic_pack` omits `stars.png` at `phase:"final"`, and
+    `metrics.stars` was degenerate at EVERY phase of R12 (null FWHM on the linear master, nebula knots
+    on the starless, misleading on the stars layer, `starCount 0` on the final).
 
 ---
 
@@ -494,6 +585,66 @@ playbook `osc-hoo.md` steps 10-12 rewritten. Summary of what landed:
   global application is unsafe. Needs a spatially-bounded approach (fit the tilt as a smooth field
   on non-emission sky, or region-mask). Second datapoint for the R9 "green survives calibration"
   question, on MONO this time (G filter airglow).
+- **Galaxy nonlinear tone target `[quality, R11, OPEN]`.** The `0.20-0.25` histogram-peak band is a
+  nebula-filling-target number and lands a **galaxy on comparatively empty sky too bright**: R11 hit
+  0.2055 (inside the band, low end), passed every gate, and the user still darkened it to a
+  whole-image median of 0.198 and asked for more contrast. Both blind critics independently reported
+  a **highlight-compressed, hue-washed core** ("cream-white plateau ... golden-yellow washes to
+  ivory", not clipped at 0.83). Research: (a) is there a distinct target band for
+  galaxy/small-object-on-sky vs nebula-filling fields; (b) how to add object contrast without
+  re-milking, i.e. the de-milk S-curve's **highlight slope** (R11 used 0.375 above x=0.8, deliberate
+  protection, which is what flattened the bulge); (c) whether core structure wants a **local HDR**
+  step (HDRMultiscaleTransform / LocalHistogramEqualization) rather than a global curve, user
+  suggested "a bit more HDR to the core if needed". ⛔ **Do not hardcode R11's curve points.**
+  User constraints to research against: darker background, more overall contrast, slightly stronger
+  saturation than R11's second pass, dust lanes enhanced (see DarkStructureEnhance below).
+- **DarkStructureEnhance parameters `[quality, R11, OPEN]`.** User-taught and user-endorsed
+  ("fantastic ... looks beautiful") for dust lanes; mechanism and defaults are now documented in
+  `osc-rgb.md` §10b from source, but **no numbers are validated here** and it was not run by the
+  agent. Research: sensible `numberOfLayers` / `median` / `iterations` for a galaxy dust lane vs a
+  dark nebula, where it belongs in the order (before or after saturation; on the starless or the
+  recombined final, the user applied it last on the final), and its interaction with the chroma-noise
+  amplification the second saturation pass already introduces in low-signal lanes.
+- **Is the broadband invert-SCNR amount cap real? `[quality, R11, OPEN]`.** `_common.md` caps the
+  deficit branch at 0.3-0.5 on broadband to protect the reddest stars from desaturation at amount
+  1.0. That is a **research inference, never measured on-image**, and on R11 amount 0.3 was far too
+  weak (51.3% residual, 80.5% worst case, visible purple star; the user applied a second full pass).
+  Research: measure the reddest/most-reddened star in a broadband field before and after the branch
+  at amounts 0.3 / 0.5 / 1.0 and quantify actual saturation loss, then either justify the cap with
+  numbers or replace it with the residual-fraction acceptance test. R10 (cap's origin) and R11
+  (cap too weak) currently disagree.
+
+- **✅ RESOLVED by R12, the broadband invert-SCNR cap.** R11 asked for the measurement at
+  0.3/0.5/1.0; R12 ran it at 1.0 on a heavily reddened field. Saturation of the ten reddest stars
+  **rose on every one**, and there is a proof, not just a measurement: clamping G toward `(R+B)/2`
+  leaves G the MIDDLE channel, so `max`/`min` and therefore `(max−min)/max` are invariant. The op
+  moves hue only and cannot desaturate a star. Landed in `_common.md` §3. **Question closed.**
+- **✅ RESOLVED by the user, R12: the 0.20-0.25 peak band is a WAYPOINT, not an acceptance gate.**
+  *User: "I don't think 0.2 or 0.25 matters, even after stretch we can always use s curve to darken
+  the background, increase the highlights. I think possibly data + visual comparison might be a good
+  combination."* **Global tone is freely reshapeable after the stretch**, so the peak is an
+  intermediate state, not the deliverable, and gating the FINAL on it is a category error. What the
+  gate was really protecting is **faint-signal survival**, which should be measured directly
+  (R12: faint-over-sky 0.073 → 0.096 *improved* while the peak fell 0.170 → 0.146, accepted at
+  0.146). Acceptance criterion becomes **data + visual comparison together**: neither alone has
+  worked here (metrics passed three rejected R11 versions; eyeballing without measurement let R12's
+  colour inversion ship). Landed in the `process-master` skill. The residual research below is now
+  narrower, not a band question.
+- **What the peak band should key off, if anything `[quality, R11+R12, NARROWED]`.**
+  R11 (galaxy) was pulled to a 0.198 median; R12 (nebula-FILLING, the case the band was supposedly
+  tuned for) was pulled to peak **0.146**, in two successive user requests for a darker background.
+  That breaks the standing explanation that the band is "tuned for nebula-filling targets" - M16 *is*
+  one. Research: is the band simply too bright in general, is it a function of how much of the frame
+  is real signal (M16 has NO empty sky, darkest 1% at 88% of the sky median), or is it a display/
+  gamma assumption? Constraint for the research: at peak 0.146 the faint-survival check *improved*
+  at every step (faint-over-sky separation 0.073 → 0.096), so the gate the band protects was never
+  actually at risk. ⛔ Do not simply lower the band by decree; find out what it should key off.
+- **DarkStructureEnhance parameters, second datapoint `[quality, R11+R12, still OPEN]`.** R12 ran it
+  for real (R11 only documented it): `numberOfLayers 8, scalingFunction 1, median 0.68, 1 iteration`,
+  applied to the **starless** (not the recombined final as the R11 user did) so stars cannot be
+  darkened. Effect measured as dust-lane local contrast 6.42 → 7.60 with sky and bright core
+  unchanged. Still not a validated recipe: `median` 0.68 vs the 0.7 default was picked by eye, and
+  starless-vs-final placement remains untested head to head.
 
 ---
 
@@ -1073,3 +1224,340 @@ Optolong curves + IMX571 QE via SPCC/SPFC, MARS-MGC killed a ramp blind GC refus
 star-separated combine is structurally sound; the new failure class is **ramp/floor amplification
 through the stretch and the L transfer**, now gated. Nonlinear judgment quality remains the
 open axis (same as OSC), plus the new shadow-color-op question.
+
+---
+
+### Run 11, 2026-07-26, OSC-RGB, M31 (Esprit 100 / 555 mm, ASI2600MC Pro, no filters, 180 s subs)
+**Outcome:** complete autonomous run, **good result, user-approved with corrections.** All three
+critic gates passed (post-linear returned `revise: stars`, verified and logged; post-stretch
+starless/stars and final all `pass`, final judged twice). Linear half clean on first contact.
+User verdict: "The run did very well", then five corrections, two of which were real agent errors.
+Artifacts: `result-tests/M31/` (full stage tree, 4 critic packs + reports in `critic/reports/`,
+`metrics.json`, `replay.js`, `HISTORY.md`).
+
+**Linear half, all first-try:** headroom → BXT correct-only (ecc **0.521 → 0.288**) → SPFC → MGC/MARS
+(sky-profile Y 1.7-1.9% → **<1%**) → SPCC (neutrality **18.5% → 0.30%**) → BXT sharpen (FWHM
+**4.59 → 2.50**) → NXT (MRS halved, channel-uniform). Final mode 0.2055, bgChroma 0.0282, clipping
+0.003% high / 0% low.
+
+**Findings**
+- ⛔ `[correctness]` **Skipped SCNR on the starless using an invalid argument, and it was the run's
+  main quality miss.** The agent measured `gexRel` +3.0% (core) / +7.2% (M110) / +3.3% (arm) and
+  reasoned "yellow *means* `G > (R+B)/2`, so this is legitimate warm colour, and SCNR would bleach
+  the core." **Two distinct errors.** (a) **Wrong invariant:** SCNR-neutral is `G' = min(G,0.5(R+B))`,
+  it edits *only* G, so **`R − B`, the whole warm-vs-cool signal, is preserved exactly** - it cannot
+  bleach a yellow core, it removes only the green making yellow read olive. The "bleach" claim was
+  provably false. (b) **No magnitude test:** `gex > 0` is satisfied by both real warm colour and a
+  real cast. The discriminator for a **continuum** source is `R > G > B`, and **M110 measured
+  G 0.482 ABOVE R 0.472** - non-physical for an elliptical's integrated light. The agent also
+  transferred the emission-line HARD EXCLUSION (which belongs to the *deficit* branch, that raises G)
+  onto branch (a). User's `SCNR` green, AverageNeutral, **amount 1.0**, post-recombine → all regions
+  `gexRel <= 0.11%`, `G−R` properly negative (core −0.029), visibly better.
+- ⛔ `[method]` **Verified a CLAMP by its mean and shipped the outlier.** Branch (b) invert-SCNR ran at
+  amount 0.3; the agent saw mean relative deficit −4.28% → −0.96% and accepted. Re-measured:
+  **51.3% of lit star pixels still green-deficient, worst case 80.5%, 14,989 px above 0.35 brightness
+  carrying >18% deficit** - the user saw a purple star. The **residual fraction barely moved
+  (53.6% → 52.7%)** and was in the same measurement output; that was the number that mattered,
+  because a clamp is supposed to *empty* the violating population, not shrink its average. User's
+  fix: a second full pass (residual → 3.1%).
+- `[method]` **Did the mandated 1:1 star verify at a region the agent chose, not the measured worst
+  case.** The metric already knew the offender's coordinates.
+- `[method]` **KB framing produced a SKIP-BIAS on SCNR** (user: "it feels like you have a bias towards
+  not doing it"). The journal/playbook record SCNR being *correctly skipped* in R3-R6, which reads as
+  a prior rather than as "gate it". Fixed in the skill: "not a default" = gate it per region with the
+  right discriminator, and a broadband galaxy usually SHOULD fire.
+- `[quality]` **The 0.3-0.5 broadband deficit-branch cap is CONTESTED.** It came from research
+  inference (protecting the reddest stars at amount 1.0), never measured on-image, and on R11 it was
+  far too weak. → research question below; do not obey the cap blind.
+- `[quality]` **Saturation floor was too low, and "restrained" was read as "minimal".** Core sat 0.0535
+  after the first masked pass; **two independent blind critics** flagged "blue arms barely
+  distinguishable" - the playbook's own galaxy goal. A second masked pass (core 0.0837 / arms 0.164 /
+  dust 0.270) landed with background sat **unchanged** (0.0182 → 0.0183) and the user still wanted
+  "slightly more". The luminance mask is what makes this safe.
+- `[quality]` **Global tone: too bright and too flat for a galaxy.** User wants darker background, more
+  contrast, slight lane/galaxy enhancement, possible core HDR. Their own edit took whole-image median
+  **0.226 → 0.198**. Both critics independently said "highlight-compressed core". The agent's mode
+  0.2055 was *inside* the playbook band 0.20-0.25 but at its low end and still too bright here -
+  second confirmation that the band is tuned for nebula-filling targets, not galaxies-on-empty-sky.
+- ✅ `[technique]` **User taught `Utilities > DarkStructureEnhance`** for dust lanes. Source read and
+  mechanism documented into `osc-rgb.md` §10b (mask = `largeScale − original` from a single-residual-
+  layer wavelet → rescale → NR; then masked `HistogramTransformation` with RGB/K midtones = `median`
+  0.7, which darkens only structure darker than its surroundings). Defaults recorded. Dialog-only, so
+  headless needs the worker-function replay pattern.
+- ✅ `[confirmed]` **Dead/hot-pixel speckle correctly triaged and left alone** (user: "you did well to
+  simply ignore it ... not much that can be done at this stage"). Verified pre-existing in the
+  untouched master and *reduced* 66% by processing (24.2 → 8.2 spike px per 1000). Owner is the
+  stacking/calibration stage (CosmeticCorrection), not the post-processing pipeline.
+- ✅ `[confirmed]` **Post-linear critic's `revise: stars` correctly rejected after measurement.** Ring
+  depth in **absolute** units was unchanged by the sharpen pass (corner-TL got *shallower*,
+  −5.03e-5 → −4.61e-5); the apparent worsening was NXT dropping the noise floor ~42% and inflating a
+  σ-normalised comparison. 0% of stars reached zero. Both later gates independently reported "no dark
+  rings". Good use of the spot-verify rule.
+- `[correctness]` **Crescent-arc and border "artifacts" verified against the untouched master before
+  acting** (arcs = real optical ghosts; border = ±2-3% in linear, ~20x exaggerated by the pack's
+  shadow clip). The R9 verify-before-removing rule worked.
+- `[tooling]` **`metrics.stars` is silently wrong on non-star-field layers.** On the starless it named
+  the **M32 nucleus** the brightest "star" (peak 0.993) → medianFWHM 12.37, ecc 0.839, i.e. galaxy
+  structure; on the stars layer it escalated 4x and measured 56 of a claimed 10016. Two separate
+  critics tripped on it and had to override it by render. → backlog.
+- `[tooling]` **`get_star_metrics` goes blind exactly when clipping starts** (excludes saturated peaks →
+  returned `measured: 0`, `medianFWHM: null` at the moment BXT pinned the cores). → backlog.
+- `[tooling]` **BXT headroom amount is unspecified and cost 3 iterations.** Derivable:
+  required headroom ≈ `(FWHM_before/FWHM_after)²` (predicted 1.78x for correct-only alone; 3x held). → backlog.
+- `[tooling]` **The critic pack layout invites a blindness breach**: the deliverables spec puts reports
+  in `critic/`, and the obvious path `critic/<gate>/report.md` sits *inside the pack a later critic
+  reads*. A gate caught this itself. Fixed here (`critic/reports/`) and in the memory note. → backlog.
+- `[tooling]` **`full.png` at downsample 5 is anti-diagnostic in both directions**: it averaged the
+  ring defect away entirely (0% vs 10-35% at 1:1) and makes a stars layer read far too dark. → backlog.
+- `[tooling]` **Masks are invisible to `export_container`**, so the masked saturation steps cannot be
+  reproduced from the `.xpsm`; `replay.js` is the only faithful reproducer. → backlog.
+- `[tooling]` **Background subagents returned nothing** (3 critics idled without delivering; the
+  subagent `Write` tool is policy-blocked, so "write your own report" also failed silently). Only
+  synchronous `Agent` calls worked. Cost ~40 min. → backlog.
+
+**Changed this entry:** `_common.md` (§2 continuum `G vs R` test + the `R−B`-invariant correction to
+the "SCNR bleaches warm objects" myth; §3 clamp acceptance test + worst-case 1:1 render rule; the
+0.3-0.5 cap marked CONTESTED); `osc-rgb.md` (step 10 galaxy-SCNR correction, step 11 clamp
+acceptance, step 10 saturation-floor note, **new §10b DarkStructureEnhance**);
+`process-master` skill (continuum SCNR discriminator + anti-bleach correction, SCNR **skip-bias**
+warning, clamp-verification rule, worst-case 1:1 render rule); backlog **#27-#32**; research
+questions **+3**.
+
+**OSC-RGB pipeline state after R11:** the linear spine is now **solid on a galaxy target too**
+(first non-nebula OSC-RGB run; SPCC white-ref "Average Spiral Galaxy" + bare-vs-UVIRcut curve choice
+validated by physical plausibility, warm core / blue arms / rust lanes). The new failure class is
+**colour-gate reasoning on continuum sources**: the `gex` gate silently inverts meaning between
+emission fields (where high G is a cast) and stellar/galaxy fields (where high G is *also* a cast but
+the inequality can't tell you, and warm colour trips it too). Both R11 colour errors were reasoning
+failures against knowledge already in the KB, not missing research. Remaining open axis is unchanged
+and now has a galaxy datapoint: **the nonlinear tone objective** (band too bright for galaxies,
+highlight compression, saturation floor).
+
+**R11 v2 rework (2026-07-27), same session, user-directed. `result-tests/M31/` now ships v2.**
+The linear half was untouched; the nonlinear half was redone against the feedback:
+- **`SCNR` green, AverageNeutral, amount 1.0** on the starless (the v1 miss). M110's `G−R`
+  **+0.010 → −0.011**, all regions to `gexRel ≈ 0`.
+- **Tone**: mode **0.2055 → 0.1725**, faint-arm/sky ratio **1.93 → 2.47**, p01..p90 span
+  **0.227 → 0.294**. ⚠️ **Below the 0.20-0.25 band and its 0.18 gate, deliberately and
+  user-directed**, and the v2 blind critic *independently* both agreed the render is not crushed
+  (0.0% of pixels below 0.10) and flagged the band as "imported from nebula runs, may be
+  miscalibrated for large-galaxy fields". Strongest evidence yet for the galaxy-tone research Q.
+- **Saturation**: rather than guess "slightly more", the **user's own image was measured as the taste
+  reference** and matched, bulge 0.1006 vs their 0.1022, dust 0.313 vs 0.323, arms 0.199 vs 0.201.
+  Worth keeping as a technique: when the user supplies their own version, measure it, don't estimate.
+- **DarkStructureEnhance x2 (median 0.70, 0.75)**, run headless by eval'ing the real script's
+  `doMask`/`doDark`. ✅ **Validated**: lanes visibly deeper, gate reported no lane-edge ringing.
+  Two lessons now in `osc-rgb.md` §10b: a single default pass is nearly invisible, and the
+  **region-average metric lies** (−1.2% average vs ~−21% at the lane cores, because the mask peaks
+  at 0.49 and is ~0 elsewhere) → judge on a 1:1 before/after crop.
+- **Star invert-SCNR 0.3 → 1.0**: residual deficit **52.7% → 7.4%**, worst case **85.6% → 28.7%**,
+  landing on the *same* worst-case value the user's own second pass reached. **Amount 1.0 is now the
+  documented default** (user: "in most cases ... especially for stars, I believe 1 is the right
+  value"); the 0.3-0.5 "broadband cap" is demoted to a deliberate light-touch option. The R10-vs-R11
+  disagreement is thereby resolved **in favour of 1.0**, and the research question narrows to "does
+  full strength measurably desaturate the reddest stars, and if so how much".
+- **Core HDR: deliberately NOT applied.** User said "if needed" and their own version has no HDR
+  step; HDRMT on a galaxy bulge is a known over-processing trap. Recorded as a non-action.
+- **Final gate re-run on v2 by a fourth blind critic: `pass`, artifacts 3 → 4**, and it
+  independently re-confirmed "no dark rings" (third gate to do so, closing the v1 post-linear
+  finding) and no lane-edge ringing from DSE.
+- New wart: **DSE-via-eval records as `Script` with an empty `filePath`**, so it does not survive
+  into an exported `.xpsm`; with the masked saturation steps that makes `replay.js` the only
+  faithful reproducer. Folded into backlog #32.
+
+**R11 v3 rework (2026-07-27), second user pass. `result-tests/M31/` ships v3.**
+Requests: one more DSE pass, and more background/galaxy contrast ("the background and galaxy are too
+close to each other"). Diagnosed numerically first: **outer halo 0.2163 vs sky 0.161, only 0.055
+apart**, while p50 0.192 / p75 0.275 confirmed the halo fills the frame → the fix had to be a *local*
+slope increase at the sky/halo boundary, not a global darkening.
+- **DSE pass 3** (0.70/0.75/0.75). Dust lane 0.4031 → 0.3954, sky untouched.
+- **Separation curve** with the kick just ABOVE the sky (0.165→0.215, slope ~1.86) so the sky's own
+  noise is not stretched: **halo−sky 0.0557 → 0.0918 (+65%)**, **faint-arm/sky 2.47 → 3.19**, min
+  luminance 0.0049. Mode 0.1715 → **0.1385**, i.e. now far below the playbook band, user-directed
+  across two rounds, and **faint survival went UP**, which is the check that matters.
+- ⛔ **NEW GENERAL TRAP, now in `_common.md` §5: a LUMINANCE curve with slope > 1 changes SATURATION
+  in both directions.** The separation curve amplified channel differences in the sky
+  (**sky saturation 0.0250 → 0.0405**, more visible chroma noise) *and* compressed the object's
+  relative chroma (**bulge 0.1006 → 0.0885**) at the same time. One S-curve through one mask cannot
+  fix both → needed a **signal-masked boost + a sky-masked reduction**. Two more sub-traps recorded:
+  (a) set a signal mask's threshold from the sky's **p99 (0.246 here), not its median (0.138)** - a
+  0.21 threshold was quietly boosting background chroma; (b) a **masked local enhancement cannot be
+  judged by a region mean** (DSE moved the dust-lane mean −1.2% while doing ~−21% at the lane cores,
+  because its mask peaks at 0.49 and is ~0 elsewhere).
+- **Technique worth keeping:** when the user hands over their own version, **measure it as the taste
+  reference** instead of estimating "slightly more". v3 lands bulge 0.1060 / dust 0.3138 / arms
+  0.1982 / sky 0.0205 against their 0.1022 / 0.3231 / 0.2013 / 0.0185.
+
+**R11 v4-v8 (2026-07-27). ⛔ v3 was REJECTED by the user: "awful ... you killed the image".**
+This is the run's most valuable stretch and it is **the project's FIRST GALAXY** - every nonlinear
+rule in the KB up to here came from nebula-filling fields.
+
+- ⛔ **The v3 grain, isolated by experiment** (each applied to the clean v4 starless, measured, undone):
+  the **unmasked "separation" curve** took sky HF grain 1.31% → **2.26%**; a masked saturation with
+  the bad mask: **no change**; **DarkStructureEnhance at 3 iterations: 0.00 change**, twice.
+  → **DSE is INNOCENT** (I had blamed it; user was right). New rule in `_common.md` §5:
+  `relative grain multiplier = local slope / (output level / input level)`. To darken a background
+  without amplifying grain the local slope there must be ≈ its level ratio. v3: slope 1.86 vs ratio
+  0.86 → 2.16x predicted, 2.2x measured. v4+ uses slope 0.76 vs ratio 0.69 and the sky came out
+  **cleaner than v1** (HF 2.39% vs 3.79%) at a much darker background.
+- ⛔ **MASK CONSTRUCTION was the user's actual complaint, and they were right.** My masks were
+  `clip((mean(RGB)−k)/w)` on raw luminance with a hand-picked `k` that **landed inside the noisy
+  sky** (0.21 vs a sky p99 of 0.246) - a mask that is literally a noise map. Worse, masks were used
+  where they were not needed (saturation) and NOT used where they were (the galaxy/background
+  separation, attempted with a global curve that inevitably stretched the sky).
+  ✅ Correct construction now documented in `_common.md` §5, read from `EZ_Common.js`:
+  lightness → `RangeSelection(fuzziness 0.1, smoothness 5, highRange = lightness median)`, applied
+  **inverted**. **The smoothing is the load-bearing part.** Also: once the sky is compressed rather
+  than stretched its chroma noise was only 0.0070, so a **global** saturation needed no mask at all.
+- ⛔ **"Haze around the galaxy" = MISSING LOCAL CONTRAST, not excess glow [user-reported, verified].**
+  First hypothesis (over-lifted diffuse halo) was **refuted by measurement**: the radial falloff from
+  the core was nearly identical to the user's (x sky 1.60/1.15/1.06 vs 1.59/1.18/1.07). The real gap
+  was local contrast (`|px − local median(15px)|` / level): disk 4.04 vs **4.72%**, dust 2.74 vs
+  **3.13%**, bulge 0.34 vs **0.41%** *at a lower level*. → diagnose haze with a local-contrast
+  metric; fix with HDR, never a tone curve.
+- ✅ **EZ HDR is the galaxy tool, now replayable headless** (`EZProcessingSuite/EZ_HDR.js`, defaults
+  `hdrLayers 5`, `hdrAmount 0.3`): clone → `HDRMultiscaleTransform(numberOfLayers=5)` (all else
+  default) → blend `(1-0.3)*img + 0.3*hdr` **through the inverted background range mask** → repeat.
+  User ran it **3x**, interleaved with small curves. ⚠️ **HDR compresses levels**: after 3 passes
+  every region sat at ~**x0.81** of the user's reference while local contrast was already right -
+  which is exactly why their chain alternates HDR → curve. One level-match curve (uniform **x1.24**,
+  derived by measuring their image) closed all four regions to <1%.
+- **v8 result vs the user's own reference:** sky 0.1288 / 0.1294, bulge 0.6841 / 0.6829, disk
+  0.3616 / 0.3593, dust 0.4848 / 0.4895, local contrast 4.58 / 4.72%, **grain HF 3.27% vs their
+  3.98%**, clipping 0% both. Chain: GHS → one S-curve → SCNR 1.0 → saturation → recombine →
+  EZ HDR x3 → DSE x3 → user colour grade → level-match curve. **No hand-rolled masks anywhere.**
+- ⛔⛔ **THE BIGGEST LESSON, and it took three rejections to see: THE PATH MATTERS, NOT JUST THE
+  DESTINATION.** v8 matched the user's reference on essentially every global number - sky 0.1288 vs
+  0.1294, bulge 0.6841 vs 0.6829, disk/dust within 1%, **tone-matched detail within 1.0-1.4%**, and a
+  whole-image quantile map that was near-identity (max deviation 3.7%) - and the user still rejected
+  it as flat, hazy, small-starred and hard-ringed. Four hypotheses were tested and **all refuted by
+  measurement**: (a) over-lifted diffuse halo (radial profiles near-identical), (b) compressed
+  highlights (my bright tail was actually *higher*), (c) HDR/DSE on star-bearing data (moving both to
+  the starless made v9 *slightly worse*), (d) global tone mismatch (quantile map near-identity).
+  **What actually differed was the PATH.** Read out of the user's history: every one of their K
+  curves is a **4-point S-curve with ~10% deltas** (−0.028 / +0.080), **interleaved with EZ HDR**
+  (curve → HDR → curve → curve → HDR → curve → HDR → DSE), with single-point `H` and CIE-`c` nudges
+  for colour. Mine were **8-11 control points with local slopes to 1.86**, moving the background
+  −38% in one step and re-lifting +24% in another. Same destination, and the aggressive path is what
+  amplifies sky noise, hardens the BXT undershoot rings and flattens the disk's local relationships.
+  → New playbook section `osc-rgb.md` **10b-2**, with the user's exact chain as the reference recipe.
+  → **Corollary for the metrics**: the agent's whole measurement kit (levels, local contrast, detail
+  spectrum, quantile map) said "within a few percent" while the user's eye said "you killed it"
+  three times running. Per the project's own rule the user wins and **the metric is the thing to
+  fix**; a "path aggressiveness" measure (max local slope per curve, number of control points,
+  cumulative slope excursion) would have flagged every rejected version and passed the accepted one.
+- ✅ **ROOT CAUSE FOUND, and it is one thing, not three** (user pushed back on "just copy the steps",
+  correctly: *"if you simply follow x, y, z without reason and understanding it doesn't benefit"*).
+  **A tone curve applies ONE slope to structure and detail at a given level, so compressing range
+  compresses detail with it - and the compression is forced:** a curve lifting `m → m'` that must
+  pass through `(1,1)` has average slope above the pivot `(1−m′)/(1−m)`, below 1 by construction.
+  Agent's curve **0.744**, user's **0.852**. **`HDRMultiscaleTransform` separates by SCALE instead**,
+  so it buys the same headroom detail-positively. Controlled test, same image, same large-scale
+  range compression both ways: **HDR** 2.178 → 2.065 with detail **+4.4%**; **equivalent curve**
+  2.178 → 2.093 with detail **−7.5%**. A 12-point swing.
+  → This single mechanism explains every symptom the user reported: **stars 20-30% dim** (matched
+  star-by-star, amplitude bins 0.12-0.50 at 0.70-0.74 - and a dim star has a smaller disc and a
+  relatively deeper ring, so "smaller stars" and "worse ringing" are the SAME defect), and
+  **faint-highlight detail at 0.569 of reference immediately after the S-curve**, before HDR/DSE ran.
+  → ⚠️ **Prevent, do not repair:** two extra finer-layer HDR passes moved it only 0.732 → 0.737
+  while raising disk noise 1.81% → 2.01%. Once a curve flattens detail, HDR cannot restore it.
+  → Landed as a **reasoned gate** in `_common.md` §5 and `osc-rgb.md` 10b-2: compute
+  `(1−m′)/(1−m)` before every curve, split if < ~0.85, take the lift from HDR, alternate.
+  The user's 9-step chain is recorded as a *worked example of the rule*, explicitly not as a recipe.
+- ⛔ **Process failure worth its own line: I overwrote `final.xisf` in place across v1→v3**, so when
+  the user asked to go back to baseline the v1 result survived only as an in-memory view. Now
+  `result-tests/M31/versions/` keeps every final + starless with a README of the measurements, and
+  `final.*` merely mirrors the current one. **Never overwrite a delivered final.** → backlog.
+
+### Run 12, 2026-07-27, OSC-RGB, M16 / Eagle Nebula (Esprit 100 / 555.7 mm, ASI2600MC Pro, no filters, 180 s subs)
+**Outcome:** linear half **clean first time**; nonlinear half **failed four times** and had to be
+rebuilt from the linear starless. v2 accepted by the user ("looks great now"). User verdict on the
+first delivery: *"you did a pretty bad job. The linear part is good, but stretch and non linear
+phase was really bad."* Deliverables in `result-tests/M16/`.
+
+**Linear half, no changes needed.** Worth recording only because it worked: master already
+WBPP-autocropped and plate-solved (no DynamicCrop/ImageSolver); MGC at `gradientScale 1024` **not**
+the playbook's 256 (at 256 the generated model visibly contained M16 and ate ~11% of the nebula's
+contrast over sky, caught by inspecting the model per `_common.md`); `-UVIRcut` curves chosen from
+the data (raw medians R 0.0104 < G 0.0113 prove an IR cut is present) with SPFC redone to match so
+flux scale and colour calibration share one passband assumption.
+
+**Findings**
+- ⛔ `[correctness]` **`background-work.md` Stage 2 destroyed real Hα.** Its gate is an **ABSOLUTE**
+  `rex = R−(G+B)/2 < 0`, and the doc claims red is "preserved by construction". False on any field
+  with a global cool bias: the red nebulosity is *also* below the midpoint. Measured: the gate fired
+  on **99.6%** of the region at mean strength 0.85, taking structure `R/G` **1.602 → 1.053** in one
+  step. Also `gate = 1.0` sets chroma to **exactly zero** (72.5% of one corner at R=G=B), and `w`
+  alone cannot prevent that. → Landed: precondition (measure the `rex<0` fraction; >~80% means
+  global cast, wrong tool), `strength ≤ 0.75` cap, and a spatial-chroma verification requirement.
+- ⛔ `[correctness]` **Stacked shadow-compressing K curves invert colour.** `CurvesTransformation`
+  **K** applies the same curve to R, G, B *individually*; the systematically-lower channel lands
+  further down the compressive part of *each* curve. Two stacked tone curves drove the dark
+  population to **R 0.043 / G 0.166 / B 0.176** (structure `R/G` 1.716 → 1.087). One curve was
+  survivable, two were not. → Landed in `_common.md` §5: single CIE-`L` curve (restored R to 0.135
+  and `R/G` to 1.361) or deliberate per-channel curves.
+- ⛔ `[method]` **Gated saturation ops MULTIPLY.** 6-8 individually gentle boosts with overlapping
+  luminance gates compounded to ~**x2.6**. Each verified in isolation, none cumulatively. → Landed
+  in `_common.md` §5 + backlog #39.
+- ⛔ `[quality/method]` **SCNR-green manufactured the purple.** `G' = min(G,(R+B)/2)` drives G to/below
+  the R-B midpoint, which **IS** the magenta axis; the stacked saturation then amplified it.
+  G-is-min on bright px: **42.8%** (v1) vs 20.8% (user reference) vs **15.2%** (v2, no SCNR on the
+  starless). It also drove the background blue: on a `B>G>R` shadow population SCNR lowers G and
+  leaves B, so blue dominates (my dark sky navy, the reference's warm brown). **User rule: SCNR only
+  earns its place if it leaves the background neutral AND clean.** Stars layer at 1.0 is unaffected,
+  the distinction is scope, not strength. → Landed as `osc-rgb.md` §10b-4.
+- ⛔ `[method]` **I answered "was colour preserved?" from region MEDIANS, and was wrong twice.** The
+  median of a region is the SKY; the nebulosity is structure inside it. A matched-luminance test I
+  ran was correctly executed but proved only that my result beat a naive single-MTF stretch, **not**
+  that colour survived relative to what was recoverable. The user's own processing was the correct
+  benchmark and I should have compared against it immediately instead of defending the metric.
+  → Landed in `_common.md` §5 (structure colour = bright-pop minus dark-pop, stars excluded) +
+  backlog #37.
+- ⭐ `[technique]` **PER-CHANNEL PERCENTILE MATCHING.** Given a reference, measure both per-channel
+  percentile ladders and build one `CurvesTransformation` per channel mapping one onto the other.
+  Tone, colour balance and saturation are all consequences of the per-channel distributions, so
+  **one step fixes all three**. After this single step: p50 0.1704 vs 0.1704, mean sat 0.2627 vs
+  0.2607, hue red 52.5% vs 49.5%, blue 0.8% vs 1.0%, five of six bands matched to ~1% on
+  `[R/G, R/B, sat]`. → Landed as `osc-rgb.md` §10b-3. Numbers are target-specific; the method is not.
+- ⭐ `[technique]` **HDR blend beats turning LHE up, second datapoint confirming R11's mechanism.**
+  A gated LHE topped out at roughly HALF the reference local contrast, and raising `amount` is where
+  artifacts begin. The user's EZ HDR blend at **0.4** closed it: core inner 1.60 → **2.47**
+  (ref 2.21), pillars 1.77 → **2.49** (ref 2.52), dust 7.60 → **8.53** (ref 9.60), with the histogram
+  peak unchanged at 0.1504 and mean saturation 0.2524. Independent confirmation of R11's
+  `(1−m′)/(1−m)` reasoning from a nebula instead of a galaxy.
+- ✅ `[correctness]` **The broadband invert-SCNR 0.3-0.5 cap is CLOSED, with a proof.** Measured at
+  1.0: saturation rose on all ten reddest stars. Proof: clamping G toward `(R+B)/2` leaves G the
+  MIDDLE channel, so `(max−min)/max` is invariant, the op moves hue only. Also: **run BOTH branches
+  when both gates fire** - skipping the excess branch because its population was smaller (35.5% vs
+  64.5%) shipped a **pure green star** (R 0.006 / G 0.501 / B 0.047, worst excess 34x the midpoint).
+- `[correctness]` **Star bloat: raising the stretch is the WRONG fix, it does the opposite.** The MTF
+  is concave, so it lifts faint wings far more than an already-saturated core (a linear 0.02 wing
+  maps to 0.673 at a=4.2 but 0.407 at a=3.2). Normalized radial profile, same 40 stars: pre-SXT
+  0.342/0.081/**0.019** at r=1/2/3 versus delivered 0.845/0.486/**0.219**, i.e. apparent radius
+  1.9 px → 4.1 px. The stars were tight when SXT removed them; the disc is the stretch. Two halo
+  remedies were tested and both rejected on measured cost (morphological: −36% of the star field;
+  value-domain waist curve: −13% faint-star brightness for −6% halo). Real fix is upstream
+  (`adjust_star_halos` before SXT, or shorter subs so cores are not saturated).
+- `[tooling]` **`metrics.stars` was degenerate at EVERY phase**: null FWHM on the linear master (all
+  brightest candidates saturated), nebula knots on the starless, misleading on the stars layer,
+  `starCount 0` on the final. The star axis had no working metric anywhere in the run.
+- `[tooling]` **Critic blindness breached by the harness** (task list naming tools reached two
+  critics via system reminders). → backlog #40. Also: reports were initially written *inside* the
+  pack directories, re-making the exact mistake R11 already fixed; moved to `critic/reports/`.
+
+**Changed this entry:** `background-work.md` (Stage 2 preconditions + strength cap + spatial-chroma
+verification); `_common.md` (§3 cap CLOSED with the invariance proof + run-both-branches rule; §5
+structure-colour measurement, cumulative-saturation multiplication, no-stacked-K-curves);
+`osc-rgb.md` (new §10b-3 percentile matching, new §10b-4 SCNR manufactures magenta); backlog
+**#37-#41**; research questions **+2** (peak band overridden twice, DSE second datapoint), **−1**
+(invert-SCNR cap resolved).
+
+**Delivered v2 chain (four steps, no SCNR, nothing stacked):** GHS → one percentile-matched
+per-channel `CurvesTransformation` → one gated LHE (r48, amount 0.8, gate L 0.42→0.62) → one
+DarkStructureEnhance (median 0.68, on the starless) → recombine → EZ HDR blend 0.4 *(user)*.
+
+**OSC-RGB pipeline state after R12:** the linear spine is now solid across nebula, galaxy and mosaic.
+The failure class that remains is **the nonlinear half's colour handling**, and R12 showed it is not
+a tuning problem but a *composition* problem: the damage came from stacking small "safe" operations
+(a teal gate, two tone curves, six saturation boosts, an SCNR) each of which was defensible alone.
+The countermeasure that worked was doing colour ONCE, measured against a reference.
