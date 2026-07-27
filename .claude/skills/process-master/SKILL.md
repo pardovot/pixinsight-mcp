@@ -88,8 +88,17 @@ nebula). Note SPFC is then wasted (only MGC consumes it); a MARS-coverage probe 
 1. **Measure first**, before-baseline + configuration input. Use the dedicated tools:
    `get_noise` (MRS, never stdDev), `get_background_gradient`, `get_background_neutrality`
    (mode `linear` pre-stretch / `poststretch` after), `get_star_metrics` (star-pixel median,
-   FWHM, brightest-star coords), `get_image_statistics`; `run_script` only for what they
-   don't cover.
+   FWHM, brightest-star coords), `get_image_statistics`, **`get_structure_color`** (colour of the
+   NEBULOSITY vs the sky it sits on + a per-tile spatial chroma map); `run_script` only for what
+   they don't cover.
+   - ⛔ **`get_structure_color` is mandatory around any COLOUR operation** (teal neutralization,
+     SCNR, desaturation masks, saturation boosts, and tone curves, which can crush the
+     systematically-lower channel). It answers the two questions region medians and `bgChroma`
+     provably CANNOT: *did the structure keep its colour*, and *did anything zero chroma in
+     patches*. R12 shipped red Ha inverted to cyan because both of those metrics said "preserved".
+     Verified to catch exactly that: re-applying the v1 teal gate to the accepted result moves
+     `structure.RoverG` **2.02 → 1.41** and `pctExactlyAchromatic` **0% → 1.41%**.
+     **Track `structure.RoverG` across stages, not only at the end** - the damage compounds.
 2. **Introspect**: `get_process_parameters(processId)`; reason about what the params mean here.
 3. **Configure** from the playbook + the measurement, never fixed numbers you recall. Use the
    generic `run_process(processId, viewId, settings)`.
