@@ -16,7 +16,7 @@
  *  2. spatialChroma, bgChroma is a magnitude-only SCALAR and cannot see localized chroma death.
  *     It read 0.0252 ("better than the 0.05 reference") while 72.5% of one corner sat at exactly
  *     R=G=B, because averaging deleted colour with retained colour lands on "good". Any operation
- *     that pulls pixels toward luminance (the background-work.md teal gate, a desaturation mask)
+ *     that pulls pixels toward luminance (a gated teal fix, a desaturation mask)
  *     can zero chroma in patches, and only a per-tile check finds it.
  *
  * Sampling: one stride-grid pass shared by both metrics. Star rejection compares each grid sample

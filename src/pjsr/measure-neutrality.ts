@@ -1,9 +1,9 @@
 /**
- * get_background_neutrality, two mode-specific metrics (docs/background-work.md):
+ * get_background_neutrality, two mode-specific metrics:
  *
  *  linear     , the validated pre-stretch metric: per-channel medians over the
  *                diffuse-sky band (luminance within ±8% of median L), spread% of
- *                those medians. ≤1% = neutral (R3/R8 verified gate).
+ *                those medians. ≤1% = neutral (run-verified gate).
  *  poststretch, the ±8% band metric LIES after stretch/neutralization (it catches
  *                protected nebula-edge pixels). Honest metrics instead:
  *                (a) bgChroma = mean saturation of the near-neutral population

@@ -1,8 +1,8 @@
 /**
  * get_noise, per-channel MRS (multiresolution support) noise estimate.
  *
- * Why MRS and not stdDev: stdDev is signal-dominated on astro images (journal R1/R8:
- * a box-stdDev "noise rise" was a false alarm; noiseMRS() showed uniform ~8.5e-6).
+ * Why MRS and not stdDev: stdDev is signal-dominated on astro images (a measured
+ * box-stdDev "noise rise" was a false alarm; noiseMRS() showed uniform ~8.5e-6).
  * noiseMRS() returns [sigma, count] on current PI builds; scalar handled defensively.
  */
 export function noiseScript(viewId: string): string {
