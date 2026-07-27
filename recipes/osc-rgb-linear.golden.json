@@ -1,0 +1,72 @@
+{
+  "note": "Golden fixture for osc-rgb-linear (R8 Rho Oph master). Regenerate with --bootstrap.",
+  "generated": "2026-07-27T23:35:47.596Z",
+  "src": "D:/AP/FRA500 Reducer/Rho Ophiuchi/masterLight_BIN-1_6248x4176_EXPOSURE-300.00s_FILTER-NoFilter_RGB_RHO-Ophiuchi Complex Panel 1_autocrop.xisf",
+  "goldenCrop": {
+    "x0": 2800,
+    "y0": 1700,
+    "w": 600,
+    "h": 600
+  },
+  "expect": {
+    "mgcDeclined": true,
+    "checksOk": true,
+    "steps": [
+      {
+        "step": "open",
+        "medianAfter": 0.0040873
+      },
+      {
+        "step": "headroom_x0.333",
+        "medianAfter": 0.0013624
+      },
+      {
+        "step": "bxt_correct_only",
+        "medianAfter": 0.001362
+      },
+      {
+        "step": "spfc",
+        "medianAfter": 0.001362
+      },
+      {
+        "step": "gradient_correction_fallback",
+        "medianAfter": 0.0013592
+      },
+      {
+        "step": "spcc",
+        "medianAfter": 0.0000966
+      },
+      {
+        "step": "bxt_sharpen",
+        "medianAfter": 0.000096
+      },
+      {
+        "step": "nxt",
+        "medianAfter": 0.0000947
+      },
+      {
+        "step": "sxt_split",
+        "medianAfter": 0.0000919
+      }
+    ],
+    "crop": {
+      "rect": [
+        2800,
+        1700,
+        600,
+        600
+      ],
+      "starless": [
+        0.000108,
+        0.0001176,
+        0.0001286
+      ],
+      "stars": [
+        2e-7,
+        1e-7,
+        0
+      ]
+    },
+    "gradientRampRel": 0.3195
+  }
+}
