@@ -6,6 +6,7 @@ import { noiseScript } from "../pjsr/measure-noise.js";
 import { gradientScript } from "../pjsr/measure-gradient.js";
 import { neutralityScript } from "../pjsr/measure-neutrality.js";
 import { starMetricsScript } from "../pjsr/measure-stars.js";
+import { structureColorScript } from "../pjsr/measure-structure-color.js";
 
 /**
  * M2 measurement tools (journal backlog #3/#9/#13). Delivered via run_script -
@@ -94,6 +95,38 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     async ({ viewId, maxStars }) => {
       try {
         return jsonContent(await execPjsrJson(bridge, starMetricsScript(viewId, maxStars), 600000));
+      } catch (err) {
+        return jsonErrorContent(err);
+      }
+    }
+  );
+
+  server.tool(
+    "get_structure_color",
+    "The two chroma checks that region medians and bgChroma CANNOT do. (1) structure = colour of " +
+      "the NEBULOSITY rather than the sky it sits on: (bright population - dark population) split " +
+      "by luminance with stars excluded. A region's median IS the sky, so on a field with a global " +
+      "cast the median hides an inverted signal completely (R12 shipped red Ha turned cyan while " +
+      "the median said 'preserved'). Track structure.RoverG/RoverB across pipeline stages; on an " +
+      "Ha field a fall toward or below 1.0 means red structure is being neutralized. (2) " +
+      "spatialChroma = per-tile saturation + the exactly-achromatic fraction, because bgChroma is a " +
+      "magnitude-only scalar and scored an image as better-than-reference while 72.5% of one corner " +
+      "was at exactly R=G=B. Use after any operation that pulls pixels toward luminance (teal " +
+      "neutralization, desaturation masks, SCNR) and after tone curves, which can crush the " +
+      "systematically-lower channel.",
+    {
+      viewId: z.string().describe("View ID of the image (must be color)"),
+      rect: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional()
+        .describe("Optional region [x0,y0,x1,y1]; omit for the whole frame. Use a region to interrogate a specific nebulosity."),
+      tileGrid: z.number().int().min(2).max(12).default(6)
+        .describe("spatialChroma is computed on a tileGrid x tileGrid tile map"),
+      targetSamples: z.number().int().min(10000).max(1000000).default(150000)
+        .describe("Approximate number of stride-grid samples"),
+    },
+    async ({ viewId, rect, tileGrid, targetSamples }) => {
+      try {
+        return jsonContent(await execPjsrJson(
+          bridge, structureColorScript(viewId, rect ?? null, tileGrid, targetSamples)));
       } catch (err) {
         return jsonErrorContent(err);
       }

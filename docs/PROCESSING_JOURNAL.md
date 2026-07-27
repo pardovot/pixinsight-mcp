@@ -372,14 +372,20 @@ research/tooling task, NOT a numbers hunt. Color (gold/teal) deferred.
     curves with ~10% deltas and max slope near 1; every rejected agent version used 8-11 points with
     slopes to 1.86 and a −38% single-step background move. A warning at, say, >5 control points or
     >1.3 local slope or >15% background move would have caught all three. Pairs with #35.
-37. **⛔ Structure-colour metric `[tooling, HIGH, R12]`**, "did processing preserve the colour of this
+37. ~~**Structure-colour metric**~~ `[tooling, HIGH, R12]` **DELIVERED 2026-07-27** as
+    `get_structure_color` (`src/pjsr/measure-structure-color.ts`). Verified to catch the R12 defect:
+    re-applying the v1 teal gate to the accepted result moves `structure.RoverG` 2.02 -> 1.41.
+    Original entry:, "did processing preserve the colour of this
     nebulosity?" has no tool, and the obvious substitute (region medians, `bgChroma`,
     `get_background_neutrality`) answered **wrong twice in one run** because the median of a region is
     the SKY, not the structure in it. The correct primitive: split a region by LUMINANCE, exclude
     stars, return `(bright population − dark population)` per channel = the colour of the structure.
     On R12 it read `R/G` 1.547 (linear input) vs 0.917 (delivered) where medians showed no change.
     Pairs with #35 (local contrast); same shape of gap, colour instead of detail.
-38. **Spatial chroma check `[tooling, HIGH, R12]`**, `bgChroma` is magnitude-only and scored a
+38. ~~**Spatial chroma check**~~ `[tooling, HIGH, R12]` **DELIVERED 2026-07-27**, folded into
+    `get_structure_color.spatialChroma` (per-tile saturation map + exactly-achromatic fraction);
+    it shares the same stride-grid pass. Verified: `pctExactlyAchromatic` 0% -> 1.41% on the
+    re-broken image, `minTileSaturation` 0.0998 -> 0.0500. Original entry:, `bgChroma` is magnitude-only and scored a
     damaged image as *better than reference* (0.0252 vs a 0.05 bar) while **72.5% of one corner was
     at exactly R=G=B**. Need per-tile/per-corner saturation and the fraction of exactly-achromatic
     pixels. Also needed to catch cast DIRECTION, which `bgChroma` cannot express. Blocking a real
