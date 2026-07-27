@@ -7,7 +7,8 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - Live params: `sharpen_stars`, `sharpen_nonstellar`, `correct_only`, `adjust_star_halos`,
   `auto_nonstellar_radius`, `nonstellar_diameter` (FWHM px, cap 8). `auto_nonstellar_psf` /
   `nonstellar_psf_diameter` are DEAD aliases (verified no-op). Set both pairs for safety.
-- Fresh instance defaults != GUI (introspected 0.30/0.25 vs GUI 0.5/1.0), always pass amounts.
+- Defaults DRIFT across BXT versions (old introspection 0.30/0.25; 2026-07 fresh instance =
+  stars 0.20 / nonstellar 0.80 / auto PSF on). Introspect per install, don't trust docs.
   `sharpen_nonstellar 1.0` = maximum sharpening, not a mild default.
 - Auto PSF on STARLESS input badly overestimates (~6-8 px guessed on true 2.2 px); tiles at
   512x512, star-poor tiles guess from nonstellar features. Set manual PSF = pre-SXT star FWHM.
@@ -16,7 +17,11 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - Worse on denoised data (author), so BXT before NXT. Preserves the WCS.
 
 ## NXT
-- `denoise` (0-1, def 0.70), `detail` (0-1, def 0.15).
+- Current NXT (2026-07 introspected): `iterations` (def 2), frequency + color separation on by
+  default; live dials are `denoise_intensity_low_freq`/`_high_freq` (def 0.6) and
+  `denoise_color_low_freq`/`_high_freq` (def 1.0); `detail` (def 0.15).
+- ⛔ Top-level `denoise` is a DEAD alias (behavior-tested: 0.1 vs 0.9 byte-identical output).
+  Old `denoise`/`detail`-only param model is stale.
 - Gauge with MRS noise estimate, never stdDev (signal-dominated, can RISE after good denoise).
 
 ## SXT
