@@ -82,28 +82,37 @@ P.executeOn(view);
 
 ## BlurXTerminator (BXT)
 
-### Parameters
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `sharpenStars` | float |, | Star sharpening amount |
-| `adjustStarHalos` | float |, | Halo adjustment (negative = reduce) |
-| `sharpenNonstellar` | float |, | Extended feature sharpening |
-| `correctOnly` | bool | false | Only aberration correction, no sharpening |
-| `autoNonstellarPSF` | bool | true | Auto-detect PSF from stars |
-| `nonstellarPSFDiameter` | float |, | Manual PSF diameter (0-8 px) |
-| `luminanceOnly` | bool | false | Process luminance only |
+### Parameters (actual PJSR names, verified via get_process_parameters 2026-07-26)
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sharpen_stars` | float | Star sharpening amount (GUI default 0.5 on installed build) |
+| `adjust_star_halos` | float | Halo adjustment (negative = reduce) |
+| `sharpen_nonstellar` | float | Nonstellar sharpening strength: how far toward a point PSF (GUI default 1.0 on installed build; NOT a blend/opacity) |
+| `correct_only` | bool | Only aberration correction, no sharpening |
+| `auto_nonstellar_radius` | bool | **LIVE** auto-PSF switch |
+| `nonstellar_diameter` | float | **LIVE** manual PSF diameter (FWHM px, hard cap 8) |
+| `auto_nonstellar_psf` / `nonstellar_psf_diameter` | | ⛔ DEAD aliases, setting them changes NOTHING (verified byte-identical). Set both pairs to be version-safe. |
+
+⚠️ **Fresh instance defaults ≠ GUI defaults** (introspected `sharpen_stars 0.30`,
+`sharpen_nonstellar 0.25`). Always pass amounts explicitly: **0.5 / 1.0, the GUI defaults
+are good, don't tone them down** (user-confirmed on installed build; RC Astro manual text
+cites 0.25/0.90, it lags). Extra aggression beyond defaults = oversized PSF, which is
+off-model: "no longer deconvolution" (RC Astro manual), curdles smooth nebulosity + faint
+stars.
+
+⛔ **Starless input: never auto PSF** (no stars to sense; measured behaving like ~6-8 px on
+true ~2.2 px data). Set manual PSF = star FWHM measured BEFORE star removal. Prefer running
+BXT before SXT.
 
 ### Two-Pass Best Practice
-1. **Pass 1 (correctOnly)**, before color calibration:
+1. **Pass 1 (correct only)**, before color calibration:
    ```javascript
-   P.correctOnly = true;
-   P.sharpenStars = 0.50;
-   P.sharpenNonstellar = 0.75;
+   P.correct_only = true;
    ```
 2. **Pass 2 (sharpening)**, after color calibration:
    ```javascript
-   P.correctOnly = false;
-   P.sharpenStars = 0.25;
-   P.sharpenNonstellar = 0.50;
-   P.adjustStarHalos = -0.25;
+   P.correct_only = false;
+   P.sharpen_stars = 0.5;
+   P.sharpen_nonstellar = 1.0;
+   P.adjust_star_halos = 0.00;  // go negative only for visible halos
    ```

@@ -2,21 +2,26 @@
 name: process-retro
 description: >
   Review a completed PixInsight processing run and turn it into concrete improvements to the
-  knowledge base. Use after a run when the user pastes a transcript and/or their notes and wants
-  to "learn from this run", "analyze what went wrong", "improve the pipeline", or run a training
-  iteration. Reads the current playbook + skill + journal, types every finding, applies the safe
-  fixes, queues the rest, and appends a dated entry to docs/PROCESSING_JOURNAL.md.
+  knowledge base. Use after a run, in a FRESH session, when the user wants to "learn from this
+  run", "analyze what went wrong", "improve the pipeline", or run a training iteration. Reads the
+  run record on disk (result-tests/<Target>/RUNLOG.md + critic reports) plus the user's notes,
+  types every finding, applies the safe fixes, queues the rest, and writes a dated run file to
+  docs/journal/.
 ---
 
 # Process retro, learn from a run
 
-You are closing the loop on a processing run: transcript + the user's observations in, concrete
-improvements out. The goal is that the **next** run is measurably less painful and less wrong.
+You are closing the loop on a processing run: the run record + the user's observations in,
+concrete improvements out. The goal is that the **next** run is measurably less painful and less
+wrong. **Run in a FRESH session**, the run record on disk is the designed input; do not require
+the run's live context or a pasted transcript.
 
 ## Inputs
-- The run transcript (the user pastes it).
-- The user's own notes/observations (often sharper than the transcript, weight them heavily; the
+- **The run record on disk (primary):** `result-tests/<Target>/RUNLOG.md` (the incremental run
+  log process-master writes), plus `HISTORY.md`, `metrics.json`, and `critic/reports/`.
+- The user's own notes/observations (often sharper than the record, weight them heavily; the
   user is at the machine and sees the actual image, which you did not).
+- A pasted transcript, only if the user offers one (a supplement, never a requirement).
 - **The run's critic reports** (phase-boundary packs + `image-critic` outputs, per the
   process-master critic gates), a first-class notes source; its findings arrive already typed.
   **When the user's notes and the critic conflict, the user outranks the critic**, and the
@@ -25,7 +30,9 @@ improvements out. The goal is that the **next** run is measurably less painful a
 
 ## Step 1, load current state (do not skip)
 Read, in full: `CLAUDE.md`, the run's playbook (`docs/workflows/<category>.md`), the
-`process-master` skill, and `docs/PROCESSING_JOURNAL.md`. You are editing these; know what they say.
+`process-master` skill, and `docs/PROCESSING_JOURNAL.md` (the hot file: pipeline state, backlog,
+research questions, run index). Read individual run files (`docs/journal/R<nn>.md`) ONLY where a
+finding cites them, never all of them. You are editing these; know what they say.
 
 ## Step 2, extract and TYPE every finding
 List every issue from the transcript and the user's notes. Tag each with exactly one type, this
@@ -46,12 +53,20 @@ If a finding feels like two types, split it. "The stretch was dim AND I had to u
 ## Step 3, apply what's safe, queue what needs research
 - **`[correctness]` / `[method]`** → edit `process-master` / `CLAUDE.md` / the playbook directly so
   it can't recur. Cite the run evidence in the edit or commit. These are the cheap, high-value wins.
-  **Then gate the batch:** run the `kb-gate` skill (Tier-1) on the edits. **PASS** → commit the KB
-  edits with the gate report referenced in the commit message. **FAIL** (an eye-confirmable/visible
-  regression) → revert to queued, escalate to the human with the gate report. **ADVISORY**
+  **Commit directly, no Tier-1** (repurposed 2026-07-26: the replay never consults the playbook,
+  so KB edits can't fail it; Tier-1 now gates code-side changes only). If the batch ALSO touches
+  code (handlers, measurement tools, render pipeline), run `kb-gate` Tier-1 on that part:
+  **PASS** → commit with the gate report referenced in the commit message. **FAIL** (an
+  eye-confirmable/visible regression) → revert to queued, escalate to the human with the gate
+  report. **ADVISORY**
   (metric-only failures, noise/star-count/FWHM, nothing visible) → do NOT auto-commit and do NOT
   revert; surface the `metricOnlyFailures` to the human ("metric moved, can't confirm by eye -
   benign drift or re-baseline?") and wait. Batch all of a retro's safe edits into ONE gate run.
+- **Graduation rule (caps the skill's growth):** a fix that is category-specific goes into that
+  category's playbook, which every run of that category reads anyway, NOT into the
+  `process-master` skill; the skill takes only cross-category process rules (the loop, gates,
+  deliverables, API/tool traps). If an existing skill rule turns out to be category detail, move
+  it to the playbook in the same retro.
 - **`[tooling]`** → add or sharpen an item in the journal's **Tooling backlog** with the concrete
   symptom + the proposed tool + a priority. Do **not** paper over a missing tool with more prompt
   instructions, that just moves the cost to every future run.
@@ -63,10 +78,14 @@ If a finding feels like two types, split it. "The stretch was dim AND I had to u
   research-backed playbooks). If the user gave a specific correction ("stars need to be much more
   aggressive"), record it as a *constraint for the research*, not as a new hardcoded default.
 
-## Step 4, append a Run entry to `docs/PROCESSING_JOURNAL.md`
-Follow the existing Run-log format: date, category, target/gear, outcome, the typed findings, what
-you changed, what's still open. Update the **Current pipeline state** table and the backlog/research
-sections if this run shifts them. Keep it tight, it's a working log, not prose.
+## Step 4, write the Run entry
+Create `docs/journal/R<nn>.md` (next number) following the existing per-run format: date,
+category, target/gear, outcome, the typed findings, what you changed, what's still open. Then in
+`docs/PROCESSING_JOURNAL.md`: add the run's row to the run-log index, and update the **Current
+pipeline state** table and the backlog/research sections if this run shifts them. When a backlog
+or research entry becomes fully RESOLVED, move its body to `docs/journal/resolved.md` and leave a
+one-line stub (numbering never changes, other docs cite `#N`). Keep it tight, it's a working log,
+not prose.
 
 ## Step 5, report to the user
 Concise: what you changed (files + one line each), what you queued (tooling + research), and the
