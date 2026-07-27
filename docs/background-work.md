@@ -53,11 +53,40 @@ Neutralize the remaining teal (dark lanes) by pulling those pixels toward **thei
 gate = clip(-rex / w, 0, 1)          # 1 for teal (rex<0), 0 for neutral/red (rex>=0)
 new  = pixel + (L - pixel) * gate    # pull toward luminance where teal
 ```
-- **Red preserved by construction:** `rex>0` ⇒ `gate=0` ⇒ untouched. No mask, no leak, ~100%
-  faint-red preserved (measured 99.9%+).
 - **Gray, not black:** pulling toward `L` (the pixel's own luminance) removes chroma while holding
   brightness, the exact fix for "neutralize made it black."
 - `w` ≈ 0.02-0.04 (Run 7). Higher = neutralizes milder teal too. Tune on the render.
+
+### ⛔⛔ TWO PRECONDITIONS. Without both, this stage DESTROYS SIGNAL. [R12, measured]
+
+The claim "red preserved by construction, `rex>0` ⇒ `gate=0`" **is only true on an image with no
+global colour bias.** It was written from Run 7, where it held. It is false in general, and on R12
+(M16) this stage turned strongly red Hα structure into cyan.
+
+**1. PRECONDITION, check for a global cast BEFORE using this stage.** `rex = R − (G+B)/2` is an
+**ABSOLUTE** test. On a field whose whole background sits below the R-B midpoint, *the red
+nebulosity is also below it*, so the gate fires on the signal, not on a cast.
+- **Gate check:** measure `% of the region with rex < 0`. R12 measured **99.6%**, at mean gate
+  strength 0.85. **If that fraction is above ~80%, you have a global cast, not a local teal cast:
+  this stage is the wrong tool. Fix the balance per-channel instead** (see the percentile-matching
+  technique in `osc-rgb.md`), or re-key `rex` to the region's own median rather than to zero.
+- Measured cost when ignored, ablation on the same input: structure `R/G` **1.602 → 1.053** from
+  this one step (and `R/B` 2.16 → 1.10). The subsequent tone/saturation steps carried it to 0.917,
+  i.e. red structure inverted to cyan.
+
+**2. CAP THE GATE. `gate = 1.0` sets chroma to EXACTLY ZERO.** `new = pixel + (L − pixel)*1.0` **is**
+`L` in all three channels. At `w = 0.04` that hit every pixel with `rex ≤ −0.04`, producing solid
+achromatic blobs with hard mask-shaped edges: **72.5% of one corner at exactly R=G=B**, which
+survived into the delivered image (corner background saturation 0.0039 vs 0.048-0.087 elsewhere).
+- **Use `gate = strength * clip(-rex/w, 0, 1)` with `strength ≤ 0.75`**, so every pixel keeps ≥25%
+  of its chroma deviation and exactly-grey is unreachable. Tuning `w` alone cannot prevent this; it
+  only moves the threshold at which full desaturation starts.
+
+**3. `bgChroma` CANNOT detect either failure.** It is a magnitude-only scalar and read a healthy
+0.0252 while 72.5% of a corner was achromatic, because averaging deleted colour with retained colour
+lands on "better than reference". **Verify this stage with a SPATIAL chroma check** (per-corner or
+per-tile saturation, or the fraction of exactly-achromatic pixels), never with a global scalar.
+*Verified on: OSC-RGB `[live]` (R12, M16).*
 
 ## Per-target triggers (why this doesn't blindly transfer)
 

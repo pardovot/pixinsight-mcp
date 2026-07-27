@@ -68,6 +68,31 @@ combination, UNMEASURED, see the journal's open question.*
 **Gate on the midpoint axis:** `gex = G − (R+B)/2 > 0`. **Not** "G ≥ both R and B", which misses the
 common case where R is a hair above G while G sits well above the midpoint.
 
+⚠️ **`gex > 0` is NECESSARY, NOT SUFFICIENT. On a CONTINUUM source it fires on legitimately warm
+colour, so it needs a second, physical test.** Yellow *means* `G > (R+B)/2` by construction, so the
+inequality alone cannot distinguish real warm colour from a green cast.
+
+**Axis: continuum source, or emission source?**
+
+| Source | Physical constraint | How to read it |
+|---|---|---|
+| **Continuum** (stars, galaxy bulge/disc, elliptical companions) | any old/warm stellar population gives `R > G > B` | ⛔ **`G >= R` is a HARD FAIL: that is a green cast, whatever `gex` says.** Use `G vs R`, not `gex`, as the discriminator |
+| **Emission** (Hα region) | `G` sits legitimately far *below* the midpoint | never lift G, see the branch-(b) exclusion in §3 |
+
+⛔ **"SCNR would bleach my warm object" is FALSE, and believing it cost a run a correct step.**
+SCNR-neutral is `G' = min(G, 0.5(R+B))`: it edits **only G** and leaves R and B untouched, so
+**`R − B`, the entire warm-vs-cool signal, is mathematically preserved.** It cannot desaturate a
+yellow core; it removes only the green component that makes yellow read olive/lime. The
+emission-line HARD EXCLUSION belongs to branch **(b)**, which *raises* G, do **not** transfer that
+caution to branch (a).
+*Verified on: OSC-RGB galaxy `[live]` (R11, M31). The agent skipped SCNR on the starless, arguing the
+core's `gexRel +3.0%` was "legitimate yellow" for a warm bulge. But M110 measured
+R 0.472 / **G 0.482** / B 0.422, i.e. **G above R**, non-physical for an elliptical's integrated
+light; core and outer arm read `gexRel +3.0%` and `+3.3%`. The user's `SCNR` green, AverageNeutral,
+**amount 1.0**, applied post-recombine, took every region to `gexRel <= 0.11%`, drove `G−R` properly
+negative (core −0.029), and the user judged it clearly better. The `G vs R` test would have fired
+immediately; `gex > 0` alone did not.*
+
 ⛔ **Always a NEUTRAL protection method** (`AverageNeutral` = 2, default; `MaximumNeutral` = 3).
 ⛔ **Never the mask methods** (`MaximumMask` = 0, `AdditiveMask` = 1) on a field with real colour
 diversity. This **reverses** a widely repeated forum claim that the scaling methods are the safe ones.
@@ -103,6 +128,22 @@ Both branches key on green vs the R-B midpoint, measured on star pixels:
 The second reduces to **`G_new = max(G, (R+B)/2)`**, the mirror of SCNR-neutral, and is likewise a
 no-op where green already sits at/above the midpoint.
 
+⛔ **BOTH branches are CLAMPS, so verify them by RESIDUAL FRACTION + WORST CASE, never by the mean.**
+A correctly applied clamp drives the violating population to ~zero **by construction**. At
+`amount < 1` it only moves G part of the way, so a large outlier survives while the average looks
+cured. **Acceptance test: `% of lit pixels still violating` and the `worst-case relative deficit`.**
+*Verified on: OSC-RGB `[live]` (R11). The agent ran branch (b) at amount 0.3, measured the mean
+relative deficit improving −4.28% → −0.96%, and accepted it. Re-measured afterwards: **51.3% of lit
+star pixels were still green-deficient, worst case 80.5%, and 14,989 pixels above 0.35 brightness
+carried >18% deficit** - the user saw a purple star. The residual fraction had barely moved
+(53.6% → 52.7%), which was the number that mattered and was visible in the original measurement.
+The user's fix was a **second full invert-SCNR pass**, taking the residual to 3.1%.*
+
+⛔ **And render the mandatory 1:1 star check AT THE MEASURED WORST-CASE LOCATION**, not at a region
+you picked for looking nice. The same measurement that gates the step already returns the
+coordinates; use them. R11 rendered a clean field at (4250-5150, 2080-2720) and passed the step
+while the offender sat elsewhere.
+
 ⚠️ **Deficit-branch strength cap on BROADBAND (research 2026-07-26):** the invert-SCNR-invert
 technique is sourced from narrowband magenta-star repair; on broadband the clamp `G >= (R+B)/2`
 sits ~on the blackbody locus, so at amount 1.0 it starts desaturating the REDDEST stars, exactly
@@ -110,6 +151,37 @@ the reddened background stars a dark-nebula field should keep. Cap the inverted 
 **amount 0.3-0.5** on broadband, and treat a STRONG post-SPCC magenta cast as a symptom to
 diagnose first (calibration, chromatic aberration, or star-layer floors, R10's cause WAS the
 floors) rather than clamp away. (R10 ran it at 1.0 pre-correction; datapoint, not a default.)
+
+⚠️⚠️ **SUPERSEDED, the 0.3-0.5 cap is NOT the default. `amount = 1.0` is** [user directive, R11].
+**Default `amount = 1.0` for both SCNR branches, and especially on the STARS layer.** Reserve
+0.3-0.5 for the deliberate case where you only want to *slightly* tone something down, and say why.
+
+Why the cap was wrong as a default: it came from a research *inference* (that the clamp sits on the
+blackbody locus, so amount 1.0 would desaturate the reddest stars) that was **never measured
+on-image**. On R11 amount 0.3 left **51.3%** of lit star pixels green-deficient with an **80.5%**
+worst case, the user saw the residual purple star, and their own fix was a **second full-strength
+pass**. Both branches are self-gating no-ops wherever the channel is already on the correct side of
+the midpoint, which is precisely why full strength is safe by default: it clamps only what violates.
+*User, 2026-07-26: "running SCNR in most cases should be at 1 ... especially for stars, I believe 1
+is the right value."* The reddest-star desaturation risk is still worth **checking** after the fact
+(measure the reddest star in frame), it is just not a reason to start below 1.0. Journal R11.
+
+✅ **CLOSED, the cap's premise is not merely unmeasured, it is IMPOSSIBLE. [R12, measured + proved]**
+R12 ran the measurement R11 asked for, at amount **1.0** on a heavily reddened broadband field:
+saturation of the ten reddest stars in frame went **UP on every one** (0.804→0.874, 0.771→0.830,
+0.887→0.904, 0.616→0.690, …), never down. Acceptance at 1.0: green deficit **64.5% → 1.56%**,
+worst-case relative deficit 98.8% → 50.8%, worst excess 3446% → 15.1%, **0%** of lit pixels left
+above 20% relative excess.
+**The proof:** both branches clamp G toward `(R+B)/2`, and that midpoint always lies between R and
+B. So **G stays the MIDDLE channel**; `max` and `min` are untouched and saturation `(max−min)/max`
+is **invariant**. The operation moves hue only and *cannot* desaturate a star. (Saturation rose
+because `preserveLuminance` rescales.) → the reddest-star check is now a formality, not a gate.
+
+⛔ **Run BOTH branches when both gates fire. Population size is not permission. [R12]** R12 skipped
+the excess branch because the deficit population was larger (64.5% vs 35.5%) and shipped a **pure
+green star**: one pixel measured R 0.006 / G 0.501 / B 0.047, with the worst excess at **34x** the
+R-B midpoint. Gate each branch on its own **magnitude** (worst case + residual fraction), never on
+which population has more pixels.
 
 ⛔ **Do NOT gate the deficit branch on "magenta" (`R>G && B>G`).** That requires green to be the
 *minimum* channel and misses `B < G < (R+B)/2`. Measured on one image: the magenta test read
@@ -311,6 +383,87 @@ protection line is garbled outright). Trust the prose.
   discarded; and the stretch's near-black MTF slope ((1-m)/m ≈ 30-50x at autostretch midtones)
   makes small absolute residuals visible. R10: a 1.4% L ramp became the final's dominant ramp.
   *Verified on: mono-LRGB `[live]` (R10).*
+- ⛔ **HOW TO BUILD A MASK, and when not to use one at all `[live]` (R11, learned the hard way).**
+  A hand-rolled `clip((mean(RGB)−k)/w)` on **raw luminance** is the wrong construction and it cost
+  R11 a wrecked image. Two failure modes:
+  1. **The transition zone lands inside the noisy background** → the mask *is* a noise map, and the
+     effect gets modulated per pixel by noise. R11 used threshold 0.21 while the sky's own
+     luminance tail reached **0.246** (set thresholds from the background's **p99**, never its
+     median).
+  2. **Using a mask where it does not help, and not using one where it does.** R11 masked only
+     *saturation* (which needed no mask) while trying to separate galaxy from background with a
+     **global** tone curve, which necessarily stretches the sky and amplifies its grain. That is
+     backwards: the tonal separation is what wants a mask.
+  ✅ **The correct construction, as used by the EZ Processing Suite**
+  (`EZProcessingSuite/EZ_Common.js`, `createBackgroundMask` → `doBackgroundRangeSelection`):
+  **extract lightness** (`ChannelExtraction`, CIELab L) → **`RangeSelection`** with
+  **`fuzziness 0.1`, `smoothness 5`** (the smoothing is the load-bearing part, it removes the
+  per-pixel noise modulation) and **`highRange = the lightness median`** (measured, not hand-picked)
+  → apply **inverted** to act on the object and protect the background.
+  ⚠️ `ChannelExtraction.prototype.CIELab` is **undefined** in the watcher's bare context; use the
+  static `ChannelExtraction.CIELab` (= 2).
+  **And if the background is already compressed by the tone curve, you may not need a mask at all**:
+  R11 v4's sky chroma came out at 0.0070, low enough that a plain **global** saturation boost was
+  safe. Reach for a mask when the measurement says you need one.
+- ⛔ **EVERY tone curve has a FORCED compression cost, and it lands on your detail. Compute it
+  before you apply the curve** `[live, R11, controlled measurement]`. A curve that lifts `m → m'`
+  and must still pass through `(1,1)` has an average slope above the pivot of **`(1−m′)/(1−m)`**,
+  which is below 1 by construction. A curve applies **one slope to structure and detail alike** at a
+  given level, so that deficit is paid directly out of star peaks and faint knots.
+  **Gate: if `(1−m′)/(1−m) < ~0.85`, the lift is too big for a single curve, split it.**
+  *R11's rejected curve: `(1−0.665)/(1−0.55) = 0.744`; the accepted reference: `0.852`.*
+  ✅ **`HDRMultiscaleTransform` is the escape, because it separates by SCALE, not level.** Measured
+  on one image with the SAME large-scale range compression applied both ways:
+  HDR took bulge/disk 2.178 → 2.065 with small-scale detail **+4.4%**; an equivalent curve took it
+  to 2.093 with detail **−7.5%**. A 12-point swing for the same range change.
+  → **Take the lift from HDR, then place levels with a gentle curve, and alternate.** HDR keeps
+  refilling the headroom so no single curve has to compress hard. ⚠️ **Prevent, do not repair**:
+  once a curve has flattened the detail, more HDR does not bring it back (R11: 0.732 → 0.737 while
+  noise rose 1.81% → 2.01%).
+- ⛔ **A LUMINANCE curve with slope > 1 changes SATURATION too, and in BOTH directions.** It
+  amplifies channel *differences* where the slope is steep and compresses relative chroma where the
+  output level rises. So a contrast/separation curve silently re-colours the image: measure
+  saturation before and after **every** tone curve, not just after saturation steps.
+  *Verified on: OSC-RGB `[live]` (R11 v3). A background/galaxy separation curve pushed the SKY's
+  saturation 0.0250 → 0.0405 (visibly more chroma noise) while simultaneously compressing the
+  object's chroma (bulge 0.1006 → 0.0885). One S-curve through one mask cannot fix both, it needs a
+  signal-masked boost plus a sky-masked reduction.*
+- ⚠️ **Set a signal mask's threshold from the SKY's upper luminance tail, not its median.** On R11 v3
+  the sky's median was 0.138 but its **p99 reached 0.246**, so a mask starting at 0.21 was quietly
+  boosting background chroma noise. Threshold 0.27 fixed it. Measure the background's p99 first.
+- ⚠️ **A masked local enhancement cannot be judged by a region MEAN.** DarkStructureEnhance moved the
+  dust-lane region mean only −1.2% while doing ~−21% at the lane cores, because its mask peaks at
+  ~0.49 and sits near 0 over most of the region. Read a 1:1 before/after crop (snapshot first), or
+  measure only the high-mask pixels. *Verified on: OSC-RGB `[live]` (R11 v2).*
+- ⛔ **"Was the colour preserved?" CANNOT be answered from region MEDIANS on a field with a global
+  cast. Measure the STRUCTURE colour. [R12, this error was made TWICE in one run]** The median of a
+  region is the SKY; the nebulosity is *structure inside* that region, and averaging buries it. On
+  R12 the region median said colour was fine (and even improving) while the actual Hα structure had
+  been inverted from red to cyan.
+  **The right measure:** split the region by LUMINANCE (not by colour, that is circular), exclude
+  stars, and take `(bright population − dark population)` per channel. That difference IS the colour
+  of the structure. Measured on R12's disputed region: `structure R/G` was **1.547** in the linear
+  starless input and **0.917** in the delivered image, while the region median moved barely at all.
+  A related trap: on a globally R-deficient field, an **absolute** `rex>0` warm/cool test reports the
+  region as "99.6% cool" and contradicts the obvious warm dust, because dust that is warmer than its
+  surroundings is still absolutely below the midpoint. **Warm/cool must be judged RELATIVE to the
+  local population.** *Verified on: OSC-RGB `[live]` (R12).*
+- ⛔ **Gated saturation ops MULTIPLY. Do colour in ONE measured step. [R12]** R12 applied 6-8
+  individually "gentle" gated saturation adjustments across a run (an S-curve plus boosts gated at
+  L>0.40, L>0.20, L>0.50, L>0.13, plus a colour-match pass). Their luminance gates OVERLAP, so the
+  factors compound: roughly **x2.6** in the overlapping bands. Each was verified in isolation; none
+  was ever measured **cumulatively** against a reference until the end, by which point the image was
+  badly over-cooked. **Rule: track cumulative saturation against a target, and prefer one measured
+  colour step over a sequence of small gated nudges.**
+- ⛔ **Do NOT stack shadow-compressing `CurvesTransformation` K curves. [R12, measured]** The **K**
+  channel applies the same curve to R, G and B **individually**. Where one channel sits
+  systematically below the others, it lands further down the compressive part of *each* curve and is
+  crushed relative to them. R12 stacked two tone curves and drove the dark population to
+  **R 0.043 / G 0.166 / B 0.176**, inverting red structure to cyan (structure R/G 1.716 → 1.087).
+  One curve was survivable; two were not.
+  → **Use a single CIE-**`L`** curve for tone** (`Lt`), which preserves chrominance by construction:
+  swapping the stacked K curves for one L curve restored the dark population to R 0.135 / G 0.165
+  and structure R/G to 1.361. Or shape the channels deliberately with per-channel R/G/B curves.
 - **Judge by the RENDER.** Where a metric and the render disagree, the render wins and the metric is
   the thing to fix.
 
