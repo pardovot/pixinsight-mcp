@@ -5,9 +5,11 @@ description: v2 run driver for processing an astro image end to end. Route by ca
 
 # process-v2, thin run driver
 
-Required reading before the run: `docs/facts.md` (tool traps), `references/library.json`
-(reference classes + metric caveats). Recipes live in `recipes/`, the profiler in
-`scripts/profile.js`. PixInsight + watcher must be running (`node scripts/ping-watcher.mjs`).
+**Startup is ONE batched call**: read `docs/facts.md` + `references/library.json` in a single
+parallel tool call, and ping the watcher (`node scripts/ping-watcher.mjs`) in the same batch.
+That is the whole orientation. Do NOT read the recipe source, the README, `docs/architecture.md`,
+git history, or old journals; the recipe is an opaque executable and its JSON report is the
+contract. Recipes: `recipes/`. Profiler: `scripts/profile.js`.
 
 Principles (why this driver is thin): the linear half is near-deterministic, run it in ONE
 shot and check only the end state; the aesthetic half is per-object taste, search it against
