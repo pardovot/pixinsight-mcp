@@ -5,6 +5,18 @@ out of aescaffre/pixinsight-mcp, see "Origins" at the bottom. **Any doc that des
 runtime or a Node `run-pipeline` driving PixInsight is describing the original project, not this
 one, treat it as stale.**
 
+## 🖼️ PROCESSING AN IMAGE? Everything below this section is irrelevant.
+The rest of this file is about BUILDING the tooling (MCP server, C++ module, signing). A
+processing run needs exactly three files, read `facts.md` + `library.json` in ONE parallel call:
+- `.claude/skills/process-v2/SKILL.md`, the run driver (invoke `/process-v2`)
+- `docs/facts.md`, verified tool traps
+- `references/library.json`, per-class reference profiles (thresholds are PER CLASS)
+
+Do NOT go exploring: not the README, not `docs/architecture.md`, not old journals (deleted on
+`v2`, `main` history only), not the recipe source. `recipes/*.js` are opaque executables whose
+JSON report is the contract. Smoke test: `npm run test:recipe`. Watcher check:
+`node scripts/ping-watcher.mjs`.
+
 ## ⛔ FUNDAMENTAL: CROSS-PLATFORM BY DEFAULT
 **Every new script, path, and default must be written cross-platform from the start.** This is a
 baseline requirement, not a later "port" and not a nice-to-have.
