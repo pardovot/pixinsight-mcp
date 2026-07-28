@@ -92,6 +92,16 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - SetiAstro Star Stretch MTF = PixelMath `((3^a)*$T)/((3^a-1)*$T+1)` = HT, tool cosmetic.
 - Curves `K` applies one curve to R,G,B individually (crushes the lower channel); `Lt` (CIE L)
   preserves chrominance by construction.
+- A curve lifting `m -> m'` through (1,1) has average slope above the pivot of `(1-m')/(1-m)`,
+  below 1 by construction: range compression forcibly compresses the detail inside it, landing
+  on star peaks and faint knots. HDRMT separates by SCALE instead, so it buys the same headroom
+  detail-positively (measured, same range change: HDR detail +4.4% vs equivalent curve -7.5%).
+  Not recoverable afterwards, extra HDR passes do not restore curve-flattened detail.
+- A luminance curve with slope > 1 changes SATURATION in both directions at once (amplifies
+  channel differences in the sky, compresses the object's relative chroma). One curve cannot
+  fix both.
+- Relative grain multiplier of a tone op = local slope / (output level / input level)
+  (predicted 2.16x, measured 2.2x). Slope ~ level ratio leaves grain unchanged.
 
 ## Other processes
 - HDRMT: `invertedIterations` must be boolean. Defaults `numberOfLayers` 6, `toLightness`
