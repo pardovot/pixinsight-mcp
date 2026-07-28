@@ -125,7 +125,16 @@ function OSC_RGB_LINEAR(cfg) {
 
    // ---------- process factories ----------
    var FP = cfg.filterPrefix || "Sony Color Sensor";
-   function fBxtCorrect() { var P = new BlurXTerminator; P.correct_only = true; return P; }
+   // ⛔ A bare `new BlurXTerminator` inherits persisted LAST-USED settings, not factory
+   // defaults (verified: introspection returned this machine's old run values). So "run at
+   // defaults" (user rule) means pinning the factory values explicitly, every load-bearing param.
+   function bxtDefaults(P) {
+      P.sharpen_stars = 0.50; P.adjust_star_halos = 0.00; P.sharpen_nonstellar = 1.00;
+      P.nonstellar_diameter = 0.0; P.auto_nonstellar_psf = true; P.auto_nonstellar_radius = true;
+      P.lunar_planetary = false; P.overlap = 0.20;
+      return P;
+   }
+   function fBxtCorrect() { var P = bxtDefaults(new BlurXTerminator); P.correct_only = true; return P; }
    function fSpfc() {
       var P = new SpectrophotometricFluxCalibration; P.narrowbandMode = false;
       P.redFilterName = FP + " R"; P.redFilterTrCurve = grabCurve(FP + " R");
@@ -155,11 +164,14 @@ function OSC_RGB_LINEAR(cfg) {
       P.generateGraphs = false; P.generateStarMaps = false; P.generateTextFiles = false;
       return P;
    }
-   // BXT sharpen + NXT run at TOOL DEFAULTS (user rule). Verified 2026-07-28 on this install:
-   // BXT fresh instance = stars 0.20 / nonstellar 0.80 / auto PSF; NXT = iterations 2, intensity
-   // denoise 0.6 per band (top-level `denoise` is a DEAD alias, behavior-tested no-op).
-   function fBxtSharpen() { var P = new BlurXTerminator; P.correct_only = false; return P; }
-   function fNxt() { return new NoiseXTerminator; }
+   function fBxtSharpen() { var P = bxtDefaults(new BlurXTerminator); P.correct_only = false; return P; }
+   // NXT: iterations 2, intensity denoise 0.6 (user standard). The live dials are the per-band
+   // intensity params; top-level `denoise` is a DEAD alias (behavior-tested no-op).
+   function fNxt() {
+      var P = new NoiseXTerminator;
+      P.iterations = 2; P.denoise_intensity_low_freq = 0.6; P.denoise_intensity_high_freq = 0.6;
+      return P;
+   }
    function fSxt() { var P = new StarXTerminator; P.stars = true; P.unscreen = false; P.unscreen_stars = false; return P; }
 
    // ---------- the chain ----------

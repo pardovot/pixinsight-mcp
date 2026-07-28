@@ -7,9 +7,11 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - Live params: `sharpen_stars`, `sharpen_nonstellar`, `correct_only`, `adjust_star_halos`,
   `auto_nonstellar_radius`, `nonstellar_diameter` (FWHM px, cap 8). `auto_nonstellar_psf` /
   `nonstellar_psf_diameter` are DEAD aliases (verified no-op). Set both pairs for safety.
-- Defaults DRIFT across BXT versions (old introspection 0.30/0.25; 2026-07 fresh instance =
-  stars 0.20 / nonstellar 0.80 / auto PSF on). Introspect per install, don't trust docs.
-  `sharpen_nonstellar 1.0` = maximum sharpening, not a mild default.
+- ⛔ A bare `new BlurXTerminator` inherits persisted LAST-USED settings, NOT factory defaults
+  (verified 2026-07-28: introspection returned this machine's old run values 0.2/0.8; factory =
+  stars 0.50 / halos 0.00 / nonstellar 1.00 / auto PSF). Pin every load-bearing param
+  explicitly; suspect the same for the other XT tools. `sharpen_nonstellar 1.0` is defined by
+  the manual as maximum sharpening.
 - Auto PSF on STARLESS input badly overestimates (~6-8 px guessed on true 2.2 px); tiles at
   512x512, star-poor tiles guess from nonstellar features. Set manual PSF = pre-SXT star FWHM.
 - Flux-conserving: peaks near 1.0 clip on sharpen. Add headroom first, needed factor
@@ -17,11 +19,11 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - Worse on denoised data (author), so BXT before NXT. Preserves the WCS.
 
 ## NXT
-- Current NXT (2026-07 introspected): `iterations` (def 2), frequency + color separation on by
-  default; live dials are `denoise_intensity_low_freq`/`_high_freq` (def 0.6) and
-  `denoise_color_low_freq`/`_high_freq` (def 1.0); `detail` (def 0.15).
-- ⛔ Top-level `denoise` is a DEAD alias (behavior-tested: 0.1 vs 0.9 byte-identical output).
-  Old `denoise`/`detail`-only param model is stale.
+- Current NXT: `iterations`, frequency + color separation, per-band dials. The LIVE denoise
+  dials are `denoise_intensity_low_freq`/`_high_freq` (+ `denoise_color_*`); ⛔ top-level
+  `denoise` is a DEAD alias (behavior-tested: 0.1 vs 0.9 byte-identical). Old
+  `denoise`/`detail`-only param model is stale. Introspected "defaults" may be persisted
+  last-used values (see the BXT trap), pin what matters.
 - Gauge with MRS noise estimate, never stdDev (signal-dominated, can RISE after good denoise).
 
 ## SXT
