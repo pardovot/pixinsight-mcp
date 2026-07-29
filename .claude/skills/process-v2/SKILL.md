@@ -1,14 +1,19 @@
 ---
 name: process-v2
-description: v2 run driver. Processes an astro image start to finish UNATTENDED, no prompts. Route by category, run the linear recipe one-shot, end-check, 4x-proxy variant search against the reference class, auto-select by measured distance, apply full-res, verify invariants at 1:1, deliver all variants for post-hoc review, write RUNLOG + scoreboard.
+description: v2 run driver. Processes an astro image start to finish UNATTENDED, no prompts. Route by category, run the linear recipe one-shot, end-check, search 4 variants at native scale on a matched crop against the reference class, verify at 1:1 without a full-res apply, deliver all four unpicked for the user to choose, write RUNLOG + scoreboard with timings.
 ---
 
 # process-v2, unattended run driver
 
-**This skill NEVER asks the user anything and never waits.** It runs to a delivered final. The
-user reviews afterwards, from the contact sheet and the saved variant op lists. If a genuine
-blocker appears (missing input, unroutable category, failed end-check after one retry), stop
-and report, that is a failure exit, not a question.
+**This skill NEVER asks the user anything and never waits.** It runs to four delivered variants
+and stops there. The user reviews afterwards, from the contact sheet and the saved op lists, and
+picks; that pick costs one replay, not a re-run. If a genuine blocker appears (missing input,
+unroutable category, failed end-check after one retry), stop and report, that is a failure exit,
+not a question.
+
+⚠️ **Unattended is about not blocking, not about deciding taste.** The driver does not pick a
+variant (section 4) and does not apply one at full res (section 5). Both were removed after they
+were measured to cost a full re-run and to select versions the user rejected.
 
 **Startup is ONE batched call**: read `docs/facts.md` + `references/library.json` in a single
 parallel tool call, and ping the watcher (`node scripts/ping-watcher.mjs`) in the same batch.
@@ -36,6 +41,20 @@ else stop and report.
 
 Input must be a linear, plate-solved master (the recipe hard-errors otherwise).
 
+**Data root is `data/`** (renamed from `result-tests/` 2026-07-30), laid out
+`data/<Telescope>/<Object>/<CameraType>/<CaptureType>/`, e.g. `data/C8/M106/OSC/RGB/`. The master
+sits in that leaf; this run writes `runs/<yyyy-mm-dd>/` beside it and never overwrites an earlier
+run. Full spec incl. the CaptureType vocabulary and master-hygiene checks: `docs/data-layout.md`.
+
+⚠️ **CaptureType is not the reference class.** The path says how it was captured (`OSC/RGB`); the
+class says what the object is (`galaxy`), and only the class indexes `library.json`. Take the class
+from the prompt, never from the path and never from `FILTER`.
+
+**`data/_pre-v2/` is INPUT-ONLY.** Pre-v2 runs were archived there 2026-07-30. Reading a stacked
+linear master out of it is fine, that data is pipeline-independent. Reading its finals,
+`metrics.json`, `HISTORY.md`, `RUNLOG.md` or `versions/` is not: those numbers describe a pipeline
+that no longer exists, and reusing them is exactly what the library reset was for.
+
 ## 2. Linear stage, one shot
 
 ```
@@ -48,20 +67,69 @@ Read the returned JSON report. If `checks.ok` is true, move on, do NOT re-verify
 per-step medians, re-run, and if it fails again stop and report. Render the starless once so
 the run log carries a picture of the linear state; never autostretch the stars layer.
 
-## 3. Variant search on the 4x proxy
+The report carries `timing` (per-step `ms`, `totalMs`, `stepsMs`, `overheadMs`, `slowest`).
+Carry it into the RUNLOG verbatim. This stage is a single tool call with no agent checkpoints in
+it, so its wall clock is PixInsight compute; `slowest` is the only place to look when a run feels
+long.
 
-Build 4x proxies of starless + stars (`IntegerResample` zoomFactor -4). Iterate ON THE PROXY
-ONLY: stretch (linked), tone, colour. Measure candidates with `scripts/profile.js` and compare
-against the target's class entries in `references/library.json`. Proxy-valid: tone ladder, band
-saturation, structure RoverG/RoverB, grainRelSky. NOT proxy-valid: stars, rings, fine grain,
-those are 1:1 only (section 5). Thresholds are PER CLASS, never borrow another class's numbers.
+## 3. Variant search on a matched full-res crop
 
-Produce exactly 4 variants, each with a REPLAYABLE ordered op list (you re-apply it at full res
-and the user may ask for a different one later, without a re-search):
+⛔ **Never downsample to search.** The 4x proxy was removed 2026-07-29: measured on real data,
+`grainRelSky` reads **1.91x lower** at 4x than at 1:1, so a proxy-selected variant sat ~1.9x over
+its class grain ceiling while its proxy numbers looked ideal, and anything multiscale (HDR layer
+counts) cannot be transferred across scales at all. The proxy cost a full re-tune every time it
+was used. Work at native scale on less area instead.
+
+Re-measured 2026-07-30 on `nsadr_linear_starless` and it is worse than grain alone: 4x vs 1:1 moves
+`grainRelSky` **1.918x** (0.01802 -> 0.00940, confirming the 1.91x figure) AND `structure.RoverG`
+**+36%** (3.495 -> 4.750) and `RoverB` **+55%** (4.219 -> 6.521). So the colour trend is scale
+dependent too, not just the grain. (The pre-v2 Sadr RUNLOG blamed that RoverG shift on output
+rounding; that diagnosis was wrong, the shift is real. Rounding separately destroyed `dB`, fixed in
+profiler v3.)
+
+**Cut a matched crop.** Take a ~1500x1000 window of the linear starless and score candidate
+locations against the FULL frame on sky p25, lum p50, `grainRelSky`, and structure RoverG/RoverB.
+Take the best match; require every term within 5%, and widen the search if none qualifies.
+Crop the stars layer at the identical rect. Record the rect in the RUNLOG.
+
+The crop is at native resolution, so **every metric is valid on it**, grain and texture included,
+and multiscale parameters transfer to full res unchanged. Iterate here: stretch (linked), tone,
+colour. Measure with `scripts/profile.js`, compare against the target's class entries in
+`references/library.json`. Thresholds are PER CLASS, never borrow another class's numbers.
+
+What the crop still cannot see: stars outside it, and whole-frame gradient. Both are covered in
+section 5, neither needs a full-res apply of a variant.
+
+Produce exactly 4 variants, each with a REPLAYABLE ordered op list (the user picks one afterwards
+and you re-apply it at full res, without a re-search):
 1. **reference-matched**: closest to the class profile (sky level, skyBandSat, ladder)
 2. **darker-punchier**: sky toward the class floor, more contrast
 3. **brighter-softer**: sky toward the class ceiling, gentler slopes
 4. **alt-palette**: tone of 1, different colour emphasis
+
+## 3a. Calibration mode, when the class has no usable reference
+
+`references/library.json` was **reset to empty 2026-07-30** (v1 entries discarded: a reference
+profile only means something for the pipeline that has to hit it). So expect few or zero entries.
+That is the normal state, not a failure, and not a reason to stop.
+
+A class **gates** only at **>= 3 accepted AND >= 1 rejected** entries. Count them at startup.
+
+- **Class gates**: run section 3 as written, score against the class profile.
+- **Class does not gate (calibration mode)**: compute **no** class distance and quote **no** class
+  range, since variants 1-3 above are defined by a profile that does not exist yet. Redefine them
+  to span the space deliberately, so the four become four data points rather than four guesses:
+  **v1** at the middle of the plausible sky-level range, **v2** and **v3** at its low and high
+  ends, **v4** at v1's tone with a different colour emphasis. Widen the spread rather than
+  narrowing it, a spread is what makes the user's pick informative. Report every metric in
+  **absolute** terms and state plainly which class entries exist (possibly none).
+- **Never substitute remembered numbers for the missing reference.** Recalling "sky p25 ~0.14 for
+  HOO" from an old run reintroduces v1 data through the back door and defeats the reset. If it is
+  not in `library.json` at the current `profilerRev`, it is not a reference.
+
+The **3b guards still apply in full at n=0.** They constrain the path, not the destination, and
+they derive from measured tool physics in `docs/facts.md`, not from the library. Calibration mode
+loses the yardstick, not the safety net.
 
 ## 3b. Hard guards on every variant, unattended-critical
 
@@ -76,6 +144,9 @@ constraints on the PATH, checked before each op, not judgments after it.
 - **Curve shape.** 4-point S-curves, deltas ~10%. Never 8+ control points, never a local slope
   above ~1.2. Aggressive paths are what amplify sky grain and harden BXT undershoot rings, and
   they do it while the destination metrics still look correct.
+  ⛔ Measure the slope on a 1024-step ramp, never from the chord: **Akima overshoots its chord
+  by ~5%**, so design to a chord <= 1.15 to land under 1.2. Designing to 1.20 measures 1.21-1.28
+  and trips the guard, which costs a regeneration cycle every time.
 - **Grain gate.** Relative grain multiplier = local slope / (output level / input level). To
   darken the background without amplifying grain, the local slope there must be about its level
   ratio. Check it for any op that moves the sky.
@@ -87,44 +158,80 @@ constraints on the PATH, checked before each op, not judgments after it.
 - **Reject on breach**, do not repair. A variant that cannot meet a guard is dropped and
   regenerated more gently. Detail a curve has flattened cannot be restored by later HDR.
 
-## 4. Contact sheet + auto-select
+## 4. Contact sheet, NO auto-select
 
-Render the 4 proxies into ONE labeled 2x2 contact sheet, save it to the output dir. Then
-**select automatically**: the variant with the smallest normalized distance to the class
-reference profile across sky level, skyBandSat, the p1..p99 ladder and grainRelSky, among
-variants that passed every 3b guard. Record the distances for all four. Ties go to the
-gentler path (lower max local slope).
+Render the 4 crop results into ONE labeled 2x2 contact sheet, save it to the output dir.
 
-⚠️ Metric selection is the known-weak link (measured: profiles matched a reference within a
-few percent on versions the user rejected outright). It is why 3b constrains the path and why
-all four op lists are delivered, a re-pick must cost one replay, not a re-run.
+⛔ **The driver does not pick.** Auto-selection was removed 2026-07-29. It was measured
+unreliable: profiles matched a class reference within a few percent on versions the user
+rejected outright (`M31_v8`: "global profile nearly identical to accepted"), and on the Sadr run
+the selection had to be redone anyway once its inputs proved invalid. A distance function that
+cannot see the failure modes is not a selector.
 
-## 5. Apply full-res + verify
+**If the class gates**, still **compute and report** the normalized distance of all four to the
+class profile (sky level, skyBandSat, the p1..p99 ladder, grainRelSky), as information in the
+RUNLOG. **In calibration mode there is no distance to compute**; report the four absolute profiles
+side by side and state that the class has no reference yet. It is a description
+of where each variant sits, not a verdict. Note which variants passed every 3b guard; a variant
+that breached a guard was already regenerated or dropped in section 3b, so all four delivered
+variants pass by construction.
 
-Re-apply the selected variant's ops to the FULL-RES starless/stars, recombine
-(`starless*~stars + stars`). Then verify, and treat these as REPORTED FACTS, not gates to ask
-about:
-- **1:1 crops**: brightest star, the measured worst-case star (rings, colour fringe), the
-  object core, a sky patch. Stars are judged only here, global stats hide barely-there stars.
-- **Invariants vs the class entry**: clipping fractions ~0, no exactly-achromatic tiles,
-  per-band saturation and grainRelSky inside the class range, structure RoverG/RoverB same
-  trend as the linear input.
-- A breach that a guard should have caught: regenerate that variant once, more gently, then
-  deliver whichever passes. Two failures = deliver the best and flag it loudly in the RUNLOG.
+Unattended means no prompts and no waiting. It does not mean the tool decides taste. The run
+completes on its own and ends holding four options.
 
-Save the final + starless/stars into `versions/`. **Never overwrite a delivered final**;
-`final.*` mirrors the current one.
+## 5. Verify, without a full-res apply
+
+Everything below is measured at native resolution and reported as FACT, not as a gate to ask
+about. **No variant is applied at full res during the run.**
+
+- **Per-variant, on the crop** (which is 1:1): clipping fractions ~0, no exactly-achromatic
+  tiles, structure RoverG/RoverB the same trend as the linear input. Per-band saturation,
+  `grainRelSky` and texture are checked against the class range **when the class gates**; in
+  calibration mode report them as absolute numbers and check only the class-free invariants
+  (no clipping, no achromatic tiles, colour trend preserved, every 3b guard met).
+- **Stars, on the FULL-RES stars layer.** Apply the shared star stretch to the full-res stars
+  layer once (it is one pointwise op and it is shared across variants) and scan it there, so
+  stars outside the crop are still measured. Then pull 1:1 visual crops from full res at the
+  located coordinates: brightest star, measured worst-case ring star, object core, sky patch.
+  Stars are judged only here; global stats hide barely-there stars.
+- **Whole-frame gradient**: already measured by the recipe on the linear starless
+  (`checks.gradient`). The tone ops are pointwise, so a flat linear frame stays flat.
+- A breach that a 3b guard should have caught: regenerate that variant once, more gently. Two
+  failures = deliver it anyway and flag it loudly in the RUNLOG.
+
+**The full-res apply happens on the user's pick, not during the run.** They say "variant 3",
+`replay-variant.js` re-applies that op list at full res and writes
+`versions/<id>_{final,starless,stars}.xisf`. **Never overwrite a delivered final**; `final.*`
+mirrors the current one and is only re-pointed when a final is accepted.
 
 ## 6. Deliver + log
 
-Write `RUNLOG.md` next to the outputs: category, recipe rev, the recipe's JSON report, the 4
-variants with their op lists and distances, which was auto-selected and why, guard results,
-1:1 and invariant numbers, and the contact-sheet path. Append one line to
-`result-tests/SCOREBOARD.md`: `| date | target | class | recipe rev | variant | verdict |`
-with verdict `pending-review`.
+Write `RUNLOG.md` next to the outputs: category, recipe rev, the recipe's JSON report **including
+its `timing` block**, the crop rect and its match quality, the 4 variants with their op lists and
+distances, guard results, verification numbers, and the contact-sheet path. Record the
+`profilerRev` every number was measured at. Append one line to `data/SCOREBOARD.md`:
+`| date | target | class | recipe rev | variant | verdict | in library |` with variant `unpicked`,
+verdict `pending-review`, and in-library `no`.
 
-End the run with a short summary naming the selected variant and how to switch: the user says
-"variant 3" and you replay that saved op list at full res, no re-search.
+**Report the timing.** Lead the summary with `timing.totalMs`, the three slowest steps, and
+`overheadMs`. Slow runs get diagnosed from numbers, never from impressions: if `stepsMs`
+dominates, that is PixInsight compute and no driver change will help; if `overheadMs` dominates,
+the recipe is spending it on medians, checks and saves and that is fixable here.
+
+End the run with a short summary: the four variants, what distinguishes them in one line each,
+the contact-sheet path, and how to apply one. The user says "variant 3" and you replay that saved
+op list at full res, no re-search.
 
 Findings do NOT become rules here. A tool fact goes to `docs/facts.md` only if it passes that
 file's gate (objective, reproducible); everything else stays in the RUNLOG.
+
+⛔ **The run does NOT write to `references/library.json`.** A run measures; only a user verdict
+creates a reference. The sequence is: run delivers four variants -> user grades one or more ->
+*then* the graded variants are added with **`npm run library -- <meta.json>`**
+(`scripts/add-library-entry.mjs`, the only writer; `-- --counts` reports per-class gate status and
+`-- --check` validates without writing). Pass `profile` pointing at the profiler JSON so metrics are
+derived, never transcribed; it refuses anything but the native-scale `s1` block. It enforces
+`library.json`'s own `rules` and `entryContract`
+(user-graded, 1:1, full metric set, provenance, and a reject carries the same complete ladder as an
+accepted entry plus its failure and lesson). A run appending its own numbers would rebuild the
+self-graded library the reset just removed. Flip the scoreboard's `in library` column when it lands.
