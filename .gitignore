@@ -8,7 +8,16 @@ dist/
 # Local planning docs (not for the repo)
 .claude/plans/
 
-result-tests/*
+# Image data and run outputs: heavy and machine-local, never in the repo.
+data/**
+# ...but keep the text ledger. These are what references/library.json cites as provenance,
+# so an entry whose RUNLOG or op list is untracked is an entry nobody else can verify.
+!data/**/
+!data/SCOREBOARD.md
+!data/**/RUNLOG.md
+!data/**/variants/*.js
+# The pre-v2 archive stays out entirely: input-only, and its markdown records a dead pipeline.
+data/_pre-v2/**
 
 # Generated per-build by module/build.mjs
 module/src/BuildTimestamp.h

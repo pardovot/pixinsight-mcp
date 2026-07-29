@@ -10,7 +10,7 @@ import type { BridgeClient } from "../bridge/client.js";
  *     e.g. a `linear` container on the master, a `starless` container on the starless,
  *     a `stars` container on the stars layer;
  *   - one whole-session `replay.js` (empty -> exact final state), authored from the
- *     same process definitions (see result-tests/.../replay.js for the reference).
+ *     same process definitions (see data/_pre-v2/.../replay.js for the reference).
  *
  * This tool covers the first. PixInsight's scripting API CANNOT create process icons
  * (`writeIcon` only overwrites an existing GUI icon), but a `.xpsm` is plain XML we can
