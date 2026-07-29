@@ -31,7 +31,12 @@
 function OSC_RGB_LINEAR(cfg) {
    if (!cfg || !cfg.src) throw new Error("cfg.src required");
    var base = cfg.baseName || "osc";
-   var report = { recipe: "osc-rgb-linear", rev: 1, src: cfg.src, steps: [], checks: {} };
+   var report = { recipe: "osc-rgb-linear", rev: 2, src: cfg.src, steps: [], checks: {} };
+   // Wall-clock instrumentation. Every step carries its own ms so "the run felt slow" becomes a
+   // measurement; report.timing.overheadMs (total minus the sum of the steps) is the cost of the
+   // recipe's own medians/checks/saves, which is the only part a driver change can shrink.
+   var T0 = Date.now();
+   function nowMs() { return Date.now(); }
 
    // ---------- path derivation (cross-platform: probe, never hardcode) ----------
    function firstExisting(cands) {
@@ -87,8 +92,10 @@ function OSC_RGB_LINEAR(cfg) {
    }
    function med(v) { var m = v.image.median(); return m; }
    function step(name, fn, v) {
+      var t = nowMs();
       fn();
-      report.steps.push({ step: name, medianAfter: +med(v).toFixed(7) });
+      var ms = nowMs() - t;
+      report.steps.push({ step: name, ms: ms, medianAfter: +med(v).toFixed(7) });
    }
    function rectMedians(img, r) {
       var out = [];
@@ -101,6 +108,7 @@ function OSC_RGB_LINEAR(cfg) {
    }
 
    // ---------- open + input guards ----------
+   var tOpen = nowMs();
    var wins = ImageWindow.open(cfg.src);
    if (!wins.length) throw new Error("open failed: " + cfg.src);
    for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose(); // e.g. autocrop mask windows
@@ -111,16 +119,17 @@ function OSC_RGB_LINEAR(cfg) {
    if (!w.hasAstrometricSolution) { w.forceClose(); throw new Error("no astrometric solution; plate-solve first (ImageSolver), recipe needs WCS for SPFC/MGC/SPCC"); }
    var med0 = med(v);
    if (med0 > 0.05) { w.forceClose(); throw new Error("median " + med0.toFixed(4) + " looks nonlinear; recipe takes LINEAR input"); }
-   report.steps.push({ step: "open", medianAfter: +med0.toFixed(7) });
+   report.steps.push({ step: "open", ms: nowMs() - tOpen, medianAfter: +med0.toFixed(7) });
 
    // ---------- headroom guard (R11: BXT sharpen needs ~(FWHMb/FWHMa)^2 headroom, 3x held) ----------
+   var tHead = nowMs();
    var mx = img.maximum();
    if (mx > 0.95) {
       var P0 = new PixelMath; P0.expression = "$T*(1/3)"; P0.useSingleExpression = true; P0.createNewImage = false;
       P0.executeOn(v);
-      report.steps.push({ step: "headroom_x0.333", medianAfter: +med(v).toFixed(7) });
+      report.steps.push({ step: "headroom_x0.333", ms: nowMs() - tHead, medianAfter: +med(v).toFixed(7) });
    } else {
-      report.steps.push({ step: "headroom_skipped_max_" + mx.toFixed(3) });
+      report.steps.push({ step: "headroom_skipped_max_" + mx.toFixed(3), ms: nowMs() - tHead });
    }
 
    // ---------- process factories ----------
@@ -186,13 +195,16 @@ function OSC_RGB_LINEAR(cfg) {
       report.mgc.attempted = true;
       var medBefore = med(v);
       var ok = false;
+      var tMgc = nowMs();
       try { ok = fMgc().executeOn(v); } catch (e) { ok = false; report.mgc.error = e.message; }
+      var msMgc = nowMs() - tMgc;
       var medAfter = med(v);
       if (!ok || Math.abs(medAfter - medBefore) < 1e-12) {
          report.mgc.declined = true; report.mgc.fallback = "GradientCorrection";
+         report.steps.push({ step: "mgc_declined", ms: msMgc });
          step("gradient_correction_fallback", function() { fGc().executeOn(v); }, v);
       } else {
-         report.steps.push({ step: "mgc", medianAfter: +medAfter.toFixed(7) });
+         report.steps.push({ step: "mgc", ms: msMgc, medianAfter: +medAfter.toFixed(7) });
       }
    } else {
       report.mgc.fallback = "GradientCorrection";
@@ -203,7 +215,12 @@ function OSC_RGB_LINEAR(cfg) {
    step("bxt_sharpen", function() { fBxtSharpen().executeOn(v); }, v);
    step("nxt", function() { fNxt().executeOn(v); }, v);
    // explicit codec: XISF format hints are session-sticky, an unhinted save is non-deterministic
-   if (cfg.out) w.saveAs(cfg.out + "/" + base + "_linear.xisf", false, false, false, false, "compression-codec zlib+sh");
+   var saveMs = 0, tSave;
+   if (cfg.out) {
+      tSave = nowMs();
+      w.saveAs(cfg.out + "/" + base + "_linear.xisf", false, false, false, false, "compression-codec zlib+sh");
+      saveMs += nowMs() - tSave;
+   }
 
    step("sxt_split", function() { fSxt().executeOn(v); }, v);
    v.id = base + "_starless";
@@ -211,6 +228,7 @@ function OSC_RGB_LINEAR(cfg) {
    if (wStars.isNull) throw new Error("SXT did not produce " + base + "_stars");
 
    // ---------- end-state checks (the only gate) ----------
+   var tChecks = nowMs();
    var sImg = v.image, W = sImg.width, H = sImg.height;
    var bw = Math.floor(W * 0.1), bh = Math.floor(H * 0.1);
    var ix = Math.floor(W * 0.05), iy = Math.floor(H * 0.05);
@@ -260,11 +278,26 @@ function OSC_RGB_LINEAR(cfg) {
          starless: rectMedians(sImg, gr), stars: rectMedians(wStars.mainView.image, gr) };
    }
 
+   var checksMs = nowMs() - tChecks;
+
    if (cfg.out) {
+      tSave = nowMs();
       v.window.saveAs(cfg.out + "/" + base + "_linear_starless.xisf", false, false, false, false, "compression-codec zlib+sh");
       wStars.saveAs(cfg.out + "/" + base + "_linear_stars.xisf", false, false, false, false, "compression-codec zlib+sh");
+      saveMs += nowMs() - tSave;
    }
    report.views = { starless: base + "_starless", stars: base + "_stars" };
+
+   // Timing rollup. stepsMs is PixInsight doing work the recipe cannot avoid; overheadMs is
+   // everything else the recipe spends (per-step medians, checks, saves) and is the only part a
+   // driver or recipe change can shrink. Report both, never guess which one dominates.
+   var stepsMs = 0;
+   for (var si = 0; si < report.steps.length; si++) stepsMs += (report.steps[si].ms || 0);
+   var totalMs = nowMs() - T0;
+   report.timing = { totalMs: totalMs, stepsMs: stepsMs, checksMs: checksMs, saveMs: saveMs,
+      overheadMs: totalMs - stepsMs,
+      slowest: report.steps.slice().sort(function(a, b) { return (b.ms || 0) - (a.ms || 0); })
+         .slice(0, 3).map(function(s) { return s.step + ":" + (s.ms || 0) + "ms"; }) };
    return JSON.stringify(report);
 }
 "osc-rgb-linear recipe loaded";
