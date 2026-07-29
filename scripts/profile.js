@@ -1,4 +1,7 @@
-// v2 profiler: stride-grid profile + per-tile hue/sat map. eval, then runFiles(list, scales?)
+// v3 profiler: stride-grid profile + per-tile hue/sat map. eval, then runFiles(list, scales?)
+// v3 (2026-07-30): magnitude-sensitive fields emit SIGNIFICANT FIGURES, not fixed decimals. At 5-6
+// dp the linear-stage values (deltas ~1e-5, grain ~1e-6) rounded to 1 sig fig or to 0.00000, which
+// made a structure ratio unauditable and looked like a real 3.495-vs-4.750 discrepancy.
 function __pfProfileView(view) {
   var img = view.image;
   var W = img.width, H = img.height;
@@ -33,6 +36,8 @@ function __pfProfileView(view) {
       }
     }
   }
+  // Scale-free rounding: keeps 6 significant figures whether the value is 0.2 or 2e-6.
+  function sig(x) { return (x && isFinite(x)) ? +x.toPrecision(6) : (isFinite(x) ? 0 : x); }
   function pct(a, p) { var s = a.slice().sort(function(u, v) { return u - v; }); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
   function pctS(s, p) { return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
   var sl = lum.slice().sort(function(u, v) { return u - v; });
@@ -41,8 +46,8 @@ function __pfProfileView(view) {
   var sr = rr.slice().sort(function(u,v){return u-v;}), sg = gg.slice().sort(function(u,v){return u-v;}), sb = bb.slice().sort(function(u,v){return u-v;});
   for (var i = 0; i < PP.length; i++) {
     var k = "p" + String(PP[i]).replace(".", "_");
-    pl[k] = +pctS(sl, PP[i]).toFixed(5); pr[k] = +pctS(sr, PP[i]).toFixed(5);
-    pg[k] = +pctS(sg, PP[i]).toFixed(5); pb[k] = +pctS(sb, PP[i]).toFixed(5);
+    pl[k] = sig(pctS(sl, PP[i])); pr[k] = sig(pctS(sr, PP[i]));
+    pg[k] = sig(pctS(sg, PP[i])); pb[k] = sig(pctS(sb, PP[i]));
   }
   var edges = [0, 0.05, 0.1, 0.2, 0.4, 0.7, 1.001];
   var bands = [];
@@ -88,12 +93,12 @@ function __pfProfileView(view) {
     W: W, H: H, n: n,
     pctLum: pl, pctR: pr, pctG: pg, pctB: pb,
     bands: bandOut,
-    structure: { dR: +dR.toFixed(5), dG: +dG.toFixed(5), dB: +dB.toFixed(5), RoverG: +(dR / dG).toFixed(3), RoverB: +(dR / dB).toFixed(3) },
-    tiles: { grid: G, sat: tileSat, rbBias: tileRB, minTileSat: +minTileSat.toFixed(3), minTileIdx: minTileIdx, maxTileAchFrac: +maxAchFrac.toFixed(4) },
-    grainD2mad: +madOf(d2).toFixed(6), textureD8med: +pct(d8, 50).toFixed(6),
-    grainRelSky: +(madOf(d2) / sky).toFixed(5), skyP25: +sky.toFixed(5),
-    fracAch: +(nAch / n).toFixed(5), fracSatLt01: +(nSatLo / n).toFixed(5),
-    fracClipLo: +(nClipLo / n).toFixed(6), fracClipHi: +(nClipHi / n).toFixed(6)
+    structure: { dR: sig(dR), dG: sig(dG), dB: sig(dB), RoverG: sig(dR / dG), RoverB: sig(dR / dB) },
+    tiles: { grid: G, sat: tileSat, rbBias: tileRB, minTileSat: sig(minTileSat), minTileIdx: minTileIdx, maxTileAchFrac: sig(maxAchFrac) },
+    grainD2mad: sig(madOf(d2)), textureD8med: sig(pct(d8, 50)),
+    grainRelSky: sig(madOf(d2) / sky), skyP25: sig(sky),
+    fracAch: sig(nAch / n), fracSatLt01: sig(nSatLo / n),
+    fracClipLo: sig(nClipLo / n), fracClipHi: sig(nClipHi / n)
   };
 }
 function __pfDownsampled(srcView, f, tag) {
@@ -115,6 +120,9 @@ function runFiles(list, scales) {
     var path = list[i][0], name = list[i][1];
     var wins = ImageWindow.open(path);
     var win = wins[0];
+    // WBPP masters spawn extra *crop_mask* windows on open; leaking one per file pollutes the
+    // session and makes later view lookups ambiguous.
+    for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose();
     var view = win.mainView;
     view.image.resetSelections();
     var out = { image: name, scales: {} };
@@ -130,4 +138,4 @@ function runFiles(list, scales) {
   }
   return JSON.stringify(results);
 }
-"profiler v2 loaded";
+"profiler v3 loaded";
