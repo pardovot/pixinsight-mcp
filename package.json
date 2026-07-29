@@ -26,6 +26,7 @@
     "build": "tsc && node scripts/check-handler-drift.mjs",
     "test": "tsc && node --test && node scripts/check-handler-drift.mjs",
     "test:recipe": "node scripts/test-osc-rgb-linear.mjs",
+    "library": "node scripts/add-library-entry.mjs",
     "dev": "tsc --watch",
     "start": "node build/index.js",
     "setup-bridge": "node -e \"const fs=require('fs'),os=require('os'),p=require('path'),b=p.join(os.homedir(),'.pixinsight-mcp');['bridge/commands','bridge/results','bridge/logs'].forEach(d=>fs.mkdirSync(p.join(b,d),{recursive:true}))\"",
