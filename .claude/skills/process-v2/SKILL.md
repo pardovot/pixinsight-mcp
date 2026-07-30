@@ -142,12 +142,22 @@ count by hand.** (`gated` = >= 3 accepted AND >= 1 rejected.)
 
 - **Class gates**: run section 3 as written, score against the class profile.
 - **Class does not gate (calibration mode)**: compute **no** class distance and quote **no** class
-  range, since variants 1-3 above are defined by a profile that does not exist yet. Redefine them
-  to span the space deliberately, so the four become four data points rather than four guesses:
-  **v1** at the middle of the plausible sky-level range, **v2** and **v3** at its low and high
-  ends, **v4** at v1's tone with a different colour emphasis. Widen the spread rather than
-  narrowing it, a spread is what makes the user's pick informative. Report every metric in
-  **absolute** terms and state plainly which class entries exist (possibly none).
+  range. Spread the four deliberately so they become four data points rather than four guesses, and
+  spread them on **the axis carrying the LEAST user-graded information.** Report every metric in
+  **absolute** terms and state which class entries exist (possibly none). Widen a spread rather
+  than narrowing it; the spread is what makes the user's pick informative.
+
+  ⛔ **Do NOT re-span an axis the entries already bracket.** An axis is bracketed once it has an
+  accepted value with a reject on each side; re-spanning it repeats the previous run and learns
+  nothing. Pick the axis like this:
+  - **No entries at all** -> sky level. v1 mid, v2/v3 at the low/high ends of the plausible range.
+  - **Sky level already bracketed** -> hold all four at the accepted `skyP25` and spread on the
+    next unresolved axis. **Take the candidates from the rejects' `lesson` fields**: a lesson
+    reading "global metrics blind to this" names something the contract cannot see, which is
+    exactly what four visual variants can resolve and what no distance function ever will.
+  - **v4 always carries colour**: if the class has an accepted entry, re-use ITS colour treatment
+    at v1's tone (its `provenance.opList` has the ops). Re-testing a liked palette on a new object
+    is how you learn whether it transfers. Invent a new palette only when nothing is accepted yet.
 - **Never substitute remembered numbers for the missing reference.** Recalling "sky p25 ~0.14 for
   HOO" from an old run reintroduces v1 data through the back door and defeats the reset. If it is
   not in `library.json` at the current `profilerRev`, it is not a reference.
@@ -260,3 +270,13 @@ derived, never transcribed; it refuses anything but the native-scale `s1` block.
 (user-graded, 1:1, full metric set, provenance, and a reject carries the same complete ladder as an
 accepted entry plus its failure and lesson). A run appending its own numbers would rebuild the
 self-graded library the reset just removed. Flip the scoreboard's `in library` column when it lands.
+
+**Always leave grading to one command per variant.** Write a `meta_v<n>.json` stub beside the run
+and print the four `npm run library -- <stub>` lines in the summary. Prefill everything the run
+already knows: `name` (`<target>_v<n>_<yyyy-mm-dd>`), `class`, `gradedBy: "user"`, `gradedOn`,
+`extent`, `cropRect`, `cropMatch` (incl. any breached gate terms), `provenance`
+{`driver`, `recipe`, `runlog`, `opList`}, and `profile` pointing at that variant's profiler JSON.
+Leave **only** `verdict` unset, as a placeholder that fails validation loudly (never a plausible
+default: a stub that validates unedited is a stub that silently accepts). Include empty
+`failure`/`lesson` keys, required on a reject and dropped on an accept. Also save each variant's
+profiler `s1` block as `profile_v<n>.json` so the metrics are derived, never transcribed.
