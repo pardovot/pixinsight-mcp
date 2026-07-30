@@ -4,7 +4,6 @@
   "provenance": "v2 ONLY. Every entry here was produced by a process-v2 run and graded by the user. The v1 library (13 accepted + 4 rejected, harvested from pre-v2 hand processing) was discarded 2026-07-30 because a reference profile is only meaningful for the pipeline that has to hit it. It is recoverable from git history; do NOT reuse its numbers.",
   "profilerRev": 3,
   "profiler": "scripts/profile.js v3 (stride ~40k samples, native scale, tile grid 6, significant-figure output)",
-
   "metricDefs": [
     "bandsSat = mean (max-min)/max per luminance band [0-.05, .05-.1, .1-.2, .2-.4, .4-.7, .7-1].",
     "skyBand = the band holding the most samples (the background population). skyBandSat = its saturation.",
@@ -12,7 +11,6 @@
     "structure.RoverG / RoverB = channel-delta ratios above sky level; the object's colour trend.",
     "Relative saturation is noise-inflated below L~0.05; apply a level floor when reading dark-sky bands."
   ],
-
   "rules": [
     "USER-GRADED ONLY. An entry needs verdict + gradedBy 'user'. A run's own numbers go in its RUNLOG, never here. Self-assessment is what made the old auto-select unreliable.",
     "NATIVE SCALE ONLY. scale must be '1:1'. grainRelSky reads 1.91x LOW at 4x downsample, so a proxy-measured entry is poison, not an approximation.",
@@ -21,7 +19,6 @@
     "A CLASS GATES ONLY AT >= 3 accepted AND >= 1 rejected. Below that the class is in calibration: the driver reports absolute metrics and spans a deliberate spread, and computes no class distance. n=1 is a point, not a range.",
     "PROFILER REV IS PART OF THE MEASUREMENT. Compare only within one profilerRev; a profiler change requires re-measuring, not reinterpreting."
   ],
-
   "entryContract": {
     "name": "<target>_<variant>_<yyyy-mm-dd>",
     "class": "galaxy | emission-nebula-filling | emission-hoo | emission-sho | dark-nebula",
@@ -31,11 +28,271 @@
     "scale": "1:1",
     "extent": "full | crop (crop entries record the rect and its match quality)",
     "profilerRev": 3,
-    "provenance": { "driver": "process-v2", "recipe": "<file> rev <n>", "runlog": "<path>", "opList": "<replay id + path>" },
-    "metrics": { "skyP25": 0, "lum": { "p1": 0, "p50": 0, "p75": 0, "p95": 0, "p99": 0 }, "bandsSat": [], "skyBandSat": 0, "structure": { "RoverG": 0, "RoverB": 0 }, "grainRelSky": 0, "textureD8med": 0, "fracSatLt01": 0, "tilesMinSat": 0 },
+    "provenance": {
+      "driver": "process-v2",
+      "recipe": "<file> rev <n>",
+      "runlog": "<path>",
+      "opList": "<replay id + path>"
+    },
+    "metrics": {
+      "skyP25": 0,
+      "lum": {
+        "p1": 0,
+        "p50": 0,
+        "p75": 0,
+        "p95": 0,
+        "p99": 0
+      },
+      "bandsSat": [],
+      "skyBandSat": 0,
+      "structure": {
+        "RoverG": 0,
+        "RoverB": 0
+      },
+      "grainRelSky": 0,
+      "textureD8med": 0,
+      "fracSatLt01": 0,
+      "tilesMinSat": 0
+    },
     "failure": "rejected only: what the user objected to, in their words where possible",
     "lesson": "rejected only: which metric or path fact separates it from an accepted entry, or 'none, global metrics blind to this' if none does"
   },
-
-  "entries": []
+  "entries": [
+    {
+      "name": "M106_v1_2026-07-30",
+      "class": "galaxy",
+      "verdict": "accepted",
+      "gradedBy": "user",
+      "gradedOn": "2026-07-30",
+      "scale": "1:1",
+      "extent": "crop",
+      "profilerRev": 3,
+      "cropRect": [
+        1450,
+        1200,
+        5050,
+        3600
+      ],
+      "cropMatch": {
+        "gate": "4 of 5 terms within 5%",
+        "skyP25": "+2.43%",
+        "lumP50": "+3.67%",
+        "grainRelSky": "-1.74%",
+        "RoverG": "+1.94%",
+        "RoverB": "+6.27% BREACH",
+        "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+      },
+      "provenance": {
+        "driver": "process-v2",
+        "recipe": "recipes/osc-rgb-linear.js rev 2",
+        "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+        "opList": "v1 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+      },
+      "metrics": {
+        "skyP25": 0.0938533,
+        "lum": {
+          "p1": 0.0544904,
+          "p50": 0.112458,
+          "p75": 0.155094,
+          "p95": 0.359704,
+          "p99": 0.731213
+        },
+        "bandsSat": [
+          0.1776,
+          0.0544,
+          0.051,
+          0.1211,
+          0.1233,
+          0.0729
+        ],
+        "skyBandSat": 0.051,
+        "structure": {
+          "RoverG": 1.05804,
+          "RoverB": 1.17826
+        },
+        "grainRelSky": 0.103742,
+        "textureD8med": 0.0163224,
+        "fracSatLt01": 0.04543,
+        "tilesMinSat": 0.0156856
+      }
+    },
+    {
+      "name": "M106_v2_2026-07-30",
+      "class": "galaxy",
+      "verdict": "rejected",
+      "gradedBy": "user",
+      "gradedOn": "2026-07-30",
+      "scale": "1:1",
+      "extent": "crop",
+      "profilerRev": 3,
+      "cropRect": [
+        1450,
+        1200,
+        5050,
+        3600
+      ],
+      "cropMatch": {
+        "gate": "4 of 5 terms within 5%",
+        "skyP25": "+2.43%",
+        "lumP50": "+3.67%",
+        "grainRelSky": "-1.74%",
+        "RoverG": "+1.94%",
+        "RoverB": "+6.27% BREACH",
+        "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+      },
+      "provenance": {
+        "driver": "process-v2",
+        "recipe": "recipes/osc-rgb-linear.js rev 2",
+        "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+        "opList": "v2 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+      },
+      "metrics": {
+        "skyP25": 0.0652192,
+        "lum": {
+          "p1": 0.0369934,
+          "p50": 0.079542,
+          "p75": 0.111569,
+          "p95": 0.274906,
+          "p99": 0.653601
+        },
+        "bandsSat": [
+          0.0986,
+          0.049,
+          0.1025,
+          0.1475,
+          0.1544,
+          0.0879
+        ],
+        "skyBandSat": 0.049,
+        "structure": {
+          "RoverG": 1.0637,
+          "RoverB": 1.19752
+        },
+        "grainRelSky": 0.114024,
+        "textureD8med": 0.0125149,
+        "fracSatLt01": 0.0374527,
+        "tilesMinSat": 0.0174359
+      },
+      "failure": "A bit too dark. Background slightly too dark, galaxy slightly too dark. Upside: this helps the core not being overexposed and bloated, so the core is good here.",
+      "lesson": "skyP25 0.0652 vs accepted 0.0939 (v1/v4), ~30% too low; also the grainiest of the set (grainRelSky 0.1140 vs 0.1037) and least fine texture (textureD8med 0.0125 vs 0.0163). But the core was BETTER here than in either accepted entry, and no metric in this contract captures core bloat, so the sky-level distance is the only thing that separates it."
+    },
+    {
+      "name": "M106_v3_2026-07-30",
+      "class": "galaxy",
+      "verdict": "rejected",
+      "gradedBy": "user",
+      "gradedOn": "2026-07-30",
+      "scale": "1:1",
+      "extent": "crop",
+      "profilerRev": 3,
+      "cropRect": [
+        1450,
+        1200,
+        5050,
+        3600
+      ],
+      "cropMatch": {
+        "gate": "4 of 5 terms within 5%",
+        "skyP25": "+2.43%",
+        "lumP50": "+3.67%",
+        "grainRelSky": "-1.74%",
+        "RoverG": "+1.94%",
+        "RoverB": "+6.27% BREACH",
+        "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+      },
+      "provenance": {
+        "driver": "process-v2",
+        "recipe": "recipes/osc-rgb-linear.js rev 2",
+        "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+        "opList": "v3 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+      },
+      "metrics": {
+        "skyP25": 0.125754,
+        "lum": {
+          "p1": 0.0751782,
+          "p50": 0.1502,
+          "p75": 0.204918,
+          "p95": 0.439763,
+          "p99": 0.776708
+        },
+        "bandsSat": [
+          0.2102,
+          0.0677,
+          0.0372,
+          0.0767,
+          0.0868,
+          0.0579
+        ],
+        "skyBandSat": 0.0372,
+        "structure": {
+          "RoverG": 1.04057,
+          "RoverB": 1.12388
+        },
+        "grainRelSky": 0.0986737,
+        "textureD8med": 0.0204104,
+        "fracSatLt01": 0.0372499,
+        "tilesMinSat": 0.0154145
+      },
+      "failure": "Everything a bit too bright. Background too bright, galaxy too bright, core completely washed. Upside: the galaxy fainter details are visible.",
+      "lesson": "skyP25 0.1258 vs accepted 0.0939, +34%. The core washout itself is invisible to this contract: fracClipHi is 0, fracClipLo is 0, no clipping is recorded, and lum p99 0.7767 is only 6% above the accepted 0.7312. Sky level is the only separating metric; on the core, global metrics blind to this."
+    },
+    {
+      "name": "M106_v4_2026-07-30",
+      "class": "galaxy",
+      "verdict": "accepted",
+      "gradedBy": "user",
+      "gradedOn": "2026-07-30",
+      "scale": "1:1",
+      "extent": "crop",
+      "profilerRev": 3,
+      "cropRect": [
+        1450,
+        1200,
+        5050,
+        3600
+      ],
+      "cropMatch": {
+        "gate": "4 of 5 terms within 5%",
+        "skyP25": "+2.43%",
+        "lumP50": "+3.67%",
+        "grainRelSky": "-1.74%",
+        "RoverG": "+1.94%",
+        "RoverB": "+6.27% BREACH",
+        "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+      },
+      "provenance": {
+        "driver": "process-v2",
+        "recipe": "recipes/osc-rgb-linear.js rev 2",
+        "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+        "opList": "v4 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+      },
+      "metrics": {
+        "skyP25": 0.0937449,
+        "lum": {
+          "p1": 0.054318,
+          "p50": 0.112414,
+          "p75": 0.155351,
+          "p95": 0.362273,
+          "p99": 0.733587
+        },
+        "bandsSat": [
+          0.243,
+          0.079,
+          0.0531,
+          0.0869,
+          0.1419,
+          0.1174
+        ],
+        "skyBandSat": 0.0531,
+        "structure": {
+          "RoverG": 1.07819,
+          "RoverB": 1.09788
+        },
+        "grainRelSky": 0.104517,
+        "textureD8med": 0.0164229,
+        "fracSatLt01": 0.048675,
+        "tilesMinSat": 0.0220369
+      }
+    }
+  ]
 }

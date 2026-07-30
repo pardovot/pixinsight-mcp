@@ -1,0 +1,34 @@
+{
+  "_fill": "Set verdict to 'accepted' or 'rejected'. If rejected, also fill failure + lesson (both required).",
+  "_role": "brighter-softer (high sky)",
+  "name": "M106_v3_2026-07-30",
+  "class": "galaxy",
+  "verdict": "rejected",
+  "gradedBy": "user",
+  "gradedOn": "2026-07-30",
+  "extent": "crop",
+  "cropRect": [
+    1450,
+    1200,
+    5050,
+    3600
+  ],
+  "cropMatch": {
+    "gate": "4 of 5 terms within 5%",
+    "skyP25": "+2.43%",
+    "lumP50": "+3.67%",
+    "grainRelSky": "-1.74%",
+    "RoverG": "+1.94%",
+    "RoverB": "+6.27% BREACH",
+    "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+  },
+  "provenance": {
+    "driver": "process-v2",
+    "recipe": "recipes/osc-rgb-linear.js rev 2",
+    "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+    "opList": "v3 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+  },
+  "failure": "Everything a bit too bright. Background too bright, galaxy too bright, core completely washed. Upside: the galaxy fainter details are visible.",
+  "lesson": "skyP25 0.1258 vs accepted 0.0939, +34%. The core washout itself is invisible to this contract: fracClipHi is 0, fracClipLo is 0, no clipping is recorded, and lum p99 0.7767 is only 6% above the accepted 0.7312. Sky level is the only separating metric; on the core, global metrics blind to this.",
+  "profile": "data/C8/M106/OSC/RGB/runs/2026-07-30/profile_v3.json"
+}

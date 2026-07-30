@@ -1,0 +1,34 @@
+{
+  "_fill": "Set verdict to 'accepted' or 'rejected'. If rejected, also fill failure + lesson (both required).",
+  "_role": "darker-punchier (low sky)",
+  "name": "M106_v2_2026-07-30",
+  "class": "galaxy",
+  "verdict": "rejected",
+  "gradedBy": "user",
+  "gradedOn": "2026-07-30",
+  "extent": "crop",
+  "cropRect": [
+    1450,
+    1200,
+    5050,
+    3600
+  ],
+  "cropMatch": {
+    "gate": "4 of 5 terms within 5%",
+    "skyP25": "+2.43%",
+    "lumP50": "+3.67%",
+    "grainRelSky": "-1.74%",
+    "RoverG": "+1.94%",
+    "RoverB": "+6.27% BREACH",
+    "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+  },
+  "provenance": {
+    "driver": "process-v2",
+    "recipe": "recipes/osc-rgb-linear.js rev 2",
+    "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+    "opList": "v2 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+  },
+  "failure": "A bit too dark. Background slightly too dark, galaxy slightly too dark. Upside: this helps the core not being overexposed and bloated, so the core is good here.",
+  "lesson": "skyP25 0.0652 vs accepted 0.0939 (v1/v4), ~30% too low; also the grainiest of the set (grainRelSky 0.1140 vs 0.1037) and least fine texture (textureD8med 0.0125 vs 0.0163). But the core was BETTER here than in either accepted entry, and no metric in this contract captures core bloat, so the sky-level distance is the only thing that separates it.",
+  "profile": "data/C8/M106/OSC/RGB/runs/2026-07-30/profile_v2.json"
+}
