@@ -7,10 +7,12 @@ one, treat it as stale.**
 
 ## 🖼️ PROCESSING AN IMAGE? Everything below this section is irrelevant.
 The rest of this file is about BUILDING the tooling (MCP server, C++ module, signing). A
-processing run needs exactly three files, read `facts.md` + `library.json` in ONE parallel call:
+processing run needs exactly three things, read `facts.md` + the class slice in ONE parallel call:
 - `.claude/skills/process-v2/SKILL.md`, the run driver (invoke `/process-v2`)
 - `docs/facts.md`, verified tool traps
-- `references/library.json`, per-class reference profiles (thresholds are PER CLASS)
+- `npm run library -- --class <class>`, the target class's reference profiles + gate status.
+  ⛔ **Never read `references/library.json` whole**: thresholds are PER CLASS, a run needs only its
+  own, and the file grows ~1.5 KB per entry.
 
 Do NOT go exploring: not the README, not `docs/architecture.md`, not old journals (deleted on
 `v2`, `main` history only), not the recipe source. `recipes/*.js` are opaque executables whose

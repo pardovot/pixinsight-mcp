@@ -6,6 +6,13 @@
 //   node scripts/add-library-entry.mjs <meta.json>          validate + append
 //   node scripts/add-library-entry.mjs --check <meta.json>  validate only, write nothing
 //   node scripts/add-library-entry.mjs --counts             per-class counts + gate status
+//   node scripts/add-library-entry.mjs --class <name>       ONE class's slice, for a run to load
+//
+// --class exists because a run only ever needs the target's class, and thresholds are PER CLASS
+// anyway. Reading the whole file costs the run every other class's entries: at ~1.5 KB per entry
+// the file reaches ~30 KB by 20 entries and would dominate a run's context for no benefit. The
+// slice drops the entryContract too (that is the writer's and the grader's business, not the
+// run's).
 //
 // meta.json: { name, class, verdict, gradedBy, gradedOn, extent, cropRect?, cropMatch?,
 //              provenance: { driver, recipe, runlog, opList }, failure?, lesson?,
@@ -24,7 +31,10 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LIB = path.join(repo, 'references', 'library.json');
 
 const argv = process.argv.slice(2);
-const mode = argv[0] === '--check' ? 'check' : argv[0] === '--counts' ? 'counts' : 'add';
+const mode = argv[0] === '--check' ? 'check'
+  : argv[0] === '--counts' ? 'counts'
+  : argv[0] === '--class' ? 'class'
+  : 'add';
 const metaPath = mode === 'add' ? argv[0] : argv[1];
 
 const lib = JSON.parse(fs.readFileSync(LIB, 'utf-8'));
@@ -53,6 +63,33 @@ function counts() {
 }
 
 if (mode === 'counts') { counts(); process.exit(0); }
+
+if (mode === 'class') {
+  const cls = argv[1];
+  if (!CLASSES.includes(cls)) {
+    console.error(`--class: must be one of ${CLASSES.join(' | ')}`);
+    process.exit(2);
+  }
+  const entries = lib.entries.filter(e => e.class === cls);
+  const accepted = entries.filter(e => e.verdict === 'accepted').length;
+  const rejected = entries.filter(e => e.verdict === 'rejected').length;
+  const gates = accepted >= GATE.accepted && rejected >= GATE.rejected;
+  console.log(JSON.stringify({
+    class: cls,
+    gates,
+    // The driver branches on this: false => SKILL section 3a calibration mode, no class distance,
+    // no class range, variants deliberately span the space instead of matching a profile.
+    mode: gates ? 'gated' : 'calibration',
+    counts: { accepted, rejected, need: gates ? null : { accepted: Math.max(0, GATE.accepted - accepted), rejected: Math.max(0, GATE.rejected - rejected) } },
+    gate: `>= ${GATE.accepted} accepted AND >= ${GATE.rejected} rejected`,
+    profilerRev: lib.profilerRev,
+    profiler: lib.profiler,
+    metricDefs: lib.metricDefs,
+    rules: lib.rules,
+    entries,
+  }, null, 1));
+  process.exit(0);
+}
 
 if (!metaPath) {
   console.error('usage: add-library-entry.mjs [--check] <meta.json> | --counts');

@@ -15,9 +15,14 @@ not a question.
 variant (section 4) and does not apply one at full res (section 5). Both were removed after they
 were measured to cost a full re-run and to select versions the user rejected.
 
-**Startup is ONE batched call**: read `docs/facts.md` + `references/library.json` in a single
-parallel tool call, and ping the watcher (`node scripts/ping-watcher.mjs`) in the same batch.
-That is the whole orientation. Do NOT read the recipe source, the README, `docs/architecture.md`,
+**Startup is ONE batched call**: read `docs/facts.md`, load the target's class slice
+(`npm run library -- --class <class>`), and ping the watcher (`node scripts/ping-watcher.mjs`), all
+in a single parallel tool call. That is the whole orientation.
+
+⛔ **Do NOT read `references/library.json` whole.** A run needs only the target's class, thresholds
+are PER CLASS anyway, and the file grows ~1.5 KB per entry. The slice also returns
+`mode: gated | calibration`, which is what section 3a branches on, so there is nothing to count by
+hand. Do NOT read the recipe source, the README, `docs/architecture.md`,
 git history, or old journals; the recipe is an opaque executable and its JSON report is the
 contract. Recipes: `recipes/`. Profiler: `scripts/profile.js`.
 
@@ -74,28 +79,47 @@ long.
 
 ## 3. Variant search on a matched full-res crop
 
-⛔ **Never downsample to search.** The 4x proxy was removed 2026-07-29: measured on real data,
-`grainRelSky` reads **1.91x lower** at 4x than at 1:1, so a proxy-selected variant sat ~1.9x over
-its class grain ceiling while its proxy numbers looked ideal, and anything multiscale (HDR layer
-counts) cannot be transferred across scales at all. The proxy cost a full re-tune every time it
-was used. Work at native scale on less area instead.
+⛔ **Never downsample to search.** Measured 4x vs 1:1: `grainRelSky` **1.918x**, `structure.RoverG`
+**+36%**, `RoverB` **+55%**. Grain AND colour trend are scale dependent, and anything multiscale
+(HDR layer counts) does not transfer across scales at all. The 4x proxy was removed 2026-07-29
+after costing a full re-tune every time it was used. Work at native scale on less area instead.
 
-Re-measured 2026-07-30 on `nsadr_linear_starless` and it is worse than grain alone: 4x vs 1:1 moves
-`grainRelSky` **1.918x** (0.01802 -> 0.00940, confirming the 1.91x figure) AND `structure.RoverG`
-**+36%** (3.495 -> 4.750) and `RoverB` **+55%** (4.219 -> 6.521). So the colour trend is scale
-dependent too, not just the grain. (The pre-v2 Sadr RUNLOG blamed that RoverG shift on output
-rounding; that diagnosis was wrong, the shift is real. Rounding separately destroyed `dB`, fixed in
-profiler v3.)
+**Cut a matched crop, framed on the object.** One call, do not hand-roll a search:
 
-**Cut a matched crop.** Take a ~1500x1000 window of the linear starless and score candidate
-locations against the FULL frame on sky p25, lum p50, `grainRelSky`, and structure RoverG/RoverB.
-Take the best match; require every term within 5%, and widen the search if none qualifies.
-Crop the stars layer at the identical rect. Record the rect in the RUNLOG.
+```
+run_script: (0,eval)(File.readTextFile("<repo>/scripts/crop-select.js"));
+            JSON.stringify(CROP_SELECT("<target>_starless"))
+```
+
+Measures the object's extent from the marginal flux profile above sky, sizes the crop from that
+extent, centres on it, then scores a bounded jitter against the FULL frame on sky p25, lum p50,
+`grainRelSky`, RoverG/RoverB. Returns `{extent, size, rect, match, gate}`. Crop the stars layer at
+the identical rect. Record `rect`, `match` and `gate` in the RUNLOG.
+
+⛔ **Framing is primary, the gate is only a filter.** The gate terms say nothing about where the
+object sits, so a crop can score **1.7%** and still be **92% empty sky with the object as a corner
+sliver**. Never let the gate pick the position, and never pick it by eye off a downsampled render.
+`CROP_SELECT` holds `offCentre` at ~0 by construction.
+
+**`margin` is what buys the gate.** The gate terms are sky statistics, so a crop framed tighter on
+the object scores WORSE. Measured, margin -> gate worst: `0.25 -> 9.5%`, `0.40 -> 7.1%`,
+`0.55 -> 5.3%`, **`0.70 -> 3.9%, all five pass`**. Default 0.70. Size derives from the measured
+object, so it adapts: a frame-filling galaxy gets a large crop, a small object a small one. When
+the object fills the frame the area saving is only ~1.7x; the crop is still correct, because its
+job is keeping the run free of a full-res apply, not raw speed.
+
+**If the gate still breaches, do NOT widen forever.** Raise `margin` once (0.85). If a term still
+breaches, take the best-centred candidate, record the breached terms and their deviations in the
+RUNLOG **and** in every resulting library entry's `cropMatch`, and proceed. A recorded breach is a
+caveat the reader can discount; a search that will not terminate is a stalled run.
+
+Evidence for all of the above, incl. the arithmetic on why a small crop cannot match both the sky
+percentiles and the highlight ladder: `data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md` §2, §8.
 
 The crop is at native resolution, so **every metric is valid on it**, grain and texture included,
 and multiscale parameters transfer to full res unchanged. Iterate here: stretch (linked), tone,
-colour. Measure with `scripts/profile.js`, compare against the target's class entries in
-`references/library.json`. Thresholds are PER CLASS, never borrow another class's numbers.
+colour. Measure with `scripts/profile.js`, compare against the class slice loaded at startup.
+Thresholds are PER CLASS, never borrow another class's numbers.
 
 What the crop still cannot see: stars outside it, and whole-frame gradient. Both are covered in
 section 5, neither needs a full-res apply of a variant.
@@ -113,7 +137,8 @@ and you re-apply it at full res, without a re-search):
 profile only means something for the pipeline that has to hit it). So expect few or zero entries.
 That is the normal state, not a failure, and not a reason to stop.
 
-A class **gates** only at **>= 3 accepted AND >= 1 rejected** entries. Count them at startup.
+The class slice returns `mode`: `gated` or `calibration`, plus `counts`. **Branch on that, never
+count by hand.** (`gated` = >= 3 accepted AND >= 1 rejected.)
 
 - **Class gates**: run section 3 as written, score against the class profile.
 - **Class does not gate (calibration mode)**: compute **no** class distance and quote **no** class
