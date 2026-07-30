@@ -16,6 +16,12 @@ data/**
 !data/SCOREBOARD.md
 !data/**/RUNLOG.md
 !data/**/variants/*.js
+# An entry's metrics are DERIVED from its profiler json and its op list, so those two are part of
+# the provenance, not run scratch: without them an entry cannot be re-derived or audited.
+!data/**/oplists.json
+!data/**/apply-ops.js
+!data/**/profile_*.json
+!data/**/meta_*.json
 # The pre-v2 archive stays out entirely: input-only, and its markdown records a dead pipeline.
 data/_pre-v2/**
 

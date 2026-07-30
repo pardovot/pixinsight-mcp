@@ -1,0 +1,34 @@
+{
+  "_fill": "Set verdict to 'accepted' or 'rejected'. If rejected, also fill failure + lesson (both required).",
+  "_role": "alt-palette (v1 tone)",
+  "name": "M106_v4_2026-07-30",
+  "class": "galaxy",
+  "verdict": "accepted",
+  "gradedBy": "user",
+  "gradedOn": "2026-07-30",
+  "extent": "crop",
+  "cropRect": [
+    1450,
+    1200,
+    5050,
+    3600
+  ],
+  "cropMatch": {
+    "gate": "4 of 5 terms within 5%",
+    "skyP25": "+2.43%",
+    "lumP50": "+3.67%",
+    "grainRelSky": "-1.74%",
+    "RoverG": "+1.94%",
+    "RoverB": "+6.27% BREACH",
+    "note": "galaxy-centred crop; full-frame RoverB is a sky statistic on a ~92%-sky frame. See RUNLOG section 2."
+  },
+  "provenance": {
+    "driver": "process-v2",
+    "recipe": "recipes/osc-rgb-linear.js rev 2",
+    "runlog": "data/C8/M106/OSC/RGB/runs/2026-07-30/RUNLOG.md",
+    "opList": "v4 @ data/C8/M106/OSC/RGB/runs/2026-07-30/oplists.json"
+  },
+  "failure": "",
+  "lesson": "",
+  "profile": "data/C8/M106/OSC/RGB/runs/2026-07-30/profile_v4.json"
+}
