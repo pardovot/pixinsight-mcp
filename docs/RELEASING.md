@@ -88,11 +88,22 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
   - The fat file is **ad-hoc code-signed** (`codesign -s -`) right after `lipo`, because Apple
     Silicon will not load unsigned code. That must happen **before** `module/sign.mjs`, whose
     signature covers the file bytes.
-- **PCL cache: warm it from the default branch.** Actions caches are readable only by the ref
-  that wrote them, their children, and the default branch. Release runs are tag-triggered, so
-  the cache a release writes is scoped to `refs/tags/module-v*` and **no later release can read
-  it**: every publish rebuilt PCL from scratch on all three OSes (~9-13 min each) until this was
-  fixed. `module-build.yml` therefore runs on a twice-weekly `schedule` (default branch, and
-  under the 7-day eviction window), and those caches are visible to tag runs. If a release still
-  shows a ~13 min "Build PCL static library" step, check that the scheduled run is alive before
-  blaming the key.
+- **PCL is cached as a release asset, not with `actions/cache`.** The static library depends only
+  on the PCL commit, never on our branch, but Actions caches are readable only by the ref that
+  wrote them, their children, and the default branch, and that cannot be turned off (cache entries
+  are attacker-writable, so the partitioning is a security boundary). Release runs are
+  tag-triggered, so every cache a release wrote was scoped to `refs/tags/module-v*` and never read
+  again: `module-v1.3.2` and `v1.3.3` both rebuilt PCL from scratch on all three OSes (~9-13 min
+  each), and their cache entries show `last_accessed_at == created_at`.
+  - `module-build.yml` instead keeps `pcl-<OS>-<pcl-sha12>.tar.gz` on the **`pcl-sdk`** prerelease.
+    Release assets are repo-scoped: one upload per PCL commit serves every branch, tag, PR and
+    release, with no eviction and no dependency on which branch is the default. A job that finds
+    its asset skips the PCL build entirely; a job that does not, builds it and uploads it, then
+    deletes assets for superseded PCL commits.
+  - `pcl-sdk` is **not a product release**. Don't delete it, and don't confuse it with
+    `module-v*` tags. Deleting it just costs one rebuild per OS.
+  - Fork PRs get a read-only token, so they restore but never publish. That is fine, they simply
+    build PCL themselves.
+  - If a run still shows a long "Build PCL static library" step, check whether PixInsight
+    published a new PCL commit: a changed SHA is a new asset name, and the first run after that
+    legitimately rebuilds.
