@@ -180,8 +180,9 @@ The two claimed blockers:
 What holds up: the signature is stock Ed25519 over SHA-512, there is no
 standalone signing tool in `bin/`, and `Security` lives in the closed core.
 
-See [`docs/SIGNING.md`](../docs/SIGNING.md) for the construction, and for the
-one piece that remains unrecovered, the `.xri` repository signature.
+See [`docs/SIGNING.md`](../docs/SIGNING.md) for both constructions: code files
+(modules, scripts) and the `.xri` repository index, which signs a canonical
+rendering of its root element rather than the file bytes.
 
 ### The full build flow
 
