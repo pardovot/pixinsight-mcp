@@ -8,8 +8,11 @@ name: Module Release (publish)
 #   1. preflight - assert the tag matches module/src/Version.h (the guard against
 #      forgetting to bump, or republishing a version PixInsight won't re-deliver).
 #   2. build     - reuse module-build.yml to build all three OS binaries.
-#   3. publish   - assemble pi-repo/ (UNSIGNED, pre-CDP - see docs/POST-CDP-SIGNING.md)
-#      and force-push it to the single-commit `dist` branch.
+#   3. publish   - sign each binary, assemble pi-repo/, and force-push it to the
+#      single-commit `dist` branch. Signing runs here, with no PixInsight on the
+#      runner: see docs/SIGNING.md. Needs the PI_SIGN_KEY and PI_SIGN_DEVELOPER_ID
+#      repository secrets; without them the job fails rather than publishing
+#      unsigned modules, which PixInsight would refuse to install anyway.
 #
 # To cut a release:  bump module/src/Version.h, commit, then
 #   git tag module-v<version> && git push --tags
@@ -73,14 +76,35 @@ jobs:
           pattern: MCPWatcher-pxm-*
           merge-multiple: true
 
+      # One directory per platform: the signature file name is derived from the
+      # binary, so all three in one directory would collide on a single .xsgn.
       - name: Stage binaries for packaging
         run: |
-          mkdir -p module/build
-          find dl -type f \( -name 'MCPWatcher-pxm.dll' -o -name 'MCPWatcher-pxm.so' \
-               -o -name 'MCPWatcher-pxm.dylib' \) -exec cp {} module/build/ \;
-          echo "Staged:"; ls -l module/build
+          for pair in "windows:dll" "linux:so" "macosx:dylib"; do
+            os="${pair%%:*}"; ext="${pair##*:}"
+            found=$(find dl -type f -name "MCPWatcher-pxm.${ext}" | head -1)
+            if [ -n "$found" ]; then
+              mkdir -p "module/build/${os}"
+              cp "$found" "module/build/${os}/MCPWatcher-pxm.${ext}"
+            fi
+          done
+          echo "Staged:"; find module/build -type f
 
-      - name: Assemble pi-repo (unsigned, pre-CDP)
+      - name: Sign each platform's module
+        env:
+          PI_SIGN_KEY: ${{ secrets.PI_SIGN_KEY }}
+          PI_SIGN_DEVELOPER_ID: ${{ secrets.PI_SIGN_DEVELOPER_ID }}
+        run: |
+          if [ -z "$PI_SIGN_KEY" ]; then
+            echo "::error::PI_SIGN_KEY is not set. An unsigned module cannot be installed; refusing to publish."
+            exit 1
+          fi
+          find module/build -type f \( -name '*.dll' -o -name '*.so' -o -name '*.dylib' \) \
+            -exec node module/sign.mjs {} +
+          find module/build -type f \( -name '*.dll' -o -name '*.so' -o -name '*.dylib' \) \
+            -exec node module/sign.mjs --verify {} +
+
+      - name: Assemble pi-repo
         run: node scripts/build-pi-repo.mjs
 
       - name: Publish pi-repo to the dist branch

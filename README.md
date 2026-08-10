@@ -65,7 +65,7 @@ user-private; do not point it at a shared or synced location.
 1. **MCP server** (npm) - `@pardovot/pixinsight-mcp`
 2. **PixInsight update repo** (`pi-repo/`) - ships the **native module** (`type="module"`,
    installed into `bin/`) via PixInsight's own updates mechanism, so no source build is needed.
-   Currently built **unsigned** pending Certified PixInsight Developer registration - see
+   Modules are **signed** with a Certified PixInsight Developer identity - see
    [Update repository status](#update-repository-status)
 3. **Native C++ module** (`module/`) - **the runtime**
 
@@ -139,15 +139,14 @@ repository URL, then `Resources > Updates > Check for Updates`, PixInsight insta
 module into `bin/` and auto-loads it (no source build, no compiler).
 
 > ⚠️ **Not usable by others yet** - the repository in `pi-repo/` is **not published at a public
-> URL**. Build from source instead. See [Update repository status](#update-repository-status) for
-> why it currently ships unsigned.
+> URL**. Build from source instead. See [Update repository status](#update-repository-status).
 
 **Build the native module from source** (needs a C++ toolchain: MSVC on Windows, g++/clang on macOS/Linux):
 
 ```bash
 npm run module:pcl       # once, builds the PCL static library from PixInsight's PCL source
 npm run module:build     # regenerates embedded handlers, then compiles the module
-npm run module:sign      # prompts for password; produces MCPWatcher-pxm.xsgn (~5 s)
+npm run module:sign      # produces MCPWatcher-pxm.xsgn (no PixInsight needed)
 npm run module:install   # needs administrator (Windows) / sudo (macOS, Linux), PixInsight closed
 ```
 
@@ -179,19 +178,17 @@ Ask Claude to work on an image. The intended interaction is **goal-driven, not s
 
 ## Update repository status
 
-Distribution signing is **deliberately disabled** (2026-07-24). `npm run repo:build` emits an
-**unsigned** `updates.xri` and a binary-only zip with no `.xsgn`.
+**Modules are signed** with the Certified PixInsight Developer identity `OfirPardo`, which
+resolves by name on any install (it replaced a *local* identity, which was trusted only on
+machines where this license is activated and would have been rejected outright elsewhere).
 
-The reason is counterintuitive enough to be worth stating: the only signing identity available
-here is a **local** one, and PixInsight **rejects** an untrusted-signed repository outright on
-another machine, whereas an **unsigned** one merely prompts for confirmation and then installs.
-So for distribution, no signature beats a local signature.
+Signing runs in Node with **no PixInsight involved**, so CI signs its own releases; PixInsight is
+needed once, to export the key. The construction, how it was established, and the security
+caveats are in [`docs/SIGNING.md`](docs/SIGNING.md).
 
-> Do **not** run `node module/sign.mjs pi-repo/updates.xri` while this holds. Local module
-> signing and `npm run module:install` are unaffected and still use the signed module.
-
-`sign.mjs` and `npm run module:sign` are kept intact. Re-enable checklist once a Certified
-PixInsight Developer identity exists: [`docs/POST-CDP-SIGNING.md`](docs/POST-CDP-SIGNING.md).
+`updates.xri` itself still ships **unsigned**: that signature uses a different construction that
+has not been recovered. The practical cost is one confirmation prompt for the repository, since
+it is the *module* that PixInsight refuses to install when unsigned.
 
 ---
 
@@ -277,18 +274,21 @@ module/               native PixInsight module, THE RUNTIME
   gen-handlers.mjs    regenerates BridgeHandlersJS.h from the JS watcher
   build-pcl.mjs       builds the PCL static library (once)
   build.mjs           regenerate handlers → compile
-  sign.mjs            sign via PixInsight's native CLI (~5 s)
+  sign.mjs            sign the module in Node (no PixInsight)
+  signing.mjs         the signing construction, key loading, .xsgn format
+  ed25519.mjs         Ed25519 from an expanded key, which node:crypto cannot do
+  export-signing-key.js  one-time key export, run inside PixInsight
   install.mjs         install module + .xsgn (admin/root)
 pjsr/
   pixinsight-mcp-watcher.js   JS watcher, SOURCE OF TRUTH for handler logic
-pi-repo/              PixInsight update repository (currently unsigned - see above)
+pi-repo/              PixInsight update repository (signed modules, unsigned index)
 docs/
-  POST-CDP-SIGNING.md re-enable checklist for distribution signing
+  SIGNING.md          how signing works, and what is still unrecovered
   RELEASING.md        tag-driven module release
   bridge-protocol.md  bridge wire format
 scripts/
   ping-watcher.mjs    bridge round-trip test
-  build-pi-repo.mjs   rebuild the update repo zip (leave updates.xri unsigned)
+  build-pi-repo.mjs   rebuild the update repo zip (packages each .xsgn)
 .github/workflows/    ci, module-build, module-release
 ```
 

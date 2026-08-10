@@ -131,80 +131,63 @@ defines `__PCL_WINDOWS __PCL_AVX2 __PCL_FMA` etc. (encoded in `CMakeLists.txt`).
 ## Signing
 
 `AllowUnsignedModuleInstallation = false` by default, unsigned modules are
-**blocked** (stricter than scripts). So a build must be signed with a CPD
-identity before `install.mjs` will accept it.
+**blocked** (stricter than scripts). So a build must be signed before
+`install.mjs` will accept it. The identity is the CPD id `OfirPardo`, which
+resolves by name on any install.
 
-Signing is **fully automatable**: the core application accepts signing arguments
-directly on the command line, no GUI, no CodeSign dialog, no PJSR script.
-
-```
-npm run module:sign                       # sign the built module
-node module/sign.mjs pi-repo/updates.xri  # sign an update repo file in place
-```
-
-`sign.mjs` prompts for the password (never echoed), then runs:
+Signing needs **no PixInsight**. `sign.mjs` computes the signature directly:
 
 ```
-PixInsight.exe -n=7 --automation-mode --no-startup-scripts --no-modules ^
-  --xssk-file="<keys>.xssk" --xssk-password="..." ^
-  --sign-module-file="<module>.dll" --force-exit
+npm run module:sign                    # sign the built module
+node module/sign.mjs <file> [<file>…]  # sign specific binaries
+node module/sign.mjs --verify <file>   # check a file against its .xsgn
 ```
 
-`--no-modules --no-startup-scripts` cut this to **~5 seconds**. Errors go to
-stdout (`*** Fatal Error: LoadSigningKeysFile(): wrong password ...`).
+Any platform's binary can be signed on any platform, and CI signs its own
+releases. PixInsight is required exactly once, to export the key
+(`module/export-signing-key.js`).
 
-> ⚠️ **On Windows this MUST be launched through `cmd` with the value arguments
-> quoted** (`--xssk-password="..."`), which is what `sign.mjs` does. If you shell
-> out with `spawnSync(exe, [args])` and no shell, Node synthesises the command
-> line and leaves `--xssk-*=value` **unquoted** when the value has no spaces.
-> PixInsight then loads the key fine (a *wrong* password still errors cleanly)
-> but **crashes during the actual sign**, `STATUS_STACK_BUFFER_OVERRUN`
-> (`0xC0000409`), with no message, because a `-n --automation-mode` process has
-> no console. The quoting is the fix; this cost real debugging time.
-
-`--sign-xml-file` signs `.xri` **in place**, so the same command re-signs
-`pi-repo/updates.xri` after `scripts/build-pi-repo.ps1` rebuilds the zip, replacing
-what used to be a manual step.
-
-Success is detected by the **artifact**, a freshly written `.xsgn`, not the exit
-code, which is unreliable for this GUI process.
+Full reference, including the construction and how it was proven:
+**[`docs/SIGNING.md`](../docs/SIGNING.md)**.
 
 > **Keys file is `.xssk`** ("PixInsight XML Secure Signing Keys"), not `.xkeys`.
 > It is XML holding an Ed25519 key pair, with the private key encrypted under a
 > "custom algorithm based on AES-256" (Pleiades' wording; KDF unpublished).
 
-> **Password exposure:** `--xssk-password` is visible in the process table for the
-> ~5 s the process lives. Pleiades' own guidance is to use it only on a trusted
-> machine. Omitting it makes PixInsight prompt interactively instead.
+> **The password is only needed once**, by `export-signing-key.js`, and it is
+> typed into a PixInsight dialog. Signing itself never sees it, so the old
+> hazards (password visible in the process table, `cmd` mangling `"` or `%`)
+> are gone with the CLI round-trip that created them.
 
-> **Password characters (Windows):** the sign command goes through `cmd`, which
-> expands `%PI_SIGN_PASSWORD%`, a password containing `"` or `%` will be
-> mangled by cmd's quoting/expansion and fail. If yours does, sign on
-> macOS/Linux (argv is passed verbatim there) or change the key's password.
+### Signing outside PixInsight, retracted
 
-### Why signing cannot be done outside PixInsight
+This section used to argue that signing outside PixInsight was impractical. It
+was wrong, and the reasoning is kept here because the *shape* of the error is
+worth remembering.
 
-Worth recording, because it looks tractable and is not:
+The two claimed blockers:
 
-- The signature is **Ed25519** (64-byte signature, 32-byte public keys) over a
-  **SHA-512** digest, both stock, trivially reimplementable.
-- **Blocker 1:** the `.xssk` private key is encrypted with an undocumented KDF, so
-  the key cannot be extracted without the core app.
-- **Blocker 2:** the *module* signing preimage is undocumented. (The *script*
-  preimage is fully specified at
-  [ScriptCodeSigning](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html);
-  the module equivalent never was.) Brute-forcing 943 plausible constructions
-  against a known-good Pleiades signature found no match.
-- There is **no standalone signing tool** in `bin/`, and the `Security`
-  implementation lives in the closed core binary, not in the open PCL source.
+- **"The `.xssk` private key is encrypted with an undocumented KDF."** True, and
+  irrelevant. `Security.loadSigningKeysFile()` hands the decrypted key straight
+  to PJSR as a `ByteArray`. The KDF never had to be broken, only bypassed. The
+  blocker was stated in terms of the obstacle rather than the goal.
+- **"The module preimage is undocumented, 943 constructions found no match."**
+  Also true, but the search had been run against a *fixed* known-good Pleiades
+  signature. Once the key was in hand, probe signatures could be generated over
+  chosen inputs on demand, and a ~1M-candidate search found the construction in
+  95 seconds. The earlier failure measured the search, not the problem.
 
-Since `--sign-module-file` exists and takes ~5 s, none of this is worth pursuing.
+What holds up: the signature is stock Ed25519 over SHA-512, there is no
+standalone signing tool in `bin/`, and `Security` lives in the closed core.
+
+See [`docs/SIGNING.md`](../docs/SIGNING.md) for the construction, and for the
+one piece that remains unrecovered, the `.xri` repository signature.
 
 ### The full build flow
 
 ```
 build.mjs     regenerate embedded handlers -> compile -> warn "unsigned"
-sign.mjs      prompt password -> native CLI signing (~5 s) -> produce .xsgn
+sign.mjs      sign in Node -> produce .xsgn -> verify it before reporting success
 install.mjs   verify module + .xsgn, and that .xsgn is NOT older than the module
               -> copy both to <PixInsight>\bin  (ADMIN, PixInsight closed)
 ```

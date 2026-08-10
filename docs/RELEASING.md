@@ -71,9 +71,10 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
 - Why an orphan `dist` branch (not `main`): the built binaries never accumulate in `main`'s
   history, and CI force-pushes `dist` fresh each release so it stays a single commit. `main`
   never gets force-pushed.
-- **Signing stays disabled until CDP** - see `docs/POST-CDP-SIGNING.md`. Both the module and
-  `updates.xri` ship unsigned (a local-identity signature is rejected on other machines; an
-  unsigned repo only prompts, then installs).
+- **Modules are signed by CI** - see `docs/SIGNING.md`. Signing runs in Node with no PixInsight
+  on the runner, using the `PI_SIGN_KEY` and `PI_SIGN_DEVELOPER_ID` secrets; the release job
+  fails if they are missing rather than publishing modules nobody can install. `updates.xri`
+  itself still ships unsigned (construction unrecovered), which only prompts on install.
 - Native modules are **per-OS compiled binaries** (`.dll`/`.so`/`.dylib`) - there is no
   universal binary. Each OS gets its own `<platform>` package in `updates.xri`; the app
   installs only the one matching the user's OS/arch.
