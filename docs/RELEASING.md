@@ -79,12 +79,17 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
 - Native modules are **per-OS compiled binaries** (`.dll`/`.so`/`.dylib`). Each OS gets its own
   `<platform>` package in `updates.xri`; the app installs only the one matching the user's
   OS/arch.
-- **macOS is a universal binary, declared `arch="all"`.** PixInsight's repository format has no
-  `arm64` architecture token (legal values: `noarch`/`any`/`all`/`x86`/`i386`/`i586`/`i686`/
-  `x86_64`/`x64`), so Apple Silicon can only be served by one fat binary that is
-  architecture-independent by construction. `module/build.mjs` builds both slices on the macOS
-  runner and joins them with `lipo`; `scripts/build-pi-repo.mjs` **refuses to publish** a thin
-  arm64 dylib and downgrades a thin x86_64 one to `arch="x64"` with a warning.
+- **macOS is a universal binary, declared `arch="all"`.** `module/build.mjs` builds both slices on
+  the macOS runner and joins them with `lipo`; `scripts/build-pi-repo.mjs` **refuses to publish** a
+  thin arm64 dylib and downgrades a thin x86_64 one to `arch="x64"` with a warning.
+  - Why one package and not two: on macOS the update system picks by **which PixInsight build the
+    user installed, not by their CPU** (an x64 PixInsight on Apple Silicon takes x64 packages), and
+    a fat binary satisfies both builds from one artifact with one signature. It is also what RC
+    Astro ships for 1.9.4, and the documented `arch` tokens are
+    `noarch`/`any`/`all`/`x86`/`i386`/`i586`/`i686`/`x86_64`/`x64`, with no `arm64`.
+  - Per-arch macOS packages are nevertheless possible: StarNet ships separate macOS x64 and ARM64
+    lanes from one repository, because those two builds differ beyond the instruction set (ONNX/ORT
+    vs CoreML). Split only if we ever have a difference like that to express.
   - The fat file is **ad-hoc code-signed** (`codesign -s -`) right after `lipo`, because Apple
     Silicon will not load unsigned code. That must happen **before** `module/sign.mjs`, whose
     signature covers the file bytes.
