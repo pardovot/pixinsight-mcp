@@ -73,6 +73,45 @@ function writeBuildTimestamp() {
   return stamp;
 }
 
+/**
+ * macOS: configure and build each slice on its own, against that slice's PCL
+ * library, then join them into one universal .dylib. Cross-compiling the other
+ * slice works on either host - clang carries both, and CI never runs the
+ * binary - so one runner produces the whole thing.
+ */
+function buildMacUniversal(env) {
+  const slices = [];
+  for (const target of cfg.macTargets) {
+    console.log(`\n--- ${target.arch} (${target.appleArch}) ---`);
+    const sliceDir = path.join(cfg.buildDir, target.arch);
+    const sliceEnv = { ...env, PCLLIBDIR: cfg.pclLibDirFor(target.arch) };
+    console.log(`  PCLLIBDIR=${sliceEnv.PCLLIBDIR}`);
+    run(
+      cfg.cmake,
+      [
+        "-S", cfg.moduleDir,
+        "-B", sliceDir,
+        "-DCMAKE_BUILD_TYPE=Release",
+        `-DCMAKE_OSX_ARCHITECTURES=${target.appleArch}`,
+        `-DCMAKE_OSX_DEPLOYMENT_TARGET=${cfg.macDeploymentTarget}`,
+      ],
+      { env: sliceEnv },
+    );
+    run(cfg.cmake, ["--build", sliceDir, "--config", "Release"], { env: sliceEnv });
+    slices.push(path.join(sliceDir, cfg.moduleName));
+  }
+
+  console.log("\nJoining slices into a universal binary ...");
+  run("lipo", ["-create", ...slices, "-output", cfg.modulePath]);
+
+  // Apple Silicon refuses to load unsigned code, and lipo output carries no
+  // signature. Ad-hoc signing satisfies that. It MUST happen here, before
+  // module/sign.mjs: the PixInsight signature covers the file bytes, so any
+  // later modification invalidates it.
+  run("codesign", ["--force", "--sign", "-", cfg.modulePath]);
+  run("lipo", ["-info", cfg.modulePath]);
+}
+
 function main() {
   const v = syncVersion();
   console.log(`Module version: ${v.version}${v.action ? ` [${v.action}]` : ""}`);
@@ -82,8 +121,8 @@ function main() {
   console.log(`  ${output} (${lines} lines)`);
   console.log(`Build timestamp: ${writeBuildTimestamp()}`);
 
-  if (!fs.existsSync(cfg.pclLibPath)) {
-    console.warn(`[WARN] ${cfg.pclLibName} not found in ${cfg.pclLibDir} - run build-pcl first.`);
+  for (const libPath of cfg.pclLibPaths) {
+    if (!fs.existsSync(libPath)) console.warn(`[WARN] ${libPath} not found - run build-pcl first.`);
   }
 
   let env = { ...process.env };
@@ -112,12 +151,16 @@ function main() {
 
   console.log("Configuring ...");
   console.log(`  PCLINCDIR=${cfg.pclIncDir}`);
-  console.log(`  PCLLIBDIR=${cfg.pclLibDir}`);
-  const generator = cfg.isWindows ? ["-G", "Ninja"] : [];
-  run(cfg.cmake, ["-S", cfg.moduleDir, "-B", cfg.buildDir, ...generator, "-DCMAKE_BUILD_TYPE=Release"], { env });
+  if (cfg.isMac) {
+    buildMacUniversal(env);
+  } else {
+    console.log(`  PCLLIBDIR=${cfg.pclLibDir}`);
+    const generator = cfg.isWindows ? ["-G", "Ninja"] : [];
+    run(cfg.cmake, ["-S", cfg.moduleDir, "-B", cfg.buildDir, ...generator, "-DCMAKE_BUILD_TYPE=Release"], { env });
 
-  console.log("Building ...");
-  run(cfg.cmake, ["--build", cfg.buildDir, "--config", "Release"], { env });
+    console.log("Building ...");
+    run(cfg.cmake, ["--build", cfg.buildDir, "--config", "Release"], { env });
+  }
 
   if (!fs.existsSync(cfg.modulePath)) {
     console.warn(`\n[WARN] Build finished but ${cfg.moduleName} was not produced in ${cfg.buildDir}.`);

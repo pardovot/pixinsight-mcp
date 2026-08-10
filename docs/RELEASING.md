@@ -74,7 +74,25 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
 - **Modules are signed by CI** - see `docs/SIGNING.md`. Signing runs in Node with no PixInsight
   on the runner, using the `PI_SIGN_KEY` and `PI_SIGN_DEVELOPER_ID` secrets; the release job
   fails if they are missing rather than publishing modules nobody can install. `updates.xri`
-  itself still ships unsigned (construction unrecovered), which only prompts on install.
-- Native modules are **per-OS compiled binaries** (`.dll`/`.so`/`.dylib`) - there is no
-  universal binary. Each OS gets its own `<platform>` package in `updates.xri`; the app
-  installs only the one matching the user's OS/arch.
+  itself is signed too, by the `Sign the repository index` step (`npm run repo:sign`), using the
+  same secrets.
+- Native modules are **per-OS compiled binaries** (`.dll`/`.so`/`.dylib`). Each OS gets its own
+  `<platform>` package in `updates.xri`; the app installs only the one matching the user's
+  OS/arch.
+- **macOS is a universal binary, declared `arch="all"`.** PixInsight's repository format has no
+  `arm64` architecture token (legal values: `noarch`/`any`/`all`/`x86`/`i386`/`i586`/`i686`/
+  `x86_64`/`x64`), so Apple Silicon can only be served by one fat binary that is
+  architecture-independent by construction. `module/build.mjs` builds both slices on the macOS
+  runner and joins them with `lipo`; `scripts/build-pi-repo.mjs` **refuses to publish** a thin
+  arm64 dylib and downgrades a thin x86_64 one to `arch="x64"` with a warning.
+  - The fat file is **ad-hoc code-signed** (`codesign -s -`) right after `lipo`, because Apple
+    Silicon will not load unsigned code. That must happen **before** `module/sign.mjs`, whose
+    signature covers the file bytes.
+- **PCL cache: warm it from the default branch.** Actions caches are readable only by the ref
+  that wrote them, their children, and the default branch. Release runs are tag-triggered, so
+  the cache a release writes is scoped to `refs/tags/module-v*` and **no later release can read
+  it**: every publish rebuilt PCL from scratch on all three OSes (~9-13 min each) until this was
+  fixed. `module-build.yml` therefore runs on a twice-weekly `schedule` (default branch, and
+  under the 7-day eviction window), and those caches are visible to tag runs. If a release still
+  shows a ~13 min "Build PCL static library" step, check that the scheduled run is alive before
+  blaming the key.

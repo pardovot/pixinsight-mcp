@@ -18,10 +18,10 @@
 //     alphabetical. Our modules ship no entitlements, so this is untested
 //     ground rather than a known-good default.
 //
-// The .xri repository signature uses a DIFFERENT, still-unrecovered
-// construction over a canonical serialisation of the document; see
-// docs/SIGNING.md. Repository files therefore still ship unsigned, which only
-// prompts on install, whereas an unsigned module is rejected outright.
+// The .xri repository index uses a DIFFERENT construction, over a canonical
+// rendering of the root element rather than the file bytes. It lives in
+// module/xml-canonical.mjs; do not try to sign an .xri with the code-file
+// preimage above. See docs/SIGNING.md.
 
 import fs from "node:fs";
 import os from "node:os";

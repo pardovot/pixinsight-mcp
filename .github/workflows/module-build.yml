@@ -18,6 +18,11 @@ name: Module Build (compile check)
 # projects (src/pcl/{linux,macosx}/g++) but NOT the Windows vc17 project
 # (src/pcl/windows/vc17/PCL.vcxproj is absent). We vendor it in
 # module/vendor/pcl-vc17/ and overlay it into the clone below (Windows only).
+#
+# NOTE - macOS is a UNIVERSAL build: the runner (Apple Silicon) builds both the
+# arm64 and the x86_64 slice, of PCL and of the module, and lipo joins them.
+# The extra slice is why one runner can serve both architectures; clang
+# cross-compiles either way and CI never executes the binary.
 
 on:
   # Reusable: the release workflow (module-release.yml) calls this to build all
@@ -29,13 +34,18 @@ on:
         description: "PixInsight/PCL git ref (blank = default branch)"
         required: false
         default: ""
+  # Keeps the PCL cache warm on the DEFAULT BRANCH - see the cache note below.
+  # Twice weekly, because Actions evicts a cache after 7 days without a read and
+  # a weekly schedule would sit exactly on that boundary.
+  schedule:
+    - cron: "0 5 * * 1,4"
   pull_request:
     paths:
       - "module/**"
       - "pjsr/pixinsight-mcp-watcher.js"
       - ".github/workflows/module-build.yml"
   push:
-    branches: [main]
+    branches: [main, v2]
     paths:
       - "module/**"
       - "pjsr/pixinsight-mcp-watcher.js"
@@ -82,12 +92,23 @@ jobs:
           cp module/vendor/pcl-vc17/PCL.vcxproj module/vendor/pcl-vc17/PCL.vcxproj.filters \
              pcl/src/pcl/windows/vc17/
 
+      # CACHE SCOPING - why this must be warmed from the default branch:
+      # a cache is readable only by the ref that wrote it, its child refs, and
+      # the default branch. Release runs are triggered by a TAG, so the cache
+      # they write (ref refs/tags/module-vX) is unreadable by the next release,
+      # and every publish rebuilt PCL from scratch on all three OSes (~13 min
+      # each; measured on module-v1.3.2 and v1.3.3, whose caches show
+      # last_accessed_at == created_at, i.e. never read). Caches written by a
+      # run on the default branch ARE visible to tags, so the scheduled run
+      # above populates it and every later release restores it.
+      # -v2: the macOS layout changed to one PCL library per slice; the old
+      # entries hold a single arm64 lib at the previous path.
       - name: Restore cached PCL static library
         id: pcl-cache
         uses: actions/cache/restore@v4
         with:
           path: ~/pcl-build
-          key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
+          key: pcl-v2-${{ matrix.os }}-${{ env.PCL_SHA }}
 
       - name: Install build tools (Linux)
         if: runner.os == 'Linux'
@@ -130,10 +151,29 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/pcl-build
-          key: pcl-${{ matrix.os }}-${{ env.PCL_SHA }}
+          key: pcl-v2-${{ matrix.os }}-${{ env.PCL_SHA }}
 
       - name: Build module
         run: node module/build.mjs
+
+      # macOS publishes ONE universal package (arch="all"), because PixInsight's
+      # repository format has no arm64 token. Catch a half-built binary here
+      # rather than at publish time - scripts/build-pi-repo.mjs refuses it, but
+      # by then the release job has already burned three PCL builds.
+      - name: Verify the macOS module is universal and signed
+        if: runner.os == 'macOS'
+        run: |
+          dylib=module/build/MCPWatcher-pxm.dylib
+          archs=$(lipo -archs "$dylib")
+          echo "slices: $archs"
+          for want in x86_64 arm64; do
+            case " $archs " in
+              *" $want "*) ;;
+              *) echo "::error::$dylib has no $want slice (got: $archs)"; exit 1 ;;
+            esac
+          done
+          # Apple Silicon will not load unsigned code; build.mjs ad-hoc signs it.
+          codesign --verify --verbose "$dylib"
 
       - name: Upload module artifact
         if: always()

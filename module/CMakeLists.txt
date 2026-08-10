@@ -84,8 +84,19 @@ else()
   endif()
 
   target_compile_options(MCPWatcher PRIVATE -O3 -fPIC -Wall)
+  if(APPLE)
+    # One slice per configure: build.mjs passes CMAKE_OSX_ARCHITECTURES and joins
+    # the results with lipo. Flags mirror PCL's own macosx/g++ makefiles, where
+    # the x86_64 slice is built with SSE4.2 and WITHOUT __PCL_AVX2 - the module
+    # must not disagree with the library it links against.
+    if(NOT CMAKE_OSX_ARCHITECTURES)
+      set(CMAKE_OSX_ARCHITECTURES "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+      target_compile_options(MCPWatcher PRIVATE -msse4.2)
+    endif()
   # AVX2/FMA is an x86-64 flag set; Apple Silicon / ARM builds must not use it.
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     target_compile_definitions(MCPWatcher PRIVATE __PCL_AVX2 __PCL_FMA)
     target_compile_options(MCPWatcher PRIVATE -mavx2 -mfma)
   endif()

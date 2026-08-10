@@ -90,16 +90,23 @@ table in the top-level README. Nothing is hardcoded to one machine.
 | | Compiler | PCL built with |
 |---|---|---|
 | **Windows** *(verified)* | MSVC (VS 2017+, any edition, located via `vswhere`) | MSBuild + `src/pcl/windows/vc17/PCL.vcxproj` |
-| **macOS** *(unverified)* | clang/g++ | `make` in `src/pcl/macosx/g++` |
-| **Linux** *(unverified)* | g++ | `make` in `src/pcl/linux/g++` |
+| **macOS** *(builds in CI, never loaded)* | clang, **both slices** | `make -f makefile-{x64,arm64}` in `src/pcl/macosx/g++` |
+| **Linux** *(builds in CI, never loaded)* | g++ | `make` in `src/pcl/linux/g++` |
+
+macOS produces ONE universal `.dylib`: each slice is configured and built
+separately (its own PCL library, `CMAKE_OSX_ARCHITECTURES`), then joined with
+`lipo` and ad-hoc code-signed, because Apple Silicon will not load unsigned
+code. PixInsight's repository format has no `arm64` architecture token, so a fat
+binary is the only way to serve both Macs, see `docs/RELEASING.md`.
 
 The **PCL SDK ships inside PixInsight**: headers in `<PixInsight>/include/pcl`,
 full source in `<PixInsight>/src/pcl`, and per-platform project files as above.
 The module itself builds with CMake everywhere.
 
-> The macOS/Linux branches are written from PixInsight's own bundled makefiles
-> but have not been run yet, the module has only been built on Windows so far.
-> Expect to debug rather than to author when porting.
+> The macOS/Linux branches are written from PixInsight's own bundled makefiles.
+> They compile green in CI (`.github/workflows/module-build.yml`) and ship in
+> releases, but no one has yet loaded either binary into a running PixInsight on
+> that platform. Unverified means untested at runtime, not unbuilt.
 
 Steps:
 
@@ -180,8 +187,9 @@ The two claimed blockers:
 What holds up: the signature is stock Ed25519 over SHA-512, there is no
 standalone signing tool in `bin/`, and `Security` lives in the closed core.
 
-See [`docs/SIGNING.md`](../docs/SIGNING.md) for the construction, and for the
-one piece that remains unrecovered, the `.xri` repository signature.
+See [`docs/SIGNING.md`](../docs/SIGNING.md) for both constructions: code files
+(modules, scripts) and the `.xri` repository index, which signs a canonical
+rendering of its root element rather than the file bytes.
 
 ### The full build flow
 
