@@ -57,11 +57,17 @@ const MODULE_BASE = "MCPWatcher-pxm"; // module Id + "-pxm" (see module/config.m
 // binary directory inside the application bundle, which is the macOS install
 // root ("Deployment Directories" in the reference).
 //
-// macOS is arch="all" because the format has NO arm64 token - the legal values
-// are noarch/any/all/x86/i386/i586/i686/x86_64/x64 - so Apple Silicon can only
-// be served by a universal binary declared architecture-independent. That is
-// also what other module vendors ship for 1.9.4. assertMacUniversal below keeps
-// the claim honest.
+// macOS is ONE universal binary declared arch="all", which is what RC Astro
+// ships for 1.9.4 and what the documented arch tokens support (the reference
+// lists noarch/any/all/x86/i386/i586/i686/x86_64/x64, no arm64).
+//
+// Per-arch macOS packages do exist in the wild - StarNet ships separate x64 and
+// ARM64 macOS lanes because their two builds use different inference backends -
+// so the update system can evidently address arm64 somehow. We deliberately do
+// not: on macOS the package is selected by which PixInsight BUILD the user
+// installed, not by their CPU, and a fat binary satisfies both builds from one
+// artifact with one signature. We have no per-arch difference that would pay
+// for a second package. macArchAttribute below keeps the "all" claim honest.
 const PLATFORMS = [
   { os: "windows", arch: "x64", ext: ".dll", dir: "bin" },
   { os: "linux", arch: "x64", ext: ".so", dir: "bin" },
