@@ -54,8 +54,12 @@ jobs:
           fi
 
   # Reuse the compile-check workflow so the release build can never drift from it.
+  # contents: write is for the prebuilt PCL SDK release asset that workflow
+  # publishes; a reusable workflow cannot widen the caller's permissions.
   build:
     needs: preflight
+    permissions:
+      contents: write
     uses: ./.github/workflows/module-build.yml
 
   publish:
