@@ -72,12 +72,37 @@ Two things a probe cannot settle:
   One real datum: on a document with **no children and no newlines**
   (`<xri version="1.0"/>`) the module layout DOES verify. That case cannot
   distinguish indentation, line endings or empty-element form, so it constrains
-  the field layout but says nothing about the serialisation, and no rendering of
-  a larger document has matched.
+  the field layout but says nothing about the serialisation.
 
-  Guessing is not converging. The next real step is either disassembling
-  `generateXMLSignature` in the core binary, or simply asking Pleiades: the
-  script equivalent is publicly specified and the XML one never was.
+  **What the documentation says.** Per [The PixInsight Script Code Signing
+  System](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html),
+  §9, the `<Signature>` element carries a signature "for the **canonicalized
+  root xri element**". Not the file, not the document: the root element.
+  (pixinsight.com returns 403 to plain fetches; read it in a browser.)
+
+  **The canonical bytes are known.** PJSR exposes the same serialiser via
+  `XMLDocument.parse()` / `.serialize()`, so PixInsight will produce them
+  directly (it needs `#engine v8`; `XMLDocument`, like `System`, does not exist
+  in the legacy runtime). For a one-child document it yields exactly:
+
+  ```
+  <?xml version="1.0" encoding="UTF-8"?><xri version="1.0"><platform os="windows"/></xri>
+  ```
+
+  Whitespace-only text nodes dropped, other text nodes verbatim, no newline
+  after the declaration.
+
+  **And it still does not verify.** 8200 field layouts (orders of document,
+  developer id, timestamp and public key, both encodings, several framings,
+  hashed and direct) over those exact bytes, with and without the declaration,
+  match nothing, including for a probe document with no text nodes at all,
+  where the canonical form is unambiguous.
+
+  So the gap is structural, not a whitespace or rendering detail, and it is not
+  visible from outside. Stop guessing. The next real step is either
+  disassembling `generateXMLSignature` in the core binary, or asking Pleiades:
+  the script preimage is publicly specified and the XML one never was, which
+  makes it a reasonable question from a CPD.
 
 `updates.xri` therefore ships **unsigned**. That is a much smaller problem than
 it sounds: an unsigned repository index makes PixInsight show a confirmation
