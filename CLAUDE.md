@@ -42,7 +42,6 @@ baseline requirement, not a later "port" and not a nice-to-have.
 
 ## Architecture, three delivery channels
 1. **MCP server** (npm): `claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp`. TypeScript in `src/`, builds to `build/`.
-2. **PixInsight update repo** (`pi-repo/`): users add one URL; PixInsight auto-installs the **native module** (`type="module"`, into `bin/`) straight from Resources > Updates, no source build. Rebuild with `npm run repo:build` (packages `module/build/MCPWatcher-pxm.*` per platform, reproducible pure-Node zip, generates `updates.xri`). **Currently ships unsigned, do NOT re-sign `updates.xri`; see the note below.** (Pre-2026-07-24 the flow ended with `node module/sign.mjs pi-repo/updates.xri`, native `--sign-xml-file`, ~5 s.) Repackaged from the JS watcher to the module 2026-07-22.
    - ✅ **CPD identity active (2026-08-10):** the signing identity is `OfirPardo`, a real Certified PixInsight Developer id that resolves by name, replacing the old local `0104952866723499` (which reported *"Unknown code signing identity"* and was trusted only on machines where this license is activated). Distribution signing is back on: `repo:build` packages each platform's `.xsgn`.
 3. **Native C++ module** (`module/`), **this is the runtime.**
 

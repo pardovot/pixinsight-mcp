@@ -182,10 +182,6 @@ Ask Claude to work on an image. The intended interaction is **goal-driven, not s
 resolves by name on any install (it replaced a *local* identity, which was trusted only on
 machines where this license is activated and would have been rejected outright elsewhere).
 
-`updates.xri` itself still ships **unsigned**: that signature uses a different construction that
-has not been recovered. The practical cost is one confirmation prompt for the repository, since
-it is the *module* that PixInsight refuses to install when unsigned.
-
 ---
 
 ## Configuration
