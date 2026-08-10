@@ -34,11 +34,6 @@ on:
         description: "PixInsight/PCL git ref (blank = default branch)"
         required: false
         default: ""
-  # Keeps the PCL cache warm on the DEFAULT BRANCH - see the cache note below.
-  # Twice weekly, because Actions evicts a cache after 7 days without a read and
-  # a weekly schedule would sit exactly on that boundary.
-  schedule:
-    - cron: "0 5 * * 1,4"
   pull_request:
     paths:
       - "module/**"
@@ -63,11 +58,18 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    # Needed to store the prebuilt PCL SDK as a release asset (see below). A
+    # reusable-workflow caller must grant this too, module-release.yml does.
+    permissions:
+      contents: write
     env:
       # PCL is cloned here; config.mjs derives PCLINCDIR=<PI_ROOT>/include and
       # PCLSRCDIR=<PI_ROOT>/src from it. The compiled static lib goes to the
-      # default writable ~/pcl-build (see config.mjs pclBuildOut), which we cache.
+      # default writable ~/pcl-build (see config.mjs pclBuildOut), which is what
+      # gets stored and restored.
       PI_ROOT: ${{ github.workspace }}/pcl
+      # Release holding the prebuilt PCL libraries. Not a product release.
+      PCL_SDK_TAG: pcl-sdk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -92,23 +94,38 @@ jobs:
           cp module/vendor/pcl-vc17/PCL.vcxproj module/vendor/pcl-vc17/PCL.vcxproj.filters \
              pcl/src/pcl/windows/vc17/
 
-      # CACHE SCOPING - why this must be warmed from the default branch:
-      # a cache is readable only by the ref that wrote it, its child refs, and
-      # the default branch. Release runs are triggered by a TAG, so the cache
-      # they write (ref refs/tags/module-vX) is unreadable by the next release,
-      # and every publish rebuilt PCL from scratch on all three OSes (~13 min
-      # each; measured on module-v1.3.2 and v1.3.3, whose caches show
-      # last_accessed_at == created_at, i.e. never read). Caches written by a
-      # run on the default branch ARE visible to tags, so the scheduled run
-      # above populates it and every later release restores it.
-      # -v2: the macOS layout changed to one PCL library per slice; the old
-      # entries hold a single arm64 lib at the previous path.
-      - name: Restore cached PCL static library
-        id: pcl-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/pcl-build
-          key: pcl-v2-${{ matrix.os }}-${{ env.PCL_SHA }}
+      # PCL SDK STORE - why this is a release asset and not actions/cache.
+      #
+      # PCL is content-addressed: the static library depends only on the PCL
+      # commit, never on our branch. actions/cache cannot express that. It
+      # partitions every entry by the ref that wrote it (a security boundary,
+      # cache entries are attacker-writable, so a run may read only its own ref,
+      # its PR base, or the default branch) and there is no way to opt out. That
+      # partitioning bought nothing here and cost a 9-13 min rebuild per OS on
+      # every new ref: the module-v1.3.2 and v1.3.3 caches were written under
+      # refs/tags/... and show last_accessed_at == created_at, never read once.
+      #
+      # Release assets are repo-scoped, so ONE upload per PCL commit serves every
+      # branch, tag, PR and release forever, with no eviction and no dependency
+      # on which branch happens to be the default.
+      - name: Restore prebuilt PCL
+        id: pcl-sdk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          asset="pcl-${{ runner.os }}-${PCL_SHA:0:12}.tar.gz"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          if gh release download "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" \
+               --pattern "$asset" --dir "$RUNNER_TEMP" 2>/dev/null; then
+            mkdir -p "$HOME/pcl-build"
+            tar -xzf "$RUNNER_TEMP/$asset" -C "$HOME/pcl-build"
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "Restored $asset, skipping the PCL build."
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "No prebuilt PCL for ${PCL_SHA:0:12} on ${{ runner.os }}; building and publishing it."
+          fi
 
       - name: Install build tools (Linux)
         if: runner.os == 'Linux'
@@ -144,14 +161,46 @@ jobs:
       - name: Build PCL static library
         run: node module/build-pcl.mjs
 
-      # Save PCL right after it builds - BEFORE the module build that might still
-      # fail - so failed runs don't rebuild PCL (~13 min) on the next attempt.
-      - name: Save cached PCL static library
-        if: steps.pcl-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/pcl-build
-          key: pcl-v2-${{ matrix.os }}-${{ env.PCL_SHA }}
+      # Publish right after PCL builds - BEFORE the module build that might still
+      # fail - so a failed run still leaves the SDK cached for the next attempt.
+      # Skipped for fork PRs, whose GITHUB_TOKEN is read-only; they just build it.
+      - name: Publish prebuilt PCL
+        if: steps.pcl-sdk.outputs.hit != 'true' && github.event.pull_request.head.repo.fork != true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.pcl-sdk.outputs.asset }}
+        run: |
+          tar -czf "$RUNNER_TEMP/$ASSET" -C "$HOME/pcl-build" lib
+          # Three OS jobs race to create the release; losing the race is fine.
+          gh release view "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
+                 --title "PCL SDK build cache" \
+                 --notes "Prebuilt PCL static libraries keyed by PCL commit, consumed by module-build.yml. Not a product release; see docs/RELEASING.md." \
+            || true
+          uploaded=false
+          for attempt in 1 2 3; do
+            if gh release upload "$PCL_SDK_TAG" "$RUNNER_TEMP/$ASSET" \
+                 --repo "$GITHUB_REPOSITORY" --clobber; then
+              uploaded=true
+              break
+            fi
+            echo "upload attempt $attempt failed (the release may still be appearing), retrying"
+            sleep 5
+          done
+          if [ "$uploaded" != true ]; then
+            echo "::error::could not upload $ASSET; every later run will rebuild PCL"
+            exit 1
+          fi
+          # Drop assets for superseded PCL commits so the release does not grow
+          # without bound. Tolerant throughout: a concurrent job may have removed
+          # them already, and grep finding nothing is the normal case.
+          stale=$(gh release view "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+                    --jq '.assets[].name' 2>/dev/null | { grep -v -- "-${PCL_SHA:0:12}.tar.gz$" || true; })
+          for old in $stale; do
+            echo "removing superseded $old"
+            gh release delete-asset "$PCL_SDK_TAG" "$old" --repo "$GITHUB_REPOSITORY" -y || true
+          done
 
       - name: Build module
         run: node module/build.mjs
