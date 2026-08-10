@@ -47,15 +47,37 @@ Two things a probe cannot settle:
 - **Entitlement ordering.** The two probe names were already alphabetical, so
   "given order" and "sorted" are indistinguishable. Irrelevant while we ship no
   entitlements; add a probe with reversed names before relying on it.
-- **The `.xri` signature.** A repository file is signed *in place*: PixInsight
-  re-serialises the document (it rewrote `<xri version="1.0">\n</xri>` as
-  `<xri version="1.0"/>`) and appends a `<Signature developerId= timestamp=
-  encoding="Base64">` element after the root. The same field layout verifies for
-  a trivial single-line document but not for a realistic multi-line one, and
-  line-ending normalisation is not the difference. So the signed bytes are a
-  canonical serialisation that still has to be recovered. To pick this up: probe
-  with deliberately odd input (single-quoted attributes, ragged indentation,
-  comments, empty elements) and diff what comes back.
+- **The `.xri` signature.** Unrecovered after five search passes. A repository
+  file is signed *in place*: PixInsight re-serialises the document with its own
+  writer and appends a `<Signature developerId= timestamp= encoding="Base64">`
+  element after the root element.
+
+  What the writer does, from probes with deliberately odd input: three-space
+  indentation regardless of the input's, single-quoted attributes normalised to
+  double, `<x></x>` collapsed to `<x/>`, comments preserved, attribute order
+  preserved.
+
+  What has been **ruled out**, each against six probe documents (flat, indented,
+  the same document twice, one-line, oddly formatted, whitespace-heavy text):
+
+  - the module layout `SHA-512(doc ‖ developerId ‖ timestamp)` over the written
+    document, in any of ~1400 renderings (indent width, empty-element form, line
+    endings, XML declaration present or absent, trailing newline);
+  - whitespace canonicalisations of the written document (strip whitespace-only
+    text nodes, trim text nodes, collapse runs);
+  - the same layouts over the **input** bytes rather than the re-serialised
+    output;
+  - UTF-16 text, field reorderings, and a direct (unhashed) message.
+
+  One real datum: on a document with **no children and no newlines**
+  (`<xri version="1.0"/>`) the module layout DOES verify. That case cannot
+  distinguish indentation, line endings or empty-element form, so it constrains
+  the field layout but says nothing about the serialisation, and no rendering of
+  a larger document has matched.
+
+  Guessing is not converging. The next real step is either disassembling
+  `generateXMLSignature` in the core binary, or simply asking Pleiades: the
+  script equivalent is publicly specified and the XML one never was.
 
 `updates.xri` therefore ships **unsigned**. That is a much smaller problem than
 it sounds: an unsigned repository index makes PixInsight show a confirmation
