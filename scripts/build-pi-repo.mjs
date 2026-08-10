@@ -8,6 +8,8 @@
 // install path relative to the PixInsight root):
 //   Windows / Linux / FreeBSD :  bin/MCPWatcher-pxm.{dll,so}   (+ .xsgn)
 //   macOS                      :  MacOS/MCPWatcher-pxm.dylib    (+ .xsgn)
+// The macOS .dylib is ONE universal binary covering Apple Silicon and Intel;
+// see PLATFORMS below for why it cannot be two per-arch packages.
 //
 // Cross-platform + pure Node (zip written directly via node:zlib; no deps).
 // Reproducible: fixed zip entry order + timestamps, so identical module
@@ -51,13 +53,58 @@ const versionHeader = path.join(repo, "module", "src", "Version.h");
 const MODULE_BASE = "MCPWatcher-pxm"; // module Id + "-pxm" (see module/config.mjs)
 
 // os/arch values and install directory per the PixInsight Repository Reference.
-// arch "x64" == "x86_64". macOS binaries live in MacOS/, not bin/.
+// arch "x64" == "x86_64". macOS binaries live in MacOS/, not bin/: that is the
+// binary directory inside the application bundle, which is the macOS install
+// root ("Deployment Directories" in the reference).
+//
+// macOS is arch="all" because the format has NO arm64 token - the legal values
+// are noarch/any/all/x86/i386/i586/i686/x86_64/x64 - so Apple Silicon can only
+// be served by a universal binary declared architecture-independent. That is
+// also what other module vendors ship for 1.9.4. assertMacUniversal below keeps
+// the claim honest.
 const PLATFORMS = [
   { os: "windows", arch: "x64", ext: ".dll", dir: "bin" },
   { os: "linux", arch: "x64", ext: ".so", dir: "bin" },
-  { os: "macosx", arch: "x64", ext: ".dylib", dir: "MacOS" },
+  { os: "macosx", arch: "all", ext: ".dylib", dir: "MacOS" },
 ];
 const PI_VERSION_RANGE = "1.9.4:1.9.99";
+
+// Mach-O headers, enough to tell a universal binary from a thin one.
+const FAT_MAGIC = 0xcafebabe; // universal, 32-bit table, always big-endian
+const FAT_MAGIC_64 = 0xcafebabf; // universal, 64-bit table
+const MH_MAGIC_64 = 0xfeedfacf; // thin 64-bit, little-endian on x86_64/arm64
+const CPU_TYPE_X86_64 = 0x01000007;
+const CPU_TYPE_ARM64 = 0x0100000c;
+
+/**
+ * Verify the macOS binary really is universal, and return the arch attribute to
+ * publish it under. A thin x86_64 dylib is still publishable, just Intel-only;
+ * a thin arm64 one is not publishable at all, since the format cannot express
+ * that architecture. Shipping either as arch="all" would hand half of macOS a
+ * module their PixInsight cannot load.
+ */
+function macArchAttribute(binary, declaredArch) {
+  const fatMagic = binary.readUInt32BE(0);
+  if (fatMagic === FAT_MAGIC || fatMagic === FAT_MAGIC_64) {
+    console.log(`    universal binary, ${binary.readUInt32BE(4)} slices`);
+    return declaredArch;
+  }
+  const cpuType = binary.readUInt32LE(0) === MH_MAGIC_64 ? binary.readUInt32LE(4) : 0;
+  if (cpuType === CPU_TYPE_X86_64) {
+    console.log("  ! macosx: THIN x86_64 dylib, publishing as arch=\"x64\" (Apple Silicon gets nothing).");
+    console.log("    Build the universal binary instead: node module/build.mjs on macOS.");
+    return "x64";
+  }
+  if (cpuType === CPU_TYPE_ARM64) {
+    throw new Error(
+      "macosx: the module is a THIN arm64 dylib, which cannot be published.\n" +
+        "        PixInsight's repository format has no arm64 architecture token, so an\n" +
+        "        Apple Silicon module can only ship inside a universal binary.\n" +
+        "        Rebuild with node module/build.mjs on macOS (it lipos both slices).",
+    );
+  }
+  throw new Error(`macosx: ${MODULE_BASE}.dylib is not a Mach-O binary (magic 0x${binary.readUInt32BE(0).toString(16)}).`);
+}
 
 // ---------------------------------------------------------------------------
 // Reproducible zip writer (raw deflate; fixed DOS timestamp so the sha1 depends
@@ -165,8 +212,10 @@ for (const plat of PLATFORMS) {
     console.log(`  ! ${plat.os}: ${MODULE_BASE}${plat.ext} present but UNSIGNED, skipped (run npm run module:sign)`);
     continue;
   }
+  const binary = fs.readFileSync(binPath);
+  const arch = plat.os === "macosx" ? macArchAttribute(binary, plat.arch) : plat.arch;
   const entries = [
-    { name: `${plat.dir}/${MODULE_BASE}${plat.ext}`, data: fs.readFileSync(binPath) },
+    { name: `${plat.dir}/${MODULE_BASE}${plat.ext}`, data: binary },
     { name: `${plat.dir}/${MODULE_BASE}.xsgn`, data: fs.readFileSync(sgnPath) },
   ];
   const zip = buildZip(entries);
@@ -174,8 +223,8 @@ for (const plat of PLATFORMS) {
   fs.writeFileSync(path.join(piRepoDir, fileName), zip);
   const sha1 = createHash("sha1").update(zip).digest("hex");
   newestMtime = Math.max(newestMtime, fs.statSync(binPath).mtimeMs);
-  built.push({ plat, fileName, sha1 });
-  console.log(`  + ${plat.os}/${plat.arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext} + .xsgn)  sha1=${sha1}`);
+  built.push({ plat, arch, fileName, sha1 });
+  console.log(`  + ${plat.os}/${arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext} + .xsgn)  sha1=${sha1}`);
 }
 
 if (built.length === 0) {
@@ -200,8 +249,8 @@ const metaId = `${releaseDate}-mcpwatcher-module`;
 
 const platformBlocks = built
   .map(
-    ({ plat, fileName, sha1 }) =>
-      `   <platform os="${plat.os}" arch="${plat.arch}" version="${PI_VERSION_RANGE}">\n` +
+    ({ plat, arch, fileName, sha1 }) =>
+      `   <platform os="${plat.os}" arch="${arch}" version="${PI_VERSION_RANGE}">\n` +
       `      <package fileName="${fileName}" sha1="${sha1}" type="module" metadata="${metaId}"/>\n` +
       `   </platform>`,
   )

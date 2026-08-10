@@ -44,13 +44,26 @@ function defaultPiRoot() {
 }
 
 export const piRoot = env("PI_ROOT", defaultPiRoot());
-export const piBin = env("PI_BIN", path.join(piRoot, "bin"));
+
+// macOS keeps the whole PixInsight install tree inside the application bundle,
+// where the binary directory is Contents/MacOS - there is no bin/ (PixInsight
+// Repository Reference, "Deployment Directories"). A bare PCL source checkout,
+// which is what CI points PI_ROOT at, uses the flat layout on every platform,
+// so probe for the bundle rather than assuming it.
+const macBundleTree = isMac ? path.join(piRoot, "PixInsight.app", "Contents") : null;
+
+export const piBin = env(
+  "PI_BIN",
+  isMac
+    ? probe([path.join(macBundleTree, "MacOS"), path.join(piRoot, "bin")])
+    : path.join(piRoot, "bin"),
+);
 export const piExe = env(
   "PIXINSIGHT_EXE",
   env(
     "PI_EXE",
     isMac
-      ? path.join(piRoot, "PixInsight.app", "Contents", "MacOS", "PixInsight")
+      ? path.join(macBundleTree, "MacOS", "PixInsight")
       : path.join(piBin, isWindows ? "PixInsight.exe" : "PixInsight"),
   ),
 );
@@ -60,6 +73,22 @@ export const piExe = env(
 /** PixInsight modules are "<Id>-pxm.<ext>" with no lib prefix. */
 export const moduleExt = isWindows ? ".dll" : isMac ? ".dylib" : ".so";
 export const moduleName = `MCPWatcher-pxm${moduleExt}`;
+
+/**
+ * macOS ships ONE universal module holding both slices. PixInsight's XRI format
+ * has no arm64 architecture token (see scripts/build-pi-repo.mjs), so a fat
+ * binary declared arch="all" is the only way to serve Apple Silicon and Intel;
+ * it is also what other module vendors ship. PCL builds each slice separately,
+ * from the per-arch makefiles PixInsight generates, and build.mjs joins the two
+ * module slices with lipo.
+ */
+export const macTargets = [
+  { arch: "x64", appleArch: "x86_64", makefile: "makefile-x64" },
+  { arch: "arm64", appleArch: "arm64", makefile: "makefile-arm64" },
+];
+
+/** Matches PCL's own -mmacosx-version-min in src/pcl/macosx/g++/makefile-*. */
+export const macDeploymentTarget = env("MACOSX_DEPLOYMENT_TARGET", "14");
 
 export const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(moduleDir, "..");
@@ -71,12 +100,35 @@ export const signaturePath = path.join(buildDir, "MCPWatcher-pxm.xsgn");
 
 // Headers ship inside PixInsight. The static library is built by build-pcl into
 // a writable location, because the PixInsight install dir is read-only.
-export const pclIncDir = env("PCLINCDIR", path.join(piRoot, "include"));
-export const pclSrcDir = env("PCLSRCDIR", path.join(piRoot, "src"));
+// piRoot first: that is the layout of both a Windows/Linux install and a plain
+// PCL checkout. On macOS these live inside the bundle instead (see piBin).
+export const pclIncDir = env(
+  "PCLINCDIR",
+  probe([path.join(piRoot, "include"), macBundleTree && path.join(macBundleTree, "include")]),
+);
+export const pclSrcDir = env(
+  "PCLSRCDIR",
+  probe([path.join(piRoot, "src"), macBundleTree && path.join(macBundleTree, "src")]),
+);
 export const pclBuildOut = env("PCL_BUILD_OUT", path.join(os.homedir(), "pcl-build"));
 export const pclLibDir = env("PCLLIBDIR", path.join(pclBuildOut, "lib"));
 export const pclLibName = isWindows ? "PCL-pxi.lib" : "libPCL-pxi.a";
 export const pclLibPath = path.join(pclLibDir, pclLibName);
+
+/**
+ * Where each macOS slice's PCL library goes. Both per-arch makefiles end with
+ * `cp libPCL-pxi.a $PCLLIBDIR64` under the SAME file name, so a shared output
+ * directory silently keeps only whichever ran last - the bug that made every
+ * macOS build link against arm64 PCL. One directory per slice avoids it.
+ * Windows/Linux build a single architecture and keep the flat directory.
+ */
+export const pclLibDirFor = (arch) => (isMac ? path.join(pclLibDir, arch) : pclLibDir);
+export const pclLibPathFor = (arch) => path.join(pclLibDirFor(arch), pclLibName);
+
+/** Every PCL library this platform needs before the module can link. */
+export const pclLibPaths = isMac
+  ? macTargets.map((target) => pclLibPathFor(target.arch))
+  : [pclLibPath];
 
 /** Architecture subdirectory used by PixInsight's own makefiles. */
 export const pclArch = process.arch === "arm64" ? "arm64" : "x64";
