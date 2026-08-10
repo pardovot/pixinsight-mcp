@@ -45,9 +45,15 @@ function sendCommand(tool, parameters, timeoutMs = TIMEOUT_MS) {
   });
 }
 
+// SKIP rather than fail without the fixture. The file name matches node --test's
+// discovery pattern, so `npm test` picks this up on machines that have neither
+// the master nor a running PixInsight (CI, a fresh clone); a hard exit there
+// fails the whole suite over a machine-local data file.
 if (!fs.existsSync(fixture)) {
-  console.error(`Fixture master not found: ${fixture} (set FIXTURE=<path>)`);
-  process.exit(1);
+  console.log(`SKIP: fixture master not found: ${fixture}`);
+  console.log('      This smoke test needs a linear OSC master and a running PixInsight watcher.');
+  console.log('      Point it at one with FIXTURE=<path> to actually run it.');
+  process.exit(0);
 }
 
 const cfg = { src: fixture, baseName: 'smoke' };

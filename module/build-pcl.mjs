@@ -26,8 +26,8 @@ function main() {
   const outDir = cfg.pclLibDir;
   const intDir = `${cfg.pclBuildOut}/obj`;
 
-  if (fs.existsSync(cfg.pclLibPath) && !force) {
-    console.log(`[OK] ${cfg.pclLibName} already built: ${cfg.pclLibPath}`);
+  if (cfg.pclLibPaths.every((libPath) => fs.existsSync(libPath)) && !force) {
+    for (const libPath of cfg.pclLibPaths) console.log(`[OK] ${cfg.pclLibName} already built: ${libPath}`);
     console.log("     Pass --force to rebuild (needed if PCL source or flags changed).");
     return;
   }
@@ -81,18 +81,36 @@ function main() {
       ],
       { env: buildEnv },
     );
+  } else if (cfg.isMac) {
+    // macOS needs BOTH slices for the universal module, and the two per-arch
+    // makefiles both finish with `cp libPCL-pxi.a $PCLLIBDIR64` under the same
+    // name. The bundled top-level Makefile runs them back to back with one
+    // output directory, so the second silently overwrites the first; drive each
+    // makefile ourselves with its own PCLLIBDIR64 instead.
+    for (const target of cfg.macTargets) {
+      const libDir = cfg.pclLibDirFor(target.arch);
+      if (fs.existsSync(cfg.pclLibPathFor(target.arch)) && !force) {
+        console.log(`[OK] ${target.arch}: already built, skipping.`);
+        continue;
+      }
+      console.log(`\n--- ${target.arch} (${target.appleArch}) ---`);
+      fs.mkdirSync(libDir, { recursive: true }); // the makefile's cp needs it to exist
+      run(cfg.make, ["-C", cfg.pclProjectDir, "-f", target.makefile, "-j", String(os.cpus().length)], {
+        env: { ...buildEnv, PCLLIBDIR: libDir, PCLLIBDIR64: libDir },
+      });
+    }
   } else {
-    // PixInsight ships per-arch makefiles (makefile-x64, makefile-arm64) with a
-    // top-level Makefile that delegates to the right one.
     run(cfg.make, ["-C", cfg.pclProjectDir, "-j", String(os.cpus().length)], { env: buildEnv });
   }
 
-  if (!fs.existsSync(cfg.pclLibPath)) {
+  const missing = cfg.pclLibPaths.filter((libPath) => !fs.existsSync(libPath));
+  if (missing.length > 0) {
     console.warn(`\n[WARN] Build reported success but ${cfg.pclLibName} is not in ${outDir}.`);
     console.warn("       Check the build output above for the actual library location.");
+    console.warn(`       Missing: ${missing.join(", ")}`);
     return;
   }
-  console.log(`\n[OK] ${cfg.pclLibName} -> ${cfg.pclLibPath}`);
+  for (const libPath of cfg.pclLibPaths) console.log(`\n[OK] ${cfg.pclLibName} -> ${libPath}`);
 }
 
 try {
