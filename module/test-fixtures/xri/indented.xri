@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri version="1.0">
+   <description>
+      <p>
+         Probe repository.
+      </p>
+   </description>
+   <platform os="windows" arch="x64">
+      <package fileName="probe.zip" type="module"/>
+   </platform>
+</xri>
+<Signature developerId="OfirPardo" timestamp="2026-08-10T15:51:49.046Z" encoding="Base64">/bWZdAPMGEHwsJzJcAcOFglmWbJIHLUz7cEjXl/rydTkcB/0XS+1j68kbLdqOXsBO8oguk39bVDHV2hh3RALBg==</Signature>

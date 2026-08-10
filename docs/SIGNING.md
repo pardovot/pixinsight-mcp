@@ -6,7 +6,9 @@ fully signed release on a runner that has no PixInsight installed.
 
 PixInsight is needed exactly once, to export the signing key.
 
-## The construction
+## The construction, code files
+
+Modules, scripts and any other signed code file:
 
 ```
 preimage  = SHA-512( fileBytes || developerId || timestamp || entitlements.join("\n") )
@@ -31,7 +33,7 @@ prefix), not as a seed. `node:crypto` can only sign from a seed, so
 `module/ed25519.mjs` evaluates the Ed25519 equations directly. It self-checks
 against `node:crypto` on the seed path in the test suite.
 
-## How this was established
+### How this was established
 
 Empirically, in 2026-08. A PJSR probe generated signatures over controlled
 inputs (same content under different names, empty file, one entitlement, two
@@ -42,71 +44,115 @@ The result is not inferred, it is **reproduced**: signing those ten probe files
 in Node yields byte-identical output to PixInsight. For a deterministic
 signature scheme that is proof rather than resemblance.
 
-Two things a probe cannot settle:
+One thing a probe cannot settle: **entitlement ordering.** The two probe names
+were already alphabetical, so "given order" and "sorted" are indistinguishable.
+Irrelevant while we ship no entitlements; add a probe with reversed names before
+relying on it.
 
-- **Entitlement ordering.** The two probe names were already alphabetical, so
-  "given order" and "sorted" are indistinguishable. Irrelevant while we ship no
-  entitlements; add a probe with reversed names before relying on it.
-- **The `.xri` signature.** Unrecovered after five search passes. A repository
-  file is signed *in place*: PixInsight re-serialises the document with its own
-  writer and appends a `<Signature developerId= timestamp= encoding="Base64">`
-  element after the root element.
+## The construction, XML files
 
-  What the writer does, from probes with deliberately odd input: three-space
-  indentation regardless of the input's, single-quoted attributes normalised to
-  double, `<x></x>` collapsed to `<x/>`, comments preserved, attribute order
-  preserved.
+A repository index is signed *in place*: PixInsight appends a
+`<Signature developerId= timestamp= encoding="Base64">` element after the root
+element and rewrites the file. Unlike a code file, what gets signed is **not the
+file bytes**, it is a canonical rendering of the root element alone:
 
-  What has been **ruled out**, each against six probe documents (flat, indented,
-  the same document twice, one-line, oddly formatted, whitespace-heavy text):
+```
+canonical = Trim( Serialize( Parse( Serialize( rootElement ) ) ) )
+message   = canonical || "\n" || developerId || "\n" || timestamp
+preimage  = SHA-512( message )
+signature = Ed25519( preimage )
+```
 
-  - the module layout `SHA-512(doc ‖ developerId ‖ timestamp)` over the written
-    document, in any of ~1400 renderings (indent width, empty-element form, line
-    endings, XML declaration present or absent, trailing newline);
-  - whitespace canonicalisations of the written document (strip whitespace-only
-    text nodes, trim text nodes, collapse runs);
-  - the same layouts over the **input** bytes rather than the re-serialised
-    output;
-  - UTF-16 text, field reorderings, and a direct (unhashed) message.
+Note the newline separators, which the code-file layout does not have. All text
+UTF-8. `timestamp` is again the exact string written into the `timestamp`
+attribute.
 
-  One real datum: on a document with **no children and no newlines**
-  (`<xri version="1.0"/>`) the module layout DOES verify. That case cannot
-  distinguish indentation, line endings or empty-element form, so it constrains
-  the field layout but says nothing about the serialisation.
+`Serialize` is `XMLElement::Serialize` with **`autoFormat = false`**, so the
+canonical form is compact: no indentation and no line breaks introduced,
+whitespace-only text nodes dropped, single-quoted attributes normalised to
+double, `<x></x>` collapsed to `<x/>`, attribute order preserved. The
+`<Signature>` element is not part of it, and neither is the XML declaration,
+so **the formatting of the file on disk is irrelevant to the signature.**
 
-  **What the documentation says.** Per [The PixInsight Script Code Signing
-  System](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html),
-  §9, the `<Signature>` element carries a signature "for the **canonicalized
-  root xri element**". Not the file, not the document: the root element.
-  (pixinsight.com returns 403 to plain fetches; read it in a browser.)
+**Escaping is not passthrough** [verified]. Entity references are decoded when
+the document is parsed and re-escaped when it is serialised, so the canonical
+bytes are not the source bytes: a literal `>` in the input comes back as
+`&gt;`. The rules are `pcl::XML::EncodedText` (`src/pcl/XML.cpp:290`), which
+always replaces `&`, `"`, `<`, `>`, and additionally `'` when its `apos` flag
+is set. Text nodes pass the default `apos = true` (`XML.h:2062`), attribute
+values pass `false` (`XML.h:799`):
 
-  **The canonical bytes are known.** PJSR exposes the same serialiser via
-  `XMLDocument.parse()` / `.serialize()`, so PixInsight will produce them
-  directly (it needs `#engine v8`; `XMLDocument`, like `System`, does not exist
-  in the legacy runtime). For a one-child document it yields exactly:
+| | `&` `"` `<` `>` | `'` |
+|---|---|---|
+| text content | escaped | escaped as `&apos;` |
+| attribute values | escaped | left as-is |
 
-  ```
-  <?xml version="1.0" encoding="UTF-8"?><xri version="1.0"><platform os="windows"/></xri>
-  ```
+The apostrophe rule is the one a reasonable implementation gets wrong, XML does
+not require escaping `'` in text. Our own `updates.xri` contains one
+("PixInsight's event loop"), and getting it wrong produced a signature
+PixInsight reported as `valid: false`.
 
-  Whitespace-only text nodes dropped, other text nodes verbatim, no newline
-  after the declaration.
+The serialize/parse/serialize round trip is not redundant. The intermediate
+`Parse` runs with parser options `0xf` rather than the defaults used to read the
+file, and those options are what actually canonicalise the content:
 
-  **And it still does not verify.** 8200 field layouts (orders of document,
-  developer id, timestamp and public key, both encodings, several framings,
-  hashed and direct) over those exact bytes, with and without the declaration,
-  match nothing, including for a probe document with no text nodes at all,
-  where the canonical form is unambiguous.
+- **comments are dropped**;
+- **text nodes are space-normalised**, runs of white space collapsed to a single
+  space and the result trimmed.
 
-  So the gap is structural, not a whitespace or rendering detail, and it is not
-  visible from outside. Stop guessing. The next real step is either
-  disassembling `generateXMLSignature` in the core binary, or asking Pleiades:
-  the script preimage is publicly specified and the XML one never was, which
-  makes it a reasonable question from a CPD.
+Both were confirmed behaviourally against the probes, not read off an enum.
 
-`updates.xri` therefore ships **unsigned**. That is a much smaller problem than
-it sounds: an unsigned repository index makes PixInsight show a confirmation
-prompt, while an unsigned *module* is refused outright.
+### How this was established
+
+By disassembling the core binary, after five search passes from outside had
+failed. The route, for anyone repeating it: the PJSR binding table maps
+`generateXMLSignature` to its native implementation, which parses the file and
+delegates to the signing routine proper (`FUN_142100f10` in PixInsight 1.9.4
+x64, image base `0x140000000`). That routine reads directly as the recipe above.
+
+The result is **reproduced, not inferred**: it verifies against all six probe
+signatures (flat, indented, the same document twice, one-line, oddly formatted
+with comments and single quotes, whitespace-heavy text). The two probes that a
+naive reading also satisfies are the two with no comments and no padded text
+nodes, so the normalisation rules are genuinely exercised.
+
+For the record, what had been **ruled out** from outside, and why it could not
+have worked: every layout over the *written document* or the *input bytes*
+(~1400 renderings), and 8200 field layouts over the declaration-stripped
+serialisation. All of them missed because they lacked the newline separators and
+the second-parse normalisation, neither of which is observable in the output.
+
+The public specification was right but not sufficient: per [The PixInsight Script
+Code Signing System](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html),
+§9, the signature is "for the **canonicalized root xri element**". It does not
+say what canonicalised means. (pixinsight.com returns 403 to plain fetches; read
+it in a browser.)
+
+### Signing an index
+
+```bash
+npm run repo:sign      # node module/sign-xri.mjs pi-repo/updates.xri
+npm run repo:verify
+```
+
+`scripts/build-pi-repo.mjs` does not sign, the same split as
+`module:build` / `module:sign`; the release workflow runs `repo:sign` after
+assembling. The implementation is `module/xml-canonical.mjs`, and
+`module/xml-canonical.test.mjs` holds it to fixtures captured from PixInsight
+(`module/test-fixtures/xri/`, public signatures only, no key material):
+
+- **layer 1**, our compact serialisation is byte-identical to PixInsight's own
+  for ten documents, including the real `updates.xri`;
+- **both layers**, the recovered preimage verifies against PixInsight's real
+  signature for each of the nine signed probes.
+
+End to end: a signature produced by Node for the real `updates.xri` was
+confirmed by PixInsight's own validator, `Security.getXMLSignature()` reporting
+`valid: true`. That, not our own verifier agreeing with itself, is the proof.
+
+**Untested**, and refused loudly rather than guessed at: CDATA sections,
+numeric character references (`&#62;`), named entities beyond the five XML
+built-ins, and namespaced element or attribute names.
 
 ## Exporting the key
 

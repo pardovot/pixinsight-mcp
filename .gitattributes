@@ -3,3 +3,7 @@
 pi-repo/updates.xri -text
 *.xsgn              -text
 *.zip               -text binary
+
+# Signing fixtures are compared byte for byte against PixInsight's own output,
+# so EOL conversion would break the tests on checkout.
+module/test-fixtures/** -text

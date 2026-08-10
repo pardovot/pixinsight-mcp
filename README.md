@@ -186,9 +186,9 @@ Signing runs in Node with **no PixInsight involved**, so CI signs its own releas
 needed once, to export the key. The construction, how it was established, and the security
 caveats are in [`docs/SIGNING.md`](docs/SIGNING.md).
 
-`updates.xri` itself still ships **unsigned**: that signature uses a different construction that
-has not been recovered. The practical cost is one confirmation prompt for the repository, since
-it is the *module* that PixInsight refuses to install when unsigned.
+`updates.xri` is signed too, with a different construction: a canonical rendering of the root
+element rather than the file bytes. `npm run repo:sign` does it, CI runs it automatically, and a
+signature produced this way was confirmed by PixInsight's own validator.
 
 ---
 

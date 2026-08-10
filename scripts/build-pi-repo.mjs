@@ -30,10 +30,11 @@
 // signature file name is derived from the binary, so all three platforms
 // staged flat in one directory would collide on MCPWatcher-pxm.xsgn.
 //
-// updates.xri itself still ships UNSIGNED: the .xri signature uses a different,
-// not-yet-recovered construction over a canonical serialisation of the
-// document. An unsigned repository index only triggers a confirmation prompt,
-// whereas an unsigned module cannot be installed at all. See docs/SIGNING.md.
+// This script does NOT sign updates.xri; signing is a separate step, the same
+// split as module:build / module:sign:
+//   npm run repo:sign     (node module/sign-xri.mjs pi-repo/updates.xri)
+// The release workflow runs it automatically. An unsigned index still installs,
+// but PixInsight asks the user to confirm first. See docs/SIGNING.md.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -191,7 +192,7 @@ if (fs.existsSync(oldZip)) {
 }
 
 // ---------------------------------------------------------------------------
-// Generate updates.xri (unsigned; the .xri signing construction is unrecovered).
+// Generate updates.xri. It is signed afterwards by `npm run repo:sign`.
 // <metadata> is declared once and referenced by every platform's <package>.
 // ---------------------------------------------------------------------------
 const releaseDate = fmtDate(new Date(newestMtime));
@@ -234,5 +235,5 @@ const xri =
 
 fs.writeFileSync(xriPath, xri, "utf8");
 console.log(`\nwrote ${xriPath}  (version ${version}, releaseDate ${releaseDate}, ${built.length} platform(s))`);
-console.log("Modules are signed; updates.xri is not (see docs/SIGNING.md), so PixInsight shows a");
-console.log("confirmation prompt for the repository itself and then installs the signed module.");
+console.log("Modules are signed. updates.xri is NOT signed yet: run `npm run repo:sign` before");
+console.log("publishing, or PixInsight will ask users to confirm an unsigned repository.");

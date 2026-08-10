@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri version="1.0"><description><p>Probe repository.</p></description><platform os="windows" arch="x64"><package fileName="probe.zip" type="module"/></platform></xri>

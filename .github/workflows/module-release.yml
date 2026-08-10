@@ -107,6 +107,17 @@ jobs:
       - name: Assemble pi-repo
         run: node scripts/build-pi-repo.mjs
 
+      # The repository index carries its own signature, over a canonical
+      # rendering of the root element rather than the file bytes. Unsigned, it
+      # only prompts, but there is no reason to ship it unsigned now.
+      - name: Sign the repository index
+        env:
+          PI_SIGN_KEY: ${{ secrets.PI_SIGN_KEY }}
+          PI_SIGN_DEVELOPER_ID: ${{ secrets.PI_SIGN_DEVELOPER_ID }}
+        run: |
+          node module/sign-xri.mjs pi-repo/updates.xri
+          node module/sign-xri.mjs --verify pi-repo/updates.xri
+
       - name: Publish pi-repo to the dist branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

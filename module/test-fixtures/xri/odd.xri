@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri version="1.0">
+   <!-- a comment that a canonicaliser may or may not keep -->
+   <description/>
+   <platform os="windows" arch="x64">
+      <package type="module" fileName="probe.zip"/>
+   </platform>
+</xri>
+<Signature developerId="OfirPardo" timestamp="2026-08-10T15:51:49.105Z" encoding="Base64">+1Y7+5U6QkdtmZ92+29Ub+76ZdSq0HM+zSqPY3vgDuhudtZVQKE5QUGKzy94NVBnKsr9krH0X8d2bSzBGwWxCQ==</Signature>

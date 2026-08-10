@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?><xri version="1.0"><description><p>
+         PixInsight MCP Watcher - installs the non-blocking native module
+         (MCPWatcher-pxm) that lets AI assistants drive PixInsight via the
+         @pardovot/pixinsight-mcp MCP server. https://github.com/pardovot/pixinsight-mcp
+      </p></description><metadata id="20260726-mcpwatcher-module" releaseDate="20260726"><title>
+         PixInsight MCP Watcher Module 1.3.2
+      </title><description><p>
+            Non-blocking bridge module: a pcl::Timer on PixInsight&apos;s event loop
+            polls ~/.pixinsight-mcp/bridge for commands from the MCP server and
+            runs them while PixInsight stays fully interactive. Open it under
+            Process &gt; Utilities &gt; MCP Watcher.
+         </p></description></metadata><platform os="windows" arch="x64" version="1.9.4:1.9.99"><package fileName="mcpwatcher-module-windows.zip" sha1="4d4f5ded80125717e08dbf38c162e44b2a62e155" type="module" metadata="20260726-mcpwatcher-module"/></platform></xri>
