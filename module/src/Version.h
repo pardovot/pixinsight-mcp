@@ -11,9 +11,9 @@
 
 #define MCPWATCHER_VERSION_MAJOR   1
 #define MCPWATCHER_VERSION_MINOR   3
-#define MCPWATCHER_VERSION_RELEASE 4
+#define MCPWATCHER_VERSION_RELEASE 5
 
-#define MCPWATCHER_VERSION_STR     "1.3.4"
+#define MCPWATCHER_VERSION_STR     "1.3.5"
 
 // Release date reported to the platform (MetaModule::GetReleaseDate). Bump
 // together with the version numbers above, this is the single source; do not
