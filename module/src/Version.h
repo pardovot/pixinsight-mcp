@@ -11,16 +11,16 @@
 
 #define MCPWATCHER_VERSION_MAJOR   1
 #define MCPWATCHER_VERSION_MINOR   3
-#define MCPWATCHER_VERSION_RELEASE 2
+#define MCPWATCHER_VERSION_RELEASE 3
 
-#define MCPWATCHER_VERSION_STR     "1.3.2"
+#define MCPWATCHER_VERSION_STR     "1.3.3"
 
 // Release date reported to the platform (MetaModule::GetReleaseDate). Bump
 // together with the version numbers above, this is the single source; do not
 // hardcode dates elsewhere.
 #define MCPWATCHER_RELEASE_YEAR    2026
-#define MCPWATCHER_RELEASE_MONTH   7
-#define MCPWATCHER_RELEASE_DAY     26
+#define MCPWATCHER_RELEASE_MONTH   8
+#define MCPWATCHER_RELEASE_DAY     10
 
 #if __has_include("BuildTimestamp.h")
 # include "BuildTimestamp.h"
