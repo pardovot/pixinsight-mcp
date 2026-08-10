@@ -20,18 +20,20 @@
 //
 // Usage:  node scripts/build-pi-repo.mjs   (npm run repo:build)
 //
-// ⚠ SIGNING TEMPORARILY DISABLED (pending Certified PixInsight Developer status).
-// The distributed repo ships the module UNSIGNED and updates.xri UNSIGNED. Reason:
-// our only signing identity is LOCAL (developerId 0104952866723499). On another
-// machine that identity is untrusted, and PixInsight REJECTS an untrusted-signed
-// repo/module outright, whereas an UNSIGNED repo triggers a user-confirmation
-// prompt and installs. So for distribution, no signature beats a local one.
-//   - This script no longer requires/embeds the module .xsgn (binary-only zip).
-//   - Do NOT run `node module/sign.mjs pi-repo/updates.xri`, leave the xri unsigned.
-// Local install (module:install) still uses the signed module and is unaffected.
-// RE-ENABLE once a CPD identity exists: restore the .xsgn packaging below and the
-// updates.xri sign step. sign.mjs and `npm run module:sign` are kept intact.
-// Full checklist: docs/POST-CDP-SIGNING.md
+// SIGNING: each platform's binary must be signed (npm run module:sign) before it
+// is packaged; an unsigned module is REJECTED by PixInsight on install, so a
+// platform without a .xsgn is skipped rather than shipped broken.
+//
+// Binaries are found either per platform in module/build/<os>/ (how a
+// multi-platform release is staged) or flat in module/build/ (a local
+// single-platform build). Each binary's signature must sit beside it: the
+// signature file name is derived from the binary, so all three platforms
+// staged flat in one directory would collide on MCPWatcher-pxm.xsgn.
+//
+// updates.xri itself still ships UNSIGNED: the .xri signature uses a different,
+// not-yet-recovered construction over a canonical serialisation of the
+// document. An unsigned repository index only triggers a confirmation prompt,
+// whereas an unsigned module cannot be installed at all. See docs/SIGNING.md.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -137,10 +139,7 @@ function fmtDate(d) {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 }
 
-// Build one package per platform whose binary is present in module/build/.
-// UNSIGNED distribution (see header): the module .xsgn is intentionally NOT
-// bundled, an untrusted local signature is rejected on other machines, while an
-// unsigned module installs after a confirmation prompt.
+// Build one package per platform whose SIGNED binary is present.
 const version = readVersion();
 const built = [];
 let newestMtime = 0;
@@ -150,13 +149,24 @@ let newestMtime = 0;
 fs.mkdirSync(piRepoDir, { recursive: true });
 
 for (const plat of PLATFORMS) {
-  const binPath = path.join(buildDir, MODULE_BASE + plat.ext);
-  if (!fs.existsSync(binPath)) {
+  // Per-platform staging directory first, then the flat local build.
+  const candidates = [
+    path.join(buildDir, plat.os, MODULE_BASE + plat.ext),
+    path.join(buildDir, MODULE_BASE + plat.ext),
+  ];
+  const binPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!binPath) {
     console.log(`  - ${plat.os}: no ${MODULE_BASE}${plat.ext} in module/build/, skipped`);
+    continue;
+  }
+  const sgnPath = binPath.replace(/\.[^.]+$/, ".xsgn");
+  if (!fs.existsSync(sgnPath)) {
+    console.log(`  ! ${plat.os}: ${MODULE_BASE}${plat.ext} present but UNSIGNED, skipped (run npm run module:sign)`);
     continue;
   }
   const entries = [
     { name: `${plat.dir}/${MODULE_BASE}${plat.ext}`, data: fs.readFileSync(binPath) },
+    { name: `${plat.dir}/${MODULE_BASE}.xsgn`, data: fs.readFileSync(sgnPath) },
   ];
   const zip = buildZip(entries);
   const fileName = `mcpwatcher-module-${plat.os}.zip`;
@@ -164,12 +174,12 @@ for (const plat of PLATFORMS) {
   const sha1 = createHash("sha1").update(zip).digest("hex");
   newestMtime = Math.max(newestMtime, fs.statSync(binPath).mtimeMs);
   built.push({ plat, fileName, sha1 });
-  console.log(`  + ${plat.os}/${plat.arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext}, unsigned)  sha1=${sha1}`);
+  console.log(`  + ${plat.os}/${plat.arch}: ${fileName}  (${plat.dir}/${MODULE_BASE}${plat.ext} + .xsgn)  sha1=${sha1}`);
 }
 
 if (built.length === 0) {
-  console.error("\n[ERROR] No module binary found in module/build/.");
-  console.error("        Run: npm run module:build, then retry.");
+  console.error("\n[ERROR] No signed module binary found in module/build/.");
+  console.error("        Run: npm run module:build && npm run module:sign, then retry.");
   process.exit(1);
 }
 
@@ -181,7 +191,7 @@ if (fs.existsSync(oldZip)) {
 }
 
 // ---------------------------------------------------------------------------
-// Generate updates.xri (unsigned, sign.mjs appends the <Signature> block).
+// Generate updates.xri (unsigned; the .xri signing construction is unrecovered).
 // <metadata> is declared once and referenced by every platform's <package>.
 // ---------------------------------------------------------------------------
 const releaseDate = fmtDate(new Date(newestMtime));
@@ -224,5 +234,5 @@ const xri =
 
 fs.writeFileSync(xriPath, xri, "utf8");
 console.log(`\nwrote ${xriPath}  (version ${version}, releaseDate ${releaseDate}, ${built.length} platform(s))`);
-console.log("This repo is UNSIGNED (pre-CDP): other machines get a confirmation prompt, then install.");
-console.log("Do NOT sign updates.xri, a local-identity signature is rejected on other machines.");
+console.log("Modules are signed; updates.xri is not (see docs/SIGNING.md), so PixInsight shows a");
+console.log("confirmation prompt for the repository itself and then installs the signed module.");
