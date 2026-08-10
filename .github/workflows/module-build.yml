@@ -116,10 +116,15 @@ jobs:
         run: |
           asset="pcl-${{ runner.os }}-${PCL_SHA:0:12}.tar.gz"
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          # The archive path must stay RELATIVE. GNU tar reads an absolute
+          # Windows path as a remote host spec (`D:\a\_temp/x.tar.gz` -> host
+          # "D"), and macOS ships bsdtar, which has no --force-local to turn
+          # that off. A relative name has no colon, so both are happy.
+          mkdir -p .pcl-sdk
           if gh release download "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" \
-               --pattern "$asset" --dir "$RUNNER_TEMP" 2>/dev/null; then
+               --pattern "$asset" --dir .pcl-sdk 2>/dev/null; then
             mkdir -p "$HOME/pcl-build"
-            tar -xzf "$RUNNER_TEMP/$asset" -C "$HOME/pcl-build"
+            tar -xzf ".pcl-sdk/$asset" -C "$HOME/pcl-build"
             echo "hit=true" >> "$GITHUB_OUTPUT"
             echo "Restored $asset, skipping the PCL build."
           else
@@ -171,7 +176,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ASSET: ${{ steps.pcl-sdk.outputs.asset }}
         run: |
-          tar -czf "$RUNNER_TEMP/$ASSET" -C "$HOME/pcl-build" lib
+          mkdir -p .pcl-sdk
+          tar -czf ".pcl-sdk/$ASSET" -C "$HOME/pcl-build" lib # relative, see the restore step
           # Three OS jobs race to create the release; losing the race is fine.
           gh release view "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
@@ -180,7 +186,7 @@ jobs:
             || true
           uploaded=false
           for attempt in 1 2 3; do
-            if gh release upload "$PCL_SDK_TAG" "$RUNNER_TEMP/$ASSET" \
+            if gh release upload "$PCL_SDK_TAG" ".pcl-sdk/$ASSET" \
                  --repo "$GITHUB_REPOSITORY" --clobber; then
               uploaded=true
               break
@@ -201,6 +207,7 @@ jobs:
             echo "removing superseded $old"
             gh release delete-asset "$PCL_SDK_TAG" "$old" --repo "$GITHUB_REPOSITORY" -y || true
           done
+          rm -rf .pcl-sdk
 
       - name: Build module
         run: node module/build.mjs
