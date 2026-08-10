@@ -271,7 +271,7 @@ module/               native PixInsight module, THE RUNTIME
   install.mjs         install module + .xsgn (admin/root)
 pjsr/
   pixinsight-mcp-watcher.js   JS watcher, SOURCE OF TRUTH for handler logic
-pi-repo/              PixInsight update repository (signed modules, unsigned index)
+pi-repo/              PixInsight update repository (signed modules + signed index)
 docs/
   RELEASING.md        tag-driven module release
   bridge-protocol.md  bridge wire format
