@@ -73,28 +73,6 @@ export interface BridgeConfig {
   pollIntervalMs: number;
   defaultTimeoutMs: number;
   extendedTimeoutMs: number;
-  pixinsightPath: string;
-  automationMode: boolean;
-}
-
-/**
- * Conventional PixInsight executable location for the current platform.
- * Override with the PIXINSIGHT_EXE environment variable, a hardcoded path is
- * wrong for anyone who installed elsewhere (another drive, a non-English
- * Program Files, a custom prefix).
- */
-function defaultPixInsightPath(): string {
-  if (process.env.PIXINSIGHT_EXE) return process.env.PIXINSIGHT_EXE;
-  switch (process.platform) {
-    case "win32": {
-      const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
-      return `${programFiles}\\PixInsight\\bin\\PixInsight.exe`;
-    }
-    case "darwin":
-      return "/Applications/PixInsight/PixInsight.app/Contents/MacOS/PixInsight";
-    default:
-      return "/opt/PixInsight/bin/PixInsight";
-  }
 }
 
 const envInt = (name: string, fallback: number): number => {
@@ -141,6 +119,4 @@ export const DEFAULT_CONFIG: BridgeConfig = {
   // large frames legitimately need more than these defaults.
   defaultTimeoutMs: envInt("PIXINSIGHT_MCP_TIMEOUT_MS", 300_000),        // 5 minutes
   extendedTimeoutMs: envInt("PIXINSIGHT_MCP_EXTENDED_TIMEOUT_MS", 3_600_000), // 1 hour
-  pixinsightPath: defaultPixInsightPath(),
-  automationMode: true,
 };
