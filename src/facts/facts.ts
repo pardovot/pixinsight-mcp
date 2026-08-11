@@ -103,8 +103,10 @@ export const FACTS: Fact[] = [
       "leaves the image byte-identical, so the failure is invisible until something downstream " +
       "makes no sense. GUI configuration does NOT transfer to a headless instance.",
     fix:
-      "Pass useMARSDatabase: true AND marsDatabaseFiles: [[true, \"<absolute path to .xmars>\"]] " +
-      "(Windows: %APPDATA%/Pleiades/XMARS/).",
+      "Pass useMARSDatabase: true AND marsDatabaseFiles: [[true, \"<absolute path to .xmars>\"]]. " +
+      "The .xmars files have NO default location on any platform: they are downloaded by the user " +
+      "and their paths are configuration (MGC's own Preferences). Take the path as an input, do " +
+      "not guess a directory.",
     when: (call) => {
       const files = call.settings.marsDatabaseFiles;
       const empty = files === undefined || (Array.isArray(files) && files.length === 0);

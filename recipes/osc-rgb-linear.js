@@ -16,7 +16,8 @@
  *   out          optional dir; saves <base>_linear.xisf + starless/stars when set
  *   baseName     view id base, default "osc"
  *   xspd         filters.xspd path (default: derived from the PixInsight install)
- *   mars         .xmars path, array of paths, or dir; default: probe the per-OS XMARS dir.
+ *   mars         .xmars path, array of paths, or dir. MARS databases have no default location,
+ *                so pass this; with nothing passed the recipe scans a few common download dirs.
  *                No MARS found => skip SPFC (only MGC needs it) and go straight to GC.
  *   filterPrefix SPFC/SPCC filter curve family, default "Sony Color Sensor" (IMX571 etc.)
  *   gradientScale MGC gradient scale, default 1024
@@ -54,8 +55,9 @@ function OSC_RGB_LINEAR(cfg) {
    } catch (e) { /* CoreApplication unavailable, per-platform fallbacks below */ }
    var pf = env("ProgramFiles");
    if (pf) xspdCands.push(pf + "/PixInsight/library/filters.xspd");     // Windows
-   xspdCands.push("/Applications/PixInsight/library/filters.xspd");     // macOS [unverified]
-   xspdCands.push("/opt/PixInsight/library/filters.xspd");              // Linux [unverified]
+   // macOS keeps the whole tree inside the bundle, there is no top-level library/.
+   xspdCands.push("/Applications/PixInsight/PixInsight.app/Contents/library/filters.xspd"); // macOS [unverified]
+   xspdCands.push("/opt/PixInsight/library/filters.xspd");              // Linux
    var xspd = firstExisting(xspdCands);
    if (!xspd) throw new Error("filters.xspd not found; pass cfg.xspd");
    function findMars() {
@@ -65,13 +67,18 @@ function OSC_RGB_LINEAR(cfg) {
          if (m instanceof Array) return m;
          // else treat as a directory, fall through to the scan with it first
       }
+      // MARS databases have NO default location: the user downloads them and
+      // points MGC's Preferences at wherever they put them. cfg.mars is the real
+      // input; the rest is a courtesy scan of where a default download tends to
+      // land, and finding nothing means "tell me the path", not "not installed".
       var dirs = [];
       if (cfg.mars && typeof cfg.mars === "string") dirs.push(cfg.mars);
-      var appData = env("APPDATA");                                    // Windows
+      var appData = env("APPDATA");
       if (appData) dirs.push(appData + "/Pleiades/XMARS");
       var home = File.homeDirectory;
-      dirs.push(home + "/Library/Application Support/Pleiades/XMARS"); // macOS [unverified]
-      dirs.push(home + "/.local/share/Pleiades/XMARS");                // Linux [unverified]
+      dirs.push(home + "/.PixInsight/XMARS");
+      dirs.push(home + "/Library/Application Support/Pleiades/XMARS");
+      dirs.push(home + "/.local/share/Pleiades/XMARS");
       for (var d = 0; d < dirs.length; d++) {
          try {
             var hits = searchDirectory(dirs[d] + "/*.xmars");

@@ -55,8 +55,13 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 
 ## MGC / GradientCorrection / ABE
 - Headless MGC silently no-ops with empty `marsDatabaseFiles` (GUI config does NOT transfer).
-  Pass `useMARSDatabase=true` AND `marsDatabaseFiles: [[true, "<abs .xmars>"]]` (Windows:
-  `%APPDATA%/Pleiades/XMARS/`).
+  Pass `useMARSDatabase=true` AND `marsDatabaseFiles: [[true, "<abs .xmars>"]]`.
+- **Database files have NO default location.** MARS (`.xmars`) and Gaia (`.xpsd`) files are
+  downloaded by the user and their paths are configuration: MGC's own Preferences, and the Gaia
+  process for Gaia. There is no path to assume, on any platform, and the set of releases varies
+  per machine (DR1/DR2/DR3, updated independently). Take the path as an input and fail loudly when
+  it is missing; never hardcode one, and never treat "not found where I looked" as "not
+  installed".
 - MGC DECLINES outside MARS coverage: `executeOn` false, no exception, stats byte-identical.
   DR2 far-southern (< -15 dec) coverage thin. `Settings` probes false-negative in the watcher.
 - GC: `protection` defaults TRUE (0.1/0.5), `scale` 5, `smoothness` 0.4. Subtractive only.
