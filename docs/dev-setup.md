@@ -1,13 +1,13 @@
 # Development Setup
 
-Everything here is cross-platform. Where a command differs per platform, all three are given;
-each one says whether it has actually been run.
+Everything here is cross-platform. Where a command differs per platform, all three are given,
+and each one says whether it has actually been run.
 
 | Platform | Status |
 |---|---|
 | Windows 11 | verified, the primary dev machine |
 | Linux | verified 2026-08-11 on Ubuntu 24.04: path derivation, `npm test` (78/78), PCL and module built from source, signed and installed, and a full bridge round trip against that module |
-| macOS | written, not yet run. The build branches exist and compile in CI |
+| macOS | verified 2026-08-11 on Apple Silicon (M1, macOS 15.7, PixInsight 1.9.4 in `/Applications/PixInsight`, Command Line Tools only): path derivation, `npm test` (78/78), both PCL slices built from source, universal module built, ad-hoc signed, `.xsgn` signed, installed, and a full bridge round trip against that module. The **arm64** slice is the one PixInsight loaded. The x86_64 slice is built and joined but has never been executed |
 
 ## Prerequisites
 
@@ -38,14 +38,23 @@ locations:
 | OS | Install root (`PI_ROOT`) | Executable | Module lands in |
 |---|---|---|---|
 | Windows | `%ProgramFiles%\PixInsight` | `bin\PixInsight.exe` | `bin\` |
-| macOS | `/Applications/PixInsight` | `PixInsight.app/Contents/MacOS/PixInsight` | `PixInsight.app/Contents/MacOS/` |
+| macOS | `/Applications/PixInsight` | `PixInsight.app/Contents/MacOS/PixInsight` | `MacOS/` |
 | Linux | `/opt/PixInsight` | `bin/PixInsight.sh` (or `/usr/bin/PixInsight`) | `bin/` |
 
-macOS keeps the whole tree (`include`, `src`, `library`, binaries) inside the application bundle,
-there is no top-level `bin/`. Installed somewhere else? Set `PI_ROOT` and the rest follows.
+Installed somewhere else? Set `PI_ROOT` and the rest follows.
+
+> On macOS the application bundle holds only the four core executables
+> (`PixInsight`, `PixInsightUpdater`, `updater2`, `updater3`). Everything else sits **beside** it
+> under `PI_ROOT`: `include/`, `src/`, `lib/`, `library/`, a `bin/` holding the ~118 stock modules,
+> and a top-level `MacOS/` that is where third-party modules go. So the module install directory is
+> `<PI_ROOT>/MacOS`, **not** `PixInsight.app/Contents/MacOS`. Verified on 1.9.4 two ways:
+> `etc/update/installed.xri` records PixInsight's own updater putting StarNet2 and this module in
+> `MacOS/`, and `scripts/build-pi-repo.mjs` already publishes the macOS package with that same
+> internal directory. Writing into `Contents/MacOS` would miss the directory PixInsight scans and
+> break the bundle's code signature.
 
 > On Linux, run the launcher, never `bin/PixInsight` beside it. `PixInsight.sh` exports
-> `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` and friends first; without it the bare binary cannot resolve
+> `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` and friends first. Without it the bare binary cannot resolve
 > PixInsight's bundled shared libraries and exits immediately (on Ubuntu 24.04, at
 > `libssh2.so.1: cannot open shared object file`). Which library it dies on varies by distro.
 
@@ -130,6 +139,21 @@ node module/build-pcl.mjs --force
 The Windows build is redirected instead: MSBuild takes explicit `OutDir`/`IntDir`, so it needs no
 mirror.
 
+On macOS `module:pcl` builds **two** slices, `x86_64` and `arm64`, cross-compiling whichever one
+the host is not. Each lands in its own directory (`~/pcl-build/lib/{x64,arm64}`) because both
+per-arch makefiles end by copying `libPCL-pxi.a` under the same name, so a shared output directory
+would silently keep only the slice that ran last.
+
+> **macOS: the bundled makefiles hardcode an SDK that may not exist here.** PixInsight generates
+> them on a machine with the full Xcode and bakes that path into every compile line as
+> `-isysroot /Applications/Xcode.app/.../MacOSX.sdk`. With only the Command Line Tools installed,
+> which is what the prerequisites above ask for, that directory is absent and every object fails
+> with `no such sysroot directory` followed by `'uchar.h' file not found`. It is literal text in
+> the recipe, not a variable, so there is nothing to override on the `make` command line.
+> `build-pcl.mjs` rewrites the flag in its own mirrored copy to whatever `xcrun --show-sdk-path`
+> reports, and forces the mirror when a rewrite is needed so the PixInsight install is never
+> touched. With the full Xcode installed the path already resolves and nothing is changed.
+
 ### Signing
 
 `AllowUnsignedModuleInstallation` is false by default, so PixInsight refuses an unsigned module and
@@ -187,11 +211,11 @@ MCP registration**, the server auto-detects the live instance from its heartbeat
 
 1. Launch the second PixInsight with a distinct slot (`-n=2`). The module derives its bridge
    directory (`~/.pixinsight-mcp/bridge-2`) from `CoreApplication.instance`. Open
-   `Process > Utilities > MCP Watcher` in each; the panel's `Bridge:` line shows which slot it owns.
+   `Process > Utilities > MCP Watcher` in each. The panel's `Bridge:` line shows which slot it owns.
 2. Register the server once, as above, in every session.
 3. Targeting: one instance live means it is auto-targeted (startup banner
    `Auto-detected PixInsight instance N`). With two or more, say **"use instance 2"** and the agent
-   calls `use_instance`; `list_instances` shows what is live.
+   calls `use_instance`, and `list_instances` shows what is live.
 
 **Manual override** (pins a session, skips auto-detect): `PIXINSIGHT_MCP_INSTANCE=N` or
 `PIXINSIGHT_MCP_BRIDGE_DIR=<path>`. Rarely needed.
@@ -232,7 +256,7 @@ processes can write the directory. If the server reports a handler-revision mism
 module predates the checkout: rebuild and reinstall it.
 
 **Build cannot find PCL.** `npm run module:config` prints what it resolved. A wrong `PI_ROOT` is
-the usual cause; set it explicitly.
+the usual cause, so set it explicitly.
 
 **`Permission denied` writing `.o` files during `module:pcl`.** The mirror step was skipped because
 the project directory itself looked writable, even though something under it is not. Mirror by

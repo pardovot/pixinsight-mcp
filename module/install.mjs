@@ -23,6 +23,41 @@ const resultFile = resultArg ? resultArg.slice("--result=".length) : null;
 
 const targets = [cfg.modulePath, cfg.signaturePath];
 
+/**
+ * Make an installed file belong to the directory it now lives in.
+ *
+ * A copy made as root does NOT reliably land owned by root. On macOS
+ * fs.copyFileSync goes through fcopyfile with COPYFILE_ALL, which clones the
+ * SOURCE file's metadata: the installed module carried the build directory's
+ * uid, gid, mode and even its com.apple.provenance xattr, while every other
+ * module beside it was root:admin.
+ *
+ * Linux behaves the same way, so this is not a macOS quirk. Measured on Ubuntu
+ * 24.04 with Node 22, running as root, copying a user-owned source into a
+ * root-owned directory: the result was user-owned in all three cases, whether
+ * the destination was absent, already user-owned, or already ROOT-owned.
+ * Windows inherits the directory's ACL.
+ *
+ * Left alone this puts a module inside the PixInsight tree that any
+ * unprivileged process can overwrite, unlike every other module beside it.
+ *
+ * Follow the directory's own ownership rather than assuming root:admin, so a
+ * non-standard install ends up self-consistent instead of merely conventional.
+ */
+function matchDirectoryOwnership(destination) {
+  if (cfg.isWindows || typeof process.getuid !== "function" || process.getuid() !== 0) return;
+  const dir = fs.statSync(cfg.piBin);
+  fs.chownSync(destination, dir.uid, dir.gid);
+}
+
+/** Does an installed file already belong to the directory's owner? */
+function ownershipMatches(destination) {
+  if (cfg.isWindows || typeof process.getuid !== "function") return true;
+  const dir = fs.statSync(cfg.piBin);
+  const file = fs.statSync(destination);
+  return file.uid === dir.uid && file.gid === dir.gid;
+}
+
 /** Copy both files into piBin. Returns {ok, copied[], error?}. */
 function copyAll() {
   const copied = [];
@@ -30,6 +65,7 @@ function copyAll() {
     const destination = path.join(cfg.piBin, path.basename(source));
     try {
       fs.copyFileSync(source, destination);
+      matchDirectoryOwnership(destination);
       copied.push(destination);
     } catch (err) {
       return { ok: false, copied, code: err.code, error: describeCopyError(err, destination) };
@@ -72,7 +108,7 @@ function elevateAndCopy() {
   }
 
   if (!fs.existsSync(tmp)) {
-    console.error("\n[ERROR] Elevation was cancelled or failed; nothing was installed.");
+    console.error("\n[ERROR] Elevation was cancelled or failed.");
     return false;
   }
   const report = JSON.parse(fs.readFileSync(tmp, "utf8"));
@@ -119,9 +155,31 @@ function main() {
   // running elevated, or wherever piBin happens to be user-writable.
   const first = copyAll();
   if (first.ok) {
-    for (const d of first.copied) console.log(`  [OK] ${d}`);
+    // Succeeding without elevation is not the same as being correct: once a
+    // previous install has left the files user-owned, they stay writable and
+    // every later copy quietly succeeds, keeping them that way. Check rather
+    // than infer, and elevate to repair.
+    const wrongOwner = first.copied.filter((d) => !ownershipMatches(d));
+    if (wrongOwner.length > 0) {
+      console.log(`Installed, but these do not belong to ${cfg.piBin}'s owner:`);
+      for (const d of wrongOwner) console.log(`  ${d}`);
+      console.log("Re-running elevated so the module is not left user-writable ...");
+      if (!elevateAndCopy()) {
+        const dir = fs.statSync(cfg.piBin);
+        console.error(
+          "The module is in place but still user-writable. Fix it with:\n" +
+            `  sudo chown ${dir.uid}:${dir.gid} ${wrongOwner.join(" ")}`,
+        );
+        process.exit(1);
+      }
+    } else {
+      for (const d of first.copied) console.log(`  [OK] ${d}`);
+    }
   } else if (first.code === "EACCES" || first.code === "EPERM") {
-    if (!elevateAndCopy()) process.exit(1);
+    if (!elevateAndCopy()) {
+      console.error("Nothing was installed.");
+      process.exit(1);
+    }
   } else {
     throw new Error(first.error);
   }

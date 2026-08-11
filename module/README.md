@@ -90,8 +90,8 @@ table in the top-level README. Nothing is hardcoded to one machine.
 | | Compiler | PCL built with |
 |---|---|---|
 | **Windows** *(verified)* | MSVC (VS 2017+, any edition, located via `vswhere`) | MSBuild + `src/pcl/windows/vc17/PCL.vcxproj` |
-| **macOS** *(builds in CI, never loaded)* | clang, **both slices** | `make -f makefile-{x64,arm64}` in `src/pcl/macosx/g++` |
-| **Linux** *(builds in CI, never loaded)* | g++ | `make` in `src/pcl/linux/g++` |
+| **macOS** *(verified on arm64)* | clang, **both slices** | `make -f makefile-{x64,arm64}` in `src/pcl/macosx/g++` |
+| **Linux** *(verified)* | g++ | `make` in `src/pcl/linux/g++` |
 
 macOS produces ONE universal `.dylib`: each slice is configured and built
 separately (its own PCL library, `CMAKE_OSX_ARCHITECTURES`), then joined with
@@ -104,9 +104,16 @@ full source in `<PixInsight>/src/pcl`, and per-platform project files as above.
 The module itself builds with CMake everywhere.
 
 > The macOS/Linux branches are written from PixInsight's own bundled makefiles.
-> They compile green in CI (`.github/workflows/module-build.yml`) and ship in
-> releases, but no one has yet loaded either binary into a running PixInsight on
-> that platform. Unverified means untested at runtime, not unbuilt.
+> Both are now verified end to end: macOS on Apple Silicon against a stock
+> `/Applications` install (2026-08-11), built, signed, installed and
+> round-tripped. Only the **arm64** slice has actually been loaded. The x86_64
+> half of the universal binary is built and joined but has never run, so Intel
+> Macs remain untested at runtime.
+>
+> Building on macOS needs one fixup CI never sees: PixInsight's generated
+> makefiles hardcode `-isysroot` to the full Xcode SDK, which a Command Line
+> Tools install does not have. `build-pcl.mjs` retargets it via `xcrun` in its
+> own mirrored copy of the source.
 
 Steps:
 
@@ -197,7 +204,9 @@ rendering of its root element rather than the file bytes.
 build.mjs     regenerate embedded handlers -> compile -> warn "unsigned"
 sign.mjs      sign in Node -> produce .xsgn -> verify it before reporting success
 install.mjs   verify module + .xsgn, and that .xsgn is NOT older than the module
-              -> copy both to <PixInsight>\bin  (ADMIN, PixInsight closed)
+              -> copy both to the module directory: <PixInsight>/bin on Windows
+                 and Linux, <PixInsight>/MacOS on macOS  (ADMIN/root, PixInsight
+                 closed).  npm run module:config prints it as PI_BIN.
 ```
 
 The staleness check matters: rebuilding after signing silently invalidates the

@@ -4,14 +4,15 @@
 // convention) rather than hardcoded, and every value can be overridden with an
 // environment variable. A stock install needs no configuration.
 //
-// Verified on: Windows. The macOS/Linux branches are written from PixInsight's
-// bundled PCL makefiles but are not yet verified on those platforms.
+// Verified on: Windows, Linux, and macOS (Apple Silicon, PixInsight 1.9.4 in
+// /Applications/PixInsight) - path derivation through build, sign and install.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { defaultKeyPath } from "./signing.mjs";
 
 export const platform = process.platform; // 'win32' | 'darwin' | 'linux'
 export const isWindows = platform === "win32";
@@ -45,21 +46,27 @@ function defaultPiRoot() {
 
 export const piRoot = env("PI_ROOT", defaultPiRoot());
 
-// macOS keeps the whole PixInsight install tree inside the application bundle,
-// where the binary directory is Contents/MacOS - there is no bin/ (PixInsight
-// Repository Reference, "Deployment Directories"). A bare PCL source checkout,
-// which is what CI points PI_ROOT at, uses the flat layout on every platform,
-// so probe for the bundle rather than assuming it.
+// The application bundle holds ONLY the core executables (PixInsight,
+// PixInsightUpdater, updater2, updater3). Everything else - include/, src/,
+// lib/, library/, bin/ and the module directory - sits beside it under PI_ROOT,
+// so the bundle is used to locate the executable and nothing else. A bare PCL
+// source checkout, which is what CI points PI_ROOT at, has no bundle at all.
 const macBundleTree = isMac ? path.join(piRoot, "PixInsight.app", "Contents") : null;
 
+// Where a third-party module is installed. On macOS that is <PI_ROOT>/MacOS,
+// NOT the bundle's Contents/MacOS: PixInsight's own updater installs there
+// (etc/update/installed.xri records StarNet2 and this module landing in
+// MacOS/), and scripts/build-pi-repo.mjs already publishes the macOS package
+// with that same internal directory. Writing into Contents/MacOS would both
+// miss the directory PixInsight scans and break the bundle's code signature.
+// <PI_ROOT>/bin exists on macOS too, but it holds the stock modules that ship
+// with PixInsight, so it is only a fallback.
 export const piBin = env(
   "PI_BIN",
-  isMac
-    ? probe([path.join(macBundleTree, "MacOS"), path.join(piRoot, "bin")])
-    : path.join(piRoot, "bin"),
+  isMac ? probe([path.join(piRoot, "MacOS"), path.join(piRoot, "bin")]) : path.join(piRoot, "bin"),
 );
 // Linux ships the real binary next to a launcher script that sets
-// LD_LIBRARY_PATH and the Qt plugin paths; the binary alone dies with
+// LD_LIBRARY_PATH and the Qt plugin paths. The binary alone dies with
 // "libssh2.so.1: cannot open shared object file". Prefer the launcher, which is
 // also what the installer symlinks onto PATH as /usr/bin/PixInsight.
 export const piExe = env(
@@ -106,8 +113,9 @@ export const signaturePath = path.join(buildDir, "MCPWatcher-pxm.xsgn");
 
 // Headers ship inside PixInsight. The static library is built by build-pcl into
 // a writable location, because the PixInsight install dir is read-only.
-// piRoot first: that is the layout of both a Windows/Linux install and a plain
-// PCL checkout. On macOS these live inside the bundle instead (see piBin).
+// piRoot first: that is the layout of a Windows, Linux or macOS install alike,
+// and of a plain PCL checkout. The bundle fallback covers a layout that keeps
+// these inside Contents/, which a stock macOS install does not (verified 1.9.4).
 export const pclIncDir = env(
   "PCLINCDIR",
   probe([path.join(piRoot, "include"), macBundleTree && path.join(macBundleTree, "include")]),
@@ -136,9 +144,6 @@ export const pclLibPaths = isMac
   ? macTargets.map((target) => pclLibPathFor(target.arch))
   : [pclLibPath];
 
-/** Architecture subdirectory used by PixInsight's own makefiles. */
-export const pclArch = process.arch === "arm64" ? "arm64" : "x64";
-
 /** Directory holding the platform's PCL makefile / vcxproj, under a source root. */
 export const pclProjectDirIn = (srcDir) =>
   isWindows
@@ -152,15 +157,21 @@ export const pclVcxproj = path.join(pclProjectDir, "PCL.vcxproj");
 /**
  * Writable copy of the PCL source tree. PixInsight's generated makefiles compile
  * in-tree, so a read-only install (root-owned /opt/PixInsight, a system-owned
- * app bundle) cannot be built in place; build-pcl mirrors the tree here instead.
+ * app bundle) cannot be built in place, so build-pcl mirrors the tree here.
  */
 export const pclSrcMirror = env("PCL_SRC_MIRROR", path.join(pclBuildOut, "src"));
 
 // --- Code signing -----------------------------------------------------------
 
-export const signKeys = env("PI_SIGN_KEYS", path.join(os.homedir(), "key.xssk"));
-/** PixInsight instance slot for the short-lived signing process, [1,256]. */
-export const signSlot = env("PI_SIGN_SLOT", "7");
+// The key file sign.mjs actually reads, re-exported from signing.mjs rather
+// than re-derived here so the two cannot drift.
+//
+// Signing runs entirely in Node and never launches PixInsight, so there is no
+// .xssk and no instance slot involved. A .xssk is read exactly once, by
+// module/export-signing-key.js inside PixInsight's Script Editor, which writes
+// this JSON, and from then on only the JSON matters. CI supplies the key through
+// PI_SIGN_KEY + PI_SIGN_DEVELOPER_ID instead, and never reads this path.
+export const signKeyFile = defaultKeyPath;
 
 // --- Toolchain (Windows) ----------------------------------------------------
 
@@ -203,17 +214,30 @@ export const ninjaDir = isWindows
 
 export const make = env("MAKE", "make");
 
+/**
+ * Where sign.mjs will get the key, and whether that source is actually there.
+ * A missing key is the difference between module:sign working and not, so say
+ * so here rather than let the first failure explain it.
+ */
+function describeSigningKey() {
+  if (process.env.PI_SIGN_KEY) return "PI_SIGN_KEY (environment)";
+  return `${signKeyFile} ${fs.existsSync(signKeyFile) ? "(present)" : "(MISSING)"}`;
+}
+
 /** Human-readable summary, for --show and error messages. */
 export function describe() {
   const rows = [
     ["platform", `${platform} (${process.arch})`],
     ["PI_ROOT", piRoot],
     ["PI_EXE", piExe],
+    // The install destination, and the value most likely to be wrong on a
+    // non-standard layout, so it belongs in the summary.
+    ["PI_BIN", piBin],
     ["module", modulePath],
     ["PCLINCDIR", pclIncDir],
     ["PCLLIBDIR", pclLibDir],
     ["PCL project", pclProjectDir],
-    ["PI_SIGN_KEYS", signKeys],
+    ["signing key", describeSigningKey()],
   ];
   if (isWindows) rows.push(["VS", vs], ["CMAKE", cmake]);
   else rows.push(["MAKE", make], ["CMAKE", cmake]);

@@ -41,15 +41,23 @@ baseline requirement, not a later "port" and not a nice-to-have.
 - **Linux verified 2026-08-11** (Ubuntu 24.04, PixInsight in `/opt`): PCL + module build from
   source, 78/78 tests, path derivation, sign + install, bridge round trip. Two gotchas found there: PixInsight's
   bundled makefiles compile **in-tree**, so a root-owned install cannot be built in place
-  (`build-pcl.mjs` mirrors the source to `$PCL_BUILD_OUT/src` first; CI missed it because its
+  (`build-pcl.mjs` mirrors the source to `$PCL_BUILD_OUT/src` first, and CI missed it because its
   `PI_ROOT` is a writable clone), and `bin/PixInsight` is not launchable, the launcher
   `bin/PixInsight.sh` is. Setup per platform: `docs/dev-setup.md`.
+- **macOS verified 2026-08-11** (Apple Silicon M1, macOS 15.7, stock `/Applications/PixInsight`):
+  78/78 tests, path derivation, both PCL slices + the universal module built from source, signed,
+  installed, bridge round trip. The **arm64** slice is the one that loaded. x86_64 is built and
+  lipo'd but has never been executed. Two gotchas found there: the module directory is the install root's top-level `MacOS/`, **not**
+  `PixInsight.app/Contents/MacOS/` (the bundle holds only the core executables, while `include/`, `src/`
+  and a `bin/` of stock modules sit beside it), and PixInsight's generated macOS makefiles hardcode
+  `-isysroot` to the **full Xcode** SDK, so a Command Line Tools install cannot compile PCL until
+  `build-pcl.mjs` retargets it via `xcrun`.
 - **PixInsight 1.9.4 "Lockhart" → V8 engine, NOT ECMAScript 5.** The original project's "ES5 only" rule does not apply here; the watcher was V8-ported (`#engine v8`, ES6 `class ... extends`, `CoreApplication.processEvents`). V8 port credit: Andre Couto (@4ndr3c0ut0).
 - Bridge (unchanged): `~/.pixinsight-mcp/bridge/{commands,results}`, command `<id>.json` in, result `<id>.json` out.
 
 ## Architecture, three delivery channels
 1. **MCP server** (npm): `claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp`. TypeScript in `src/`, builds to `build/`.
-2. **PixInsight update repo** (`pi-repo/`): users add one URL; PixInsight auto-installs the **native module** (`type="module"`, into `bin/`, on macOS into the bundle's `MacOS/` and as ONE universal `arch="all"` binary, the format has no arm64 token) straight from Resources > Updates, no source build. Rebuild with `npm run repo:build` (packages `module/build/MCPWatcher-pxm.*` per platform, reproducible pure-Node zip, generates `updates.xri`). **`updates.xri` is signed separately by `npm run repo:sign`; see the note below.** Repackaged from the JS watcher to the module 2026-07-22.
+2. **PixInsight update repo** (`pi-repo/`): users add one URL; PixInsight auto-installs the **native module** (`type="module"`, into `bin/`, on macOS into the install root's top-level `MacOS/`, beside the app bundle rather than inside it, and as ONE universal `arch="all"` binary, the format has no arm64 token) straight from Resources > Updates, no source build. Rebuild with `npm run repo:build` (packages `module/build/MCPWatcher-pxm.*` per platform, reproducible pure-Node zip, generates `updates.xri`). **`updates.xri` is signed separately by `npm run repo:sign`; see the note below.** Repackaged from the JS watcher to the module 2026-07-22.
    - ✅ **CPD identity active (2026-08-10):** the signing identity is `OfirPardo`, a real Certified PixInsight Developer id that resolves by name, replacing the old local `0104952866723499` (which reported *"Unknown code signing identity"* and was trusted only on machines where this license is activated). Distribution signing is back on: `repo:build` packages each platform's `.xsgn`.
    - ⛔ **Signing needs NO PixInsight**, do not reintroduce it. `npm run module:sign` computes the signature directly in Node, so CI signs releases itself. PixInsight is used exactly once, to export the key (`module/export-signing-key.js`). The construction, how it was proven, and what is still unknown: **`docs/SIGNING.md`**. **`updates.xri` is signed too** (2026-08-10): its construction differs from a code file's, a canonical rendering of the root element rather than the file bytes, recovered from the core binary and implemented in `module/xml-canonical.mjs` (`npm run repo:sign`). ⚠️ The canonicaliser is the fragile part, not the crypto: PixInsight decodes and re-escapes entities, and escapes `'` as `&apos;` **in text but not in attributes**. Ten fixtures in `module/test-fixtures/xri/` hold it byte-identical to PixInsight; add a fixture before trusting any new XML construct.
 3. **Native C++ module** (`module/`), **this is the runtime.**
