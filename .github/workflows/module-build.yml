@@ -40,7 +40,7 @@ on:
       - "pjsr/pixinsight-mcp-watcher.js"
       - ".github/workflows/module-build.yml"
   push:
-    branches: [main, v2]
+    branches: [master, v2]
     paths:
       - "module/**"
       - "pjsr/pixinsight-mcp-watcher.js"

@@ -14,8 +14,9 @@ processing run needs exactly three things, read `facts.md` + the class slice in 
   ⛔ **Never read `references/library.json` whole**: thresholds are PER CLASS, a run needs only its
   own, and the file grows ~1.5 KB per entry.
 
-Do NOT go exploring: not the README, not `docs/architecture.md`, not old journals (deleted on
-`v2`, `main` history only), not the recipe source. `recipes/*.js` are opaque executables whose
+Do NOT go exploring: not the README, not `docs/architecture.md`, not old journals (v1, RETIRED
+2026-08-11, reachable only via the `archive/main-2026-08` tag; its architecture produced bad
+training, do not mine it for numbers), not the recipe source. `recipes/*.js` are opaque executables whose
 JSON report is the contract. Smoke test: `npm run test:recipe`. Watcher check:
 `node scripts/ping-watcher.mjs`.
 
