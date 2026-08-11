@@ -7,7 +7,7 @@ each one says whether it has actually been run.
 |---|---|
 | Windows 11 | verified, the primary dev machine |
 | Linux | verified 2026-08-11 on Ubuntu 24.04: path derivation, `npm test` (78/78), PCL and module built from source, signed and installed, and a full bridge round trip against that module |
-| macOS | verified 2026-08-11 up to signing, on Apple Silicon (M1, macOS 15.7, PixInsight 1.9.4 in `/Applications/PixInsight`, Command Line Tools only): path derivation, `npm test` (78/78), both PCL slices built from source, universal module built and ad-hoc signed, `.xsgn` signed and verified. **Install and the bridge round trip were NOT run**, so no macOS binary has yet been loaded by PixInsight |
+| macOS | verified 2026-08-11 on Apple Silicon (M1, macOS 15.7, PixInsight 1.9.4 in `/Applications/PixInsight`, Command Line Tools only): path derivation, `npm test` (78/78), both PCL slices built from source, universal module built, ad-hoc signed, `.xsgn` signed, installed, and a full bridge round trip against that module. The **arm64** slice is the one PixInsight loaded; the x86_64 slice is built and joined but has never been executed |
 
 ## Prerequisites
 

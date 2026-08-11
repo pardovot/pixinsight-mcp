@@ -5,7 +5,7 @@
 // environment variable. A stock install needs no configuration.
 //
 // Verified on: Windows, Linux, and macOS (Apple Silicon, PixInsight 1.9.4 in
-// /Applications/PixInsight) for path derivation through the module build.
+// /Applications/PixInsight) - path derivation through build, sign and install.
 
 import fs from "node:fs";
 import os from "node:os";

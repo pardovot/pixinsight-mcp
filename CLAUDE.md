@@ -44,10 +44,10 @@ baseline requirement, not a later "port" and not a nice-to-have.
   (`build-pcl.mjs` mirrors the source to `$PCL_BUILD_OUT/src` first; CI missed it because its
   `PI_ROOT` is a writable clone), and `bin/PixInsight` is not launchable, the launcher
   `bin/PixInsight.sh` is. Setup per platform: `docs/dev-setup.md`.
-- **macOS partly verified 2026-08-11** (Apple Silicon M1, macOS 15.7, stock `/Applications/PixInsight`):
-  78/78 tests, path derivation, both PCL slices + the universal module built from source, signed.
-  **Install and bridge round trip NOT yet run**, no macOS binary has been loaded by PixInsight.
-  Two gotchas found there: the module directory is the install root's top-level `MacOS/`, **not**
+- **macOS verified 2026-08-11** (Apple Silicon M1, macOS 15.7, stock `/Applications/PixInsight`):
+  78/78 tests, path derivation, both PCL slices + the universal module built from source, signed,
+  installed, bridge round trip. The **arm64** slice is the one that loaded; x86_64 is built and
+  lipo'd but has never been executed. Two gotchas found there: the module directory is the install root's top-level `MacOS/`, **not**
   `PixInsight.app/Contents/MacOS/` (the bundle holds only the core executables; `include/`, `src/`
   and a `bin/` of stock modules sit beside it), and PixInsight's generated macOS makefiles hardcode
   `-isysroot` to the **full Xcode** SDK, so a Command Line Tools install cannot compile PCL until
