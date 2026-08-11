@@ -3,6 +3,12 @@
 Gate: objective, reproducible tool/API behavior only. No aesthetics, no anecdotes, no recipes.
 Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 
+> **The enforceable subset lives in `src/facts/facts.ts` and the server acts on it**: fatal combos
+> and dead parameters are REFUSED by `run_process`, and `get_process_parameters` marks dead aliases
+> and appends the traps. That is what reaches Claude Desktop, Cursor, Codex and any other MCP
+> client, none of which can read this file. When you add a fact here, ask whether it is mechanically
+> checkable; if it is, add it there too, with the same id, or it protects nobody but this repo.
+
 ## BXT
 - Live params: `sharpen_stars`, `sharpen_nonstellar`, `correct_only`, `adjust_star_halos`,
   `auto_nonstellar_radius`, `nonstellar_diameter` (FWHM px, cap 8). `auto_nonstellar_psf` /
@@ -64,7 +70,11 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - No `pow()`; `^` handles fractional/negative exponents. `iif()` exists. `ln(0)` NaN, guard
   `max($T, 0.00001)`. Parenthesize negative literals `(-1.859)`.
 - `createNewImage` + `executeGlobal()` needs ALL `newImageWidth/Height/ColorSpace/
-  SampleFormat`; `newImageColorSpace`: 2 = GRAY not RGB, use 0 = SameAsTarget.
+  SampleFormat`; `newImageColorSpace`: 1 = RGB, 2 = GRAY, 0 = SameAsTarget.
+- ⛔ `newImageColorSpace: 0` (SameAsTarget) THROWS under `executeGlobal()`: "Cannot execute
+  instance in the global context ... some of its parameters depend on a particular target image".
+  There is no target in a global invocation, so name the space explicitly (1 or 2). Fine under
+  `executeOn(view)`. Through the bridge this surfaces only as `Script error: undefined`, no line.
 - Per-channel: `expression`/`expression1`/`expression2`, `useSingleExpression=false`.
 
 ## GHS
@@ -75,9 +85,16 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
 - HP > SP else NaN; LP < SP else domain error; D=0 identity; b=1 is exactly HT's MTF.
 
 ## SCNR
+- ⛔ `colorToRemove`: **0 = RED, 1 = GREEN, 2 = BLUE** [verified 2026-08-01, star-pixel channel
+  medians: `0` dropped R 24%, `2` dropped B 9%, `1` left G ~flat]. Green is **1**, not 0. Setting
+  0 "for green" removes RED, which flattens saturation on warm targets and makes G relatively
+  dominant, i.e. it looks like SCNR made the green WORSE.
 - `protectionMethod`: 0 MaximumMask, 1 AdditiveMask, 2 AverageNeutral (default), 3
   MaximumNeutral. Neutral `G' = min(G, 0.5(R+B))` edits ONLY G, self-gating no-op where G at/
   below midpoint. Mask methods scale green down unconditionally everywhere.
+- Because AverageNeutral is self-gating, a correct SCNR green is often a near no-op (it only
+  touches genuinely green-dominant pixels). A large measured change in G is evidence of a WRONG
+  channel, not of a strong correction.
 - Modern PI honours Amount for neutral protection (2010 LE doc saying otherwise is stale).
 - `invert -> SCNR green -> invert` = `G_new = max(G, (R+B)/2)`. Both directions clamp G toward
   (R+B)/2 which lies between R and B, so saturation is invariant, hue-only op.
