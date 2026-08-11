@@ -7,7 +7,7 @@
 // Verified on: Windows (MSBuild + PCL.vcxproj), Linux and macOS (PixInsight's
 // bundled makefiles, mirrored out of the read-only install first - see
 // resolveSourceRoot). macOS uses the same makefile path as Linux but builds one
-// slice per architecture, and additionally has to retarget -isysroot; both
+// slice per architecture, and additionally has to retarget -isysroot. Both
 // slices verified on an Apple Silicon host against PixInsight 1.9.4.
 
 import fs from "node:fs";

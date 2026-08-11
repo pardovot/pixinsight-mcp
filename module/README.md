@@ -106,7 +106,7 @@ The module itself builds with CMake everywhere.
 > The macOS/Linux branches are written from PixInsight's own bundled makefiles.
 > Both are now verified end to end: macOS on Apple Silicon against a stock
 > `/Applications` install (2026-08-11), built, signed, installed and
-> round-tripped. Only the **arm64** slice has actually been loaded; the x86_64
+> round-tripped. Only the **arm64** slice has actually been loaded. The x86_64
 > half of the universal binary is built and joined but has never run, so Intel
 > Macs remain untested at runtime.
 >

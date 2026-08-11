@@ -66,7 +66,7 @@ export const piBin = env(
   isMac ? probe([path.join(piRoot, "MacOS"), path.join(piRoot, "bin")]) : path.join(piRoot, "bin"),
 );
 // Linux ships the real binary next to a launcher script that sets
-// LD_LIBRARY_PATH and the Qt plugin paths; the binary alone dies with
+// LD_LIBRARY_PATH and the Qt plugin paths. The binary alone dies with
 // "libssh2.so.1: cannot open shared object file". Prefer the launcher, which is
 // also what the installer symlinks onto PATH as /usr/bin/PixInsight.
 export const piExe = env(
@@ -115,7 +115,7 @@ export const signaturePath = path.join(buildDir, "MCPWatcher-pxm.xsgn");
 // a writable location, because the PixInsight install dir is read-only.
 // piRoot first: that is the layout of a Windows, Linux or macOS install alike,
 // and of a plain PCL checkout. The bundle fallback covers a layout that keeps
-// these inside Contents/; a stock macOS install does not (verified 1.9.4).
+// these inside Contents/, which a stock macOS install does not (verified 1.9.4).
 export const pclIncDir = env(
   "PCLINCDIR",
   probe([path.join(piRoot, "include"), macBundleTree && path.join(macBundleTree, "include")]),
@@ -157,7 +157,7 @@ export const pclVcxproj = path.join(pclProjectDir, "PCL.vcxproj");
 /**
  * Writable copy of the PCL source tree. PixInsight's generated makefiles compile
  * in-tree, so a read-only install (root-owned /opt/PixInsight, a system-owned
- * app bundle) cannot be built in place; build-pcl mirrors the tree here instead.
+ * app bundle) cannot be built in place, so build-pcl mirrors the tree here.
  */
 export const pclSrcMirror = env("PCL_SRC_MIRROR", path.join(pclBuildOut, "src"));
 
@@ -169,7 +169,7 @@ export const pclSrcMirror = env("PCL_SRC_MIRROR", path.join(pclBuildOut, "src"))
 // Signing runs entirely in Node and never launches PixInsight, so there is no
 // .xssk and no instance slot involved. A .xssk is read exactly once, by
 // module/export-signing-key.js inside PixInsight's Script Editor, which writes
-// this JSON; from then on only the JSON matters. CI supplies the key through
+// this JSON, and from then on only the JSON matters. CI supplies the key through
 // PI_SIGN_KEY + PI_SIGN_DEVELOPER_ID instead, and never reads this path.
 export const signKeyFile = defaultKeyPath;
 
