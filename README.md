@@ -111,7 +111,13 @@ platform-specific: Node server, file bridge, PJSR handlers, CMake build with per
 
 ## Building from source
 
-Needs a C++ toolchain (MSVC, or g++/clang).
+Needs Node 18+, a C++ toolchain and CMake:
+
+| | Toolchain |
+|---|---|
+| Windows | Visual Studio 2022 or Build Tools, with the C++ workload (found via `vswhere`) |
+| macOS | Xcode Command Line Tools, plus `brew install cmake ninja` |
+| Linux | `build-essential cmake ninja-build` |
 
 ```bash
 npm run module:pcl       # once, builds PCL from PixInsight's bundled source
@@ -120,8 +126,15 @@ npm run module:sign      # needs your own signing identity, see docs/SIGNING.md
 npm run module:install   # admin/root, PixInsight closed
 ```
 
-`node module/config.mjs` prints every path resolved on your machine. `install.mjs` copies the
-module and its `.xsgn`, and refuses a signature older than the binary.
+`node module/config.mjs` prints every path resolved on your machine, start there when a build
+cannot find something. `install.mjs` copies the module and its `.xsgn`, and refuses a signature
+older than the binary.
+
+PixInsight's bundled makefiles compile in-tree, so on a read-only install (`/opt/PixInsight` is
+root-owned) `module:pcl` mirrors the ~20 MB source tree into `$PCL_BUILD_OUT/src` and builds the
+copy. The install directory is never written to except by `module:install`.
+
+Full local setup per platform: [`docs/dev-setup.md`](docs/dev-setup.md).
 
 Handler logic lives in `pjsr/pixinsight-mcp-watcher.js` only. `module/src/BridgeHandlersJS.h` is
 generated from it, never edit it by hand.
@@ -133,17 +146,20 @@ stock install needs nothing.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PIXINSIGHT_EXE` | probed | PixInsight executable |
+| `PIXINSIGHT_EXE` | probed | PixInsight executable, for the build scripts |
 | `PIXINSIGHT_MCP_TIMEOUT_MS` | `300000` | per-command timeout |
 | `PIXINSIGHT_MCP_EXTENDED_TIMEOUT_MS` | `3600000` | long operations |
 | `PIXINSIGHT_MCP_POLL_INTERVAL_MS` | `200` | bridge poll cadence |
-| `PI_ROOT` | `%ProgramFiles%\PixInsight` | install root, build scripts derive the rest |
-| `PCL_BUILD_OUT` | `%USERPROFILE%\pcl-build` | where `PCL-pxi.lib` lands |
+| `PI_ROOT` | probed | install root, build scripts derive the rest |
+| `PCL_BUILD_OUT` | `~/pcl-build` | where the PCL library and its source mirror land |
 | `PI_SIGN_KEY`, `PI_SIGN_DEVELOPER_ID` | none | signing, how CI supplies it |
 | `PI_SIGN_KEY_FILE` | `~/.pixinsight-mcp/signing-key.json` | exported key for local signing |
 
+`PI_ROOT` is probed per platform: `%ProgramFiles%\PixInsight`, `/Applications/PixInsight`,
+`/opt/PixInsight`. Everything else derives from it, so overriding one variable relocates the rest.
+
 ```bash
-PI_ROOT=/opt/PixInsight node module/build.mjs
+PI_ROOT=/opt/PixInsight-1.9.5 node module/build.mjs
 ```
 
 ## Signing
