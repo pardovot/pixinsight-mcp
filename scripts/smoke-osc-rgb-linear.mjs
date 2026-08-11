@@ -3,7 +3,7 @@
 // every step ran, the MGC decline branch was handled, the end-state checks pass. Tool updates
 // that change pixel output do not fail this test, a broken chain does.
 //
-//   node scripts/test-osc-rgb-linear.mjs        (or: npm run test:recipe)
+//   node scripts/smoke-osc-rgb-linear.mjs       (or: npm run test:recipe)
 //   FIXTURE=<path to a linear plate-solved OSC master> overrides the default fixture.
 
 import fs from 'fs';
@@ -45,10 +45,11 @@ function sendCommand(tool, parameters, timeoutMs = TIMEOUT_MS) {
   });
 }
 
-// SKIP rather than fail without the fixture. The file name matches node --test's
-// discovery pattern, so `npm test` picks this up on machines that have neither
-// the master nor a running PixInsight (CI, a fresh clone); a hard exit there
-// fails the whole suite over a machine-local data file.
+// SKIP rather than fail without the fixture, so pointing this at a machine that
+// does not have the master says so instead of erroring deep in the run. (The
+// file is named smoke-*, not test-*, precisely so `node --test` does NOT
+// discover it: with the fixture present and no watcher running it would block
+// the whole suite for TIMEOUT_MS.)
 if (!fs.existsSync(fixture)) {
   console.log(`SKIP: fixture master not found: ${fixture}`);
   console.log('      This smoke test needs a linear OSC master and a running PixInsight watcher.');
