@@ -66,12 +66,11 @@ Requires PixInsight 1.9.4+ (V8 engine), Node 18+, and an MCP client.
 | Export | `export_container` |
 
 `run_process` runs **any** process by class name, including third-party ones you have installed,
-so nothing needs adding when you install a new tool. Per-process wrappers (`run_bxt`, `sharpen`,
-`stretch_image`) were removed in July 2026 and should not come back.
+so nothing needs adding when you install a new tool.
 
 Measurement tools exist so settings come from your frame instead of a tutorial. Two traps:
 `get_noise` returns an MRS estimate, `stdDev` is signal-dominated on astro frames and will lie to
-you; `get_background_neutrality` needs `mode:'poststretch'` after stretching, the sky-band metric
+you. `get_background_neutrality` needs `mode:'poststretch'` after stretching, the sky-band metric
 is only valid pre-curve.
 
 Definitions live in `src/tools/*.ts`. Verified gotchas: [`docs/facts.md`](docs/facts.md).
@@ -93,20 +92,19 @@ PixInsight has no socket or HTTP API, so a file bridge is the only route in. Rou
 one poll interval, 300 ms by default.
 
 The runtime is a compiled module rather than a PJSR script because a running script holds
-PixInsight's only thread, which blocks the interface until it returns. The module's timer fires
-on the event loop instead. It stays a thin shell: every command is delegated to JS handlers
-embedded at build time, so handler logic lives in one place and C++ only supplies the timer.
+PixInsight's only thread, which blocks the interface until it returns. The module's timer fires on
+the event loop instead, which is why the application stays usable while a run is in progress.
 
 > Anything that can write to `~/.pixinsight-mcp/bridge/commands` can run arbitrary code inside
 > PixInsight. Keep the directory user-private, never on a shared or synced path.
 
 ## Platform
 
-| | Toolchain | Module |
-|---|---|---|
-| Windows | MSVC (`src/pcl/windows/vc17`) | `bin/MCPWatcher-pxm.dll` |
-| macOS | clang (`src/pcl/macosx/g++`) | `MacOS/MCPWatcher-pxm.dylib`, universal x86_64 + arm64 |
-| Linux | g++ (`src/pcl/linux/g++`) | `bin/MCPWatcher-pxm.so` |
+| | Module installed as |
+|---|---|
+| Windows | `bin/MCPWatcher-pxm.dll` |
+| macOS | `MacOS/MCPWatcher-pxm.dylib`, universal x86_64 + arm64 |
+| Linux | `bin/MCPWatcher-pxm.so` |
 
 All three build in CI on every change and ship in every release. Nothing in the design is
 platform-specific: Node server, file bridge, PJSR handlers, CMake build with per-platform branches.
@@ -126,7 +124,7 @@ npm run module:install   # admin/root, PixInsight closed
 module and its `.xsgn`, and refuses a signature older than the binary.
 
 Handler logic lives in `pjsr/pixinsight-mcp-watcher.js` only. `module/src/BridgeHandlersJS.h` is
-generated from it; never edit it by hand.
+generated from it, never edit it by hand.
 
 ## Configuration
 
@@ -171,13 +169,9 @@ test/               node --test suites
 ## Origins
 
 Began in 2026 as a fork of [aescaffre/pixinsight-mcp](https://github.com/aescaffre/pixinsight-mcp),
-independent codebase since. Carried forward: the file-bridge contract, the PJSR handler bodies,
-the MCP server skeleton. Added here: the native module, the generic process runner, the
-measurement layer, signing and the update repository, npm packaging.
-
-The original's `giga-run.mjs` pipeline, `run-pipeline.mjs`, config editor and `agents/` are not
-part of this codebase. They drove PixInsight through a blocking script, which is the problem the
-native module exists to solve. Git history retains them.
+independent codebase since. The file bridge and the PJSR handler bodies come from there. The native
+module, the generic process runner, the measurement layer, signing and the update repository were
+added here.
 
 ## Credits
 
@@ -190,11 +184,6 @@ native module exists to solve. Git history retains them.
   ([PR #1](https://github.com/aescaffre/pixinsight-mcp/pull/1) on the original repository).
 - **pardovot**, native module, generic process runner, measurement and knowledge layer, signing
   and release pipeline, packaging.
-
-> Alain's and Andre's commits are preserved in this repository's history. GitHub does not link
-> Alain's to his profile because they were authored with a local hostname email address
-> (`@MacBook-Pro-de-Alain.local`) that maps to no account, the same is true in his own repository.
-> A GitHub matching artifact, not a statement about authorship.
 
 ## License
 
