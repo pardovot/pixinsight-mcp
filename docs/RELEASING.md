@@ -57,20 +57,27 @@ Three tiers. Use the lowest one that can catch the bug you are looking for.
 | sandbox | `dist-sandbox` branch, added as a second repository URL in PixInsight | `npm publish --tag next`, install `@pardovot/pixinsight-mcp@next` | you and anyone given the URL |
 | production | `dist` | `npm publish` (latest) | everyone |
 
-**Sandbox exists because a local install cannot test the delivery path.** It skips the signature
-check, the `updates.xri`, the zip's internal layout and PixInsight's own install flow, which is
-exactly where the macOS packaging bug of 2026-08-11 lived. PixInsight's repository reference
-recommends the same practice under "Testing Updates: Sandbox Repositories".
+**Sandbox is NOT part of the routine.** Local install plus CI is the normal path. What a local
+install cannot see, the `arch` declaration, the zip layout and the `updates.xri`, is covered by
+`test/packaging.test.mjs`, which runs the packager against synthetic binaries on every pull
+request. That is where the macOS bug of 2026-08-11 would now be caught, and it is caught before
+anyone decides to publish rather than after.
 
-To publish a sandbox build: **Actions → Module Release (publish) → Run workflow**, channel
-`sandbox`. It builds, signs and packages identically to a real release and pushes to
-`dist-sandbox`. In PixInsight, add the second URL alongside the production one:
+Reach for sandbox only when you change the **packaging format itself**, a new archive layout, a
+new platform, a signing change, because the one thing no test can simulate is PixInsight's own
+install flow. PixInsight's repository reference recommends the practice under "Testing Updates:
+Sandbox Repositories".
+
+To publish one: **Actions → Module Release (publish) → Run workflow**, channel `sandbox`. It
+builds, signs and packages identically to a real release and pushes to `dist-sandbox`, creating
+the branch on demand. In PixInsight, add the second URL alongside the production one:
 
 ```
 https://raw.githubusercontent.com/pardovot/pixinsight-mcp/dist-sandbox/
 ```
 
-Remove it when you are done testing, otherwise you keep receiving unreleased builds.
+Remove the URL when you are done, and delete the branch, so a stale build cannot be served months
+later. A tag never publishes there.
 
 **Versioning across channels.** PixInsight delivers by version, so a version installed from
 sandbox will NOT be re-delivered from production. Keep it simple: sandbox and production share the
