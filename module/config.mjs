@@ -144,9 +144,6 @@ export const pclLibPaths = isMac
   ? macTargets.map((target) => pclLibPathFor(target.arch))
   : [pclLibPath];
 
-/** Architecture subdirectory used by PixInsight's own makefiles. */
-export const pclArch = process.arch === "arm64" ? "arm64" : "x64";
-
 /** Directory holding the platform's PCL makefile / vcxproj, under a source root. */
 export const pclProjectDirIn = (srcDir) =>
   isWindows
