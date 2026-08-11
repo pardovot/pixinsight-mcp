@@ -27,3 +27,6 @@ data/_pre-v2/**
 
 # Generated per-build by module/build.mjs
 module/src/BuildTimestamp.h
+
+# Code signatures are generated (node module/sign.mjs <file>), never committed.
+*.xsgn
