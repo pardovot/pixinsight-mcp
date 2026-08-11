@@ -4,10 +4,11 @@
 //
 //   node module/build-pcl.mjs [--force]
 //
-// Verified on: Windows (MSBuild + PCL.vcxproj) and Linux (PixInsight's bundled
-// makefiles, mirrored out of the read-only install first - see
-// resolveSourceRoot). macOS uses the same makefile path as Linux, one build per
-// architecture slice, and is not yet verified.
+// Verified on: Windows (MSBuild + PCL.vcxproj), Linux and macOS (PixInsight's
+// bundled makefiles, mirrored out of the read-only install first - see
+// resolveSourceRoot). macOS uses the same makefile path as Linux but builds one
+// slice per architecture, and additionally has to retarget -isysroot; both
+// slices verified on an Apple Silicon host against PixInsight 1.9.4.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -33,6 +34,61 @@ function isWritable(dir) {
   }
 }
 
+/** The macOS SDK this toolchain actually has, per xcrun. Null if it cannot say. */
+function macSdkPath() {
+  const result = spawnSync("xcrun", ["--sdk", "macosx", "--show-sdk-path"], { encoding: "utf8" });
+  const sdk = result.status === 0 ? result.stdout.trim() : "";
+  return sdk && fs.existsSync(sdk) ? sdk : null;
+}
+
+/** The -isysroot paths a set of makefiles asks for, deduplicated. */
+function sysrootsIn(projectDir) {
+  const found = new Set();
+  for (const target of cfg.macTargets) {
+    const makefile = `${projectDir}/${target.makefile}`;
+    if (!fs.existsSync(makefile)) continue;
+    for (const [, sdk] of fs.readFileSync(makefile, "utf8").matchAll(/-isysroot (\S+)/g))
+      found.add(sdk);
+  }
+  return [...found];
+}
+
+/**
+ * PixInsight generates its macOS makefiles on a machine with the full Xcode,
+ * and bakes that machine's SDK into every compile line as
+ * `-isysroot /Applications/Xcode.app/.../MacOSX.sdk`. It is literal text in the
+ * recipe, not a variable, so there is nothing to override on the make command
+ * line. With only the Command Line Tools installed - which is what the setup
+ * docs ask for - that path does not exist, and every object fails with a
+ * "no such sysroot directory" warning followed by "'uchar.h' file not found".
+ *
+ * Rewrite it to whatever xcrun reports. A machine with the full Xcode resolves
+ * to the path already in the file and nothing is touched.
+ */
+function patchMacSysroot(projectDir) {
+  const stale = sysrootsIn(projectDir).filter((sdk) => !fs.existsSync(sdk));
+  if (stale.length === 0) return;
+
+  const sdk = macSdkPath();
+  if (!sdk) {
+    throw new Error(
+      `PCL's makefiles reference an SDK that is not on this machine:\n  ${stale.join("\n  ")}\n` +
+        "and xcrun could not name a replacement. Install the Command Line Tools:\n" +
+        "  xcode-select --install",
+    );
+  }
+
+  for (const target of cfg.macTargets) {
+    const makefile = `${projectDir}/${target.makefile}`;
+    if (!fs.existsSync(makefile)) continue;
+    const before = fs.readFileSync(makefile, "utf8");
+    const after = before.replace(/-isysroot \S+/g, `-isysroot ${sdk}`);
+    if (after !== before) fs.writeFileSync(makefile, after);
+  }
+  console.log(`Retargeted -isysroot to ${sdk}`);
+  console.log(`  (the makefiles shipped with ${stale.join(", ")})`);
+}
+
 /**
  * Source root to build from, mirroring the tree first when the install is
  * read-only.
@@ -50,7 +106,12 @@ function isWritable(dir) {
  */
 function resolveSourceRoot() {
   const projectDir = cfg.pclProjectDir;
-  if (cfg.isWindows || isWritable(projectDir)) return { srcDir: cfg.pclSrcDir, projectDir };
+  // A stale -isysroot has to be rewritten (see patchMacSysroot), and we never
+  // write to a PixInsight install, so that alone forces the mirror even when
+  // the project directory happens to be writable.
+  const mustPatch = cfg.isMac && sysrootsIn(projectDir).some((sdk) => !fs.existsSync(sdk));
+  if (!mustPatch && (cfg.isWindows || isWritable(projectDir)))
+    return { srcDir: cfg.pclSrcDir, projectDir };
 
   const mirror = cfg.pclSrcMirror;
   const mirrorProject = cfg.pclProjectDirIn(mirror);
@@ -62,6 +123,7 @@ function resolveSourceRoot() {
   } else {
     console.log(`Using the writable PCL source mirror at ${mirror}.`);
   }
+  if (cfg.isMac) patchMacSysroot(mirrorProject);
   return { srcDir: mirror, projectDir: mirrorProject };
 }
 

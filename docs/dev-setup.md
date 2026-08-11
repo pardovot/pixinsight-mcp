@@ -7,7 +7,7 @@ each one says whether it has actually been run.
 |---|---|
 | Windows 11 | verified, the primary dev machine |
 | Linux | verified 2026-08-11 on Ubuntu 24.04: path derivation, `npm test` (78/78), PCL and module built from source, signed and installed, and a full bridge round trip against that module |
-| macOS | written, not yet run. The build branches exist and compile in CI |
+| macOS | verified 2026-08-11 up to signing, on Apple Silicon (M1, macOS 15.7, PixInsight 1.9.4 in `/Applications/PixInsight`, Command Line Tools only): path derivation, `npm test` (78/78), both PCL slices built from source, universal module built and ad-hoc signed, `.xsgn` signed and verified. **Install and the bridge round trip were NOT run**, so no macOS binary has yet been loaded by PixInsight |
 
 ## Prerequisites
 
@@ -38,11 +38,20 @@ locations:
 | OS | Install root (`PI_ROOT`) | Executable | Module lands in |
 |---|---|---|---|
 | Windows | `%ProgramFiles%\PixInsight` | `bin\PixInsight.exe` | `bin\` |
-| macOS | `/Applications/PixInsight` | `PixInsight.app/Contents/MacOS/PixInsight` | `PixInsight.app/Contents/MacOS/` |
+| macOS | `/Applications/PixInsight` | `PixInsight.app/Contents/MacOS/PixInsight` | `MacOS/` |
 | Linux | `/opt/PixInsight` | `bin/PixInsight.sh` (or `/usr/bin/PixInsight`) | `bin/` |
 
-macOS keeps the whole tree (`include`, `src`, `library`, binaries) inside the application bundle,
-there is no top-level `bin/`. Installed somewhere else? Set `PI_ROOT` and the rest follows.
+Installed somewhere else? Set `PI_ROOT` and the rest follows.
+
+> On macOS the application bundle holds only the four core executables
+> (`PixInsight`, `PixInsightUpdater`, `updater2`, `updater3`). Everything else sits **beside** it
+> under `PI_ROOT`: `include/`, `src/`, `lib/`, `library/`, a `bin/` holding the ~118 stock modules,
+> and a top-level `MacOS/` that is where third-party modules go. So the module install directory is
+> `<PI_ROOT>/MacOS`, **not** `PixInsight.app/Contents/MacOS`. Verified on 1.9.4 two ways:
+> `etc/update/installed.xri` records PixInsight's own updater putting StarNet2 and this module in
+> `MacOS/`, and `scripts/build-pi-repo.mjs` already publishes the macOS package with that same
+> internal directory. Writing into `Contents/MacOS` would miss the directory PixInsight scans and
+> break the bundle's code signature.
 
 > On Linux, run the launcher, never `bin/PixInsight` beside it. `PixInsight.sh` exports
 > `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` and friends first; without it the bare binary cannot resolve
@@ -129,6 +138,21 @@ node module/build-pcl.mjs --force
 
 The Windows build is redirected instead: MSBuild takes explicit `OutDir`/`IntDir`, so it needs no
 mirror.
+
+On macOS `module:pcl` builds **two** slices, `x86_64` and `arm64`, cross-compiling whichever one
+the host is not. Each lands in its own directory (`~/pcl-build/lib/{x64,arm64}`) because both
+per-arch makefiles end by copying `libPCL-pxi.a` under the same name, so a shared output directory
+would silently keep only the slice that ran last.
+
+> **macOS: the bundled makefiles hardcode an SDK that may not exist here.** PixInsight generates
+> them on a machine with the full Xcode and bakes that path into every compile line as
+> `-isysroot /Applications/Xcode.app/.../MacOSX.sdk`. With only the Command Line Tools installed,
+> which is what the prerequisites above ask for, that directory is absent and every object fails
+> with `no such sysroot directory` followed by `'uchar.h' file not found`. It is literal text in
+> the recipe, not a variable, so there is nothing to override on the `make` command line.
+> `build-pcl.mjs` rewrites the flag in its own mirrored copy to whatever `xcrun --show-sdk-path`
+> reports, and forces the mirror when a rewrite is needed so the PixInsight install is never
+> touched. With the full Xcode installed the path already resolves and nothing is changed.
 
 ### Signing
 

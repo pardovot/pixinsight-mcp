@@ -4,8 +4,8 @@
 // convention) rather than hardcoded, and every value can be overridden with an
 // environment variable. A stock install needs no configuration.
 //
-// Verified on: Windows. The macOS/Linux branches are written from PixInsight's
-// bundled PCL makefiles but are not yet verified on those platforms.
+// Verified on: Windows, Linux, and macOS (Apple Silicon, PixInsight 1.9.4 in
+// /Applications/PixInsight) for path derivation through the module build.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -45,18 +45,24 @@ function defaultPiRoot() {
 
 export const piRoot = env("PI_ROOT", defaultPiRoot());
 
-// macOS keeps the whole PixInsight install tree inside the application bundle,
-// where the binary directory is Contents/MacOS - there is no bin/ (PixInsight
-// Repository Reference, "Deployment Directories"). A bare PCL source checkout,
-// which is what CI points PI_ROOT at, uses the flat layout on every platform,
-// so probe for the bundle rather than assuming it.
+// The application bundle holds ONLY the core executables (PixInsight,
+// PixInsightUpdater, updater2, updater3). Everything else - include/, src/,
+// lib/, library/, bin/ and the module directory - sits beside it under PI_ROOT,
+// so the bundle is used to locate the executable and nothing else. A bare PCL
+// source checkout, which is what CI points PI_ROOT at, has no bundle at all.
 const macBundleTree = isMac ? path.join(piRoot, "PixInsight.app", "Contents") : null;
 
+// Where a third-party module is installed. On macOS that is <PI_ROOT>/MacOS,
+// NOT the bundle's Contents/MacOS: PixInsight's own updater installs there
+// (etc/update/installed.xri records StarNet2 and this module landing in
+// MacOS/), and scripts/build-pi-repo.mjs already publishes the macOS package
+// with that same internal directory. Writing into Contents/MacOS would both
+// miss the directory PixInsight scans and break the bundle's code signature.
+// <PI_ROOT>/bin exists on macOS too, but it holds the stock modules that ship
+// with PixInsight, so it is only a fallback.
 export const piBin = env(
   "PI_BIN",
-  isMac
-    ? probe([path.join(macBundleTree, "MacOS"), path.join(piRoot, "bin")])
-    : path.join(piRoot, "bin"),
+  isMac ? probe([path.join(piRoot, "MacOS"), path.join(piRoot, "bin")]) : path.join(piRoot, "bin"),
 );
 // Linux ships the real binary next to a launcher script that sets
 // LD_LIBRARY_PATH and the Qt plugin paths; the binary alone dies with
@@ -106,8 +112,9 @@ export const signaturePath = path.join(buildDir, "MCPWatcher-pxm.xsgn");
 
 // Headers ship inside PixInsight. The static library is built by build-pcl into
 // a writable location, because the PixInsight install dir is read-only.
-// piRoot first: that is the layout of both a Windows/Linux install and a plain
-// PCL checkout. On macOS these live inside the bundle instead (see piBin).
+// piRoot first: that is the layout of a Windows, Linux or macOS install alike,
+// and of a plain PCL checkout. The bundle fallback covers a layout that keeps
+// these inside Contents/; a stock macOS install does not (verified 1.9.4).
 export const pclIncDir = env(
   "PCLINCDIR",
   probe([path.join(piRoot, "include"), macBundleTree && path.join(macBundleTree, "include")]),
@@ -209,6 +216,9 @@ export function describe() {
     ["platform", `${platform} (${process.arch})`],
     ["PI_ROOT", piRoot],
     ["PI_EXE", piExe],
+    // The install destination, and the value most likely to be wrong on a
+    // non-standard layout, so it belongs in the summary.
+    ["PI_BIN", piBin],
     ["module", modulePath],
     ["PCLINCDIR", pclIncDir],
     ["PCLLIBDIR", pclLibDir],
