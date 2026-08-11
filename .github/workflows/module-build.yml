@@ -21,7 +21,7 @@ name: Module Build (compile check)
 #
 # NOTE - macOS is a UNIVERSAL build: the runner (Apple Silicon) builds both the
 # arm64 and the x86_64 slice, of PCL and of the module, and lipo joins them.
-# The extra slice is why one runner can serve both architectures; clang
+# The extra slice is why one runner can serve both architectures, clang
 # cross-compiles either way and CI never executes the binary.
 
 on:
@@ -40,7 +40,7 @@ on:
       - "pjsr/pixinsight-mcp-watcher.js"
       - ".github/workflows/module-build.yml"
   push:
-    branches: [master, v2]
+    branches: [master]
     paths:
       - "module/**"
       - "pjsr/pixinsight-mcp-watcher.js"
@@ -168,7 +168,7 @@ jobs:
 
       # Publish right after PCL builds - BEFORE the module build that might still
       # fail - so a failed run still leaves the SDK cached for the next attempt.
-      # Skipped for fork PRs, whose GITHUB_TOKEN is read-only; they just build it.
+      # Skipped for fork PRs, whose GITHUB_TOKEN is read-only, they just build it.
       - name: Publish prebuilt PCL
         if: steps.pcl-sdk.outputs.hit != 'true' && github.event.pull_request.head.repo.fork != true
         shell: bash
@@ -178,7 +178,7 @@ jobs:
         run: |
           mkdir -p .pcl-sdk
           tar -czf ".pcl-sdk/$ASSET" -C "$HOME/pcl-build" lib # relative, see the restore step
-          # Three OS jobs race to create the release; losing the race is fine.
+          # Three OS jobs race to create the release, losing the race is fine.
           gh release view "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$PCL_SDK_TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
                  --title "PCL SDK build cache" \
@@ -228,7 +228,7 @@ jobs:
               *) echo "::error::$dylib has no $want slice (got: $archs)"; exit 1 ;;
             esac
           done
-          # Apple Silicon will not load unsigned code; build.mjs ad-hoc signs it.
+          # Apple Silicon will not load unsigned code, build.mjs ad-hoc signs it.
           codesign --verify --verbose "$dylib"
 
       - name: Upload module artifact

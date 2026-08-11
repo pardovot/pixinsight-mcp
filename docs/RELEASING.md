@@ -80,7 +80,7 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
   `<platform>` package in `updates.xri`; the app installs only the one matching the user's
   OS/arch.
 - **macOS is a universal binary, declared `arch="all"`.** `module/build.mjs` builds both slices on
-  the macOS runner and joins them with `lipo`; `scripts/build-pi-repo.mjs` **refuses to publish** a
+  the macOS runner and joins them with `lipo`. `scripts/build-pi-repo.mjs` **refuses to publish** a
   thin arm64 dylib and downgrades a thin x86_64 one to `arch="x64"` with a warning.
   - Why one package and not two: on macOS the update system picks by **which PixInsight build the
     user installed, not by their CPU** (an x64 PixInsight on Apple Silicon takes x64 packages), and
@@ -103,7 +103,7 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
   - `module-build.yml` instead keeps `pcl-<OS>-<pcl-sha12>.tar.gz` on the **`pcl-sdk`** prerelease.
     Release assets are repo-scoped: one upload per PCL commit serves every branch, tag, PR and
     release, with no eviction and no dependency on which branch is the default. A job that finds
-    its asset skips the PCL build entirely; a job that does not, builds it and uploads it, then
+    its asset skips the PCL build entirely. A job that does not, builds it and uploads it, then
     deletes assets for superseded PCL commits.
   - `pcl-sdk` is **not a product release**. Don't delete it, and don't confuse it with
     `module-v*` tags. Deleting it just costs one rebuild per OS.
