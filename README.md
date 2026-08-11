@@ -1,19 +1,42 @@
 # PixInsight MCP
 
-An MCP server that lets Claude drive PixInsight: open images, measure them, run any installed
-process, read the results back. PixInsight stays responsive while it works, so you can watch and
-intervene.
+An MCP server that lets an AI assistant drive PixInsight: open images, measure them, run any
+installed process, read the results back. PixInsight stays responsive while it works, so you can
+watch and intervene.
 
 Cross-platform by design. Run and verified on Windows; macOS and Linux compile in CI but have not
 been run yet.
 
 ## Install
 
-**1. MCP server**
+**1. MCP server.** Any MCP client works; this is a stock stdio server with no client-specific code.
+
+Claude Code:
 
 ```bash
 claude mcp add pixinsight -- npx -y @pardovot/pixinsight-mcp
 ```
+
+Claude Desktop, Cursor, Windsurf and anything else that takes an `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "pixinsight": { "command": "npx", "args": ["-y", "@pardovot/pixinsight-mcp"] }
+  }
+}
+```
+
+Codex CLI, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.pixinsight]
+command = "npx"
+args = ["-y", "@pardovot/pixinsight-mcp"]
+```
+
+On Windows, if a client cannot resolve `npx`, use `"command": "cmd"` with
+`"args": ["/c", "npx", "-y", "@pardovot/pixinsight-mcp"]`.
 
 **2. PixInsight module.** `Resources > Updates > Manage Repositories`, add:
 
@@ -24,10 +47,10 @@ https://raw.githubusercontent.com/pardovot/pixinsight-mcp/dist/
 Then `Resources > Updates > Check for Updates` and restart. Signed with a Certified PixInsight
 Developer identity, so the dialog shows *Verified. Certified developer: OfirPardo*.
 
-**3. Start it.** `Process > Utilities > MCP Watcher > Start`, then ask Claude to list your open
-images. If it answers, you are connected.
+**3. Start it.** `Process > Utilities > MCP Watcher > Start`, then ask your assistant to list your
+open images. If it answers, you are connected.
 
-Requires PixInsight 1.9.4+ (V8 engine), Node 18+, and Claude Code or Claude Desktop.
+Requires PixInsight 1.9.4+ (V8 engine), Node 18+, and an MCP client.
 
 ## Tools
 
@@ -57,7 +80,7 @@ Definitions live in `src/tools/*.ts`. Verified gotchas: [`docs/facts.md`](docs/f
 ## How it works
 
 ```
-  Claude
+  MCP client
     │  MCP (stdio)
   MCP server                    src/ (TypeScript)
     │  file bridge              ~/.pixinsight-mcp/bridge/{commands,results}
