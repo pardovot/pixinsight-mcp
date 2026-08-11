@@ -58,13 +58,19 @@ export const piBin = env(
     ? probe([path.join(macBundleTree, "MacOS"), path.join(piRoot, "bin")])
     : path.join(piRoot, "bin"),
 );
+// Linux ships the real binary next to a launcher script that sets
+// LD_LIBRARY_PATH and the Qt plugin paths; the binary alone dies with
+// "libssh2.so.1: cannot open shared object file". Prefer the launcher, which is
+// also what the installer symlinks onto PATH as /usr/bin/PixInsight.
 export const piExe = env(
   "PIXINSIGHT_EXE",
   env(
     "PI_EXE",
     isMac
       ? path.join(macBundleTree, "MacOS", "PixInsight")
-      : path.join(piBin, isWindows ? "PixInsight.exe" : "PixInsight"),
+      : isWindows
+        ? path.join(piBin, "PixInsight.exe")
+        : probe([path.join(piBin, "PixInsight.sh"), path.join(piBin, "PixInsight")]),
   ),
 );
 
@@ -133,12 +139,22 @@ export const pclLibPaths = isMac
 /** Architecture subdirectory used by PixInsight's own makefiles. */
 export const pclArch = process.arch === "arm64" ? "arm64" : "x64";
 
-/** Directory holding the platform's PCL makefile / vcxproj. */
-export const pclProjectDir = isWindows
-  ? path.join(pclSrcDir, "pcl", "windows", "vc17")
-  : path.join(pclSrcDir, "pcl", isMac ? "macosx" : "linux", "g++");
+/** Directory holding the platform's PCL makefile / vcxproj, under a source root. */
+export const pclProjectDirIn = (srcDir) =>
+  isWindows
+    ? path.join(srcDir, "pcl", "windows", "vc17")
+    : path.join(srcDir, "pcl", isMac ? "macosx" : "linux", "g++");
+
+export const pclProjectDir = pclProjectDirIn(pclSrcDir);
 
 export const pclVcxproj = path.join(pclProjectDir, "PCL.vcxproj");
+
+/**
+ * Writable copy of the PCL source tree. PixInsight's generated makefiles compile
+ * in-tree, so a read-only install (root-owned /opt/PixInsight, a system-owned
+ * app bundle) cannot be built in place; build-pcl mirrors the tree here instead.
+ */
+export const pclSrcMirror = env("PCL_SRC_MIRROR", path.join(pclBuildOut, "src"));
 
 // --- Code signing -----------------------------------------------------------
 
