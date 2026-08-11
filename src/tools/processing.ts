@@ -1,6 +1,14 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
+import {
+  checkProcessCall,
+  deadParamsFor,
+  formatBlocks,
+  formatNotes,
+  formatWarnings,
+  overrideEnabled,
+} from "../facts/guard.js";
 
 function processResult(result: any, successMsg: string) {
   if (result.status === "error") {
@@ -44,11 +52,26 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       settings: z.record(z.any()).optional().describe("Process parameters as { name: value } (see get_process_parameters)"),
     },
     async ({ processId, viewId, settings }) => {
+      // Verified defects are refused before the call reaches PixInsight. Some of
+      // these hang the application, and the no-op ones would otherwise return
+      // success with an unchanged image, which is worse than an error.
+      const { blocks, warnings } = checkProcessCall({ processId, viewId, settings: settings ?? {} });
+      if (blocks.length > 0 && !overrideEnabled()) {
+        return {
+          content: [{ type: "text" as const, text: formatBlocks(processId, blocks) }],
+          isError: true,
+        };
+      }
+
       const result = await bridge.sendCommand("run_process", processId, {
         processId,
         settings: settings ?? {},
       }, viewId ? { executeMethod: "executeOn", targetView: viewId } : { executeMethod: "executeGlobal" });
-      return processResult(result, `${processId} executed${viewId ? ` on **${viewId}**` : " (global)"}`);
+      const outcome = processResult(result, `${processId} executed${viewId ? ` on **${viewId}**` : " (global)"}`);
+      if (warnings.length > 0 && !outcome.isError) {
+        outcome.content[0].text += formatWarnings(warnings);
+      }
+      return outcome;
     }
   );
 
@@ -66,8 +89,21 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
         return { content: [{ type: "text" as const, text: `Error: ${result.error.message}` }], isError: true };
       }
       const params = (result as any).outputs?.parameters ?? {};
-      const lines = Object.keys(params).map((k) => `- ${k} = ${JSON.stringify(params[k])}`).join("\n");
-      return { content: [{ type: "text" as const, text: `**${processId}** parameters:\n${lines}` }] };
+      // Introspection reports dead aliases as ordinary settable parameters, so
+      // mark them here rather than letting a caller trust the raw list.
+      const dead = deadParamsFor(processId);
+      const lines = Object.keys(params)
+        .map((k) => {
+          const fact = dead.get(k.toLowerCase());
+          const mark = fact ? `   [DEAD, ${fact.id}: setting this is refused, ${fact.fix ?? "no effect"}]` : "";
+          return `- ${k} = ${JSON.stringify(params[k])}${mark}`;
+        })
+        .join("\n");
+      return {
+        content: [
+          { type: "text" as const, text: `**${processId}** parameters:\n${lines}${formatNotes(processId)}` },
+        ],
+      };
     }
   );
 
