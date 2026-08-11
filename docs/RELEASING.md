@@ -47,6 +47,39 @@ Bump policy (`MAJOR.MINOR.RELEASE`):
   against `Version.h`, **reuses** the compile-check to build all three binaries, assembles
   `pi-repo/`, and force-pushes it to the single-commit **`dist`** branch. See the ritual below.
 
+## Channels: test before you ship
+
+Three tiers. Use the lowest one that can catch the bug you are looking for.
+
+| tier | module | MCP server | who sees it |
+|---|---|---|---|
+| local | `module:build` → `module:sign` → `module:install` | client points at `<repo>/build/index.js` | you, no publishing |
+| sandbox | `dist-sandbox` branch, added as a second repository URL in PixInsight | `npm publish --tag next`, install `@pardovot/pixinsight-mcp@next` | you and anyone given the URL |
+| production | `dist` | `npm publish` (latest) | everyone |
+
+**Sandbox exists because a local install cannot test the delivery path.** It skips the signature
+check, the `updates.xri`, the zip's internal layout and PixInsight's own install flow, which is
+exactly where the macOS packaging bug of 2026-08-11 lived. PixInsight's repository reference
+recommends the same practice under "Testing Updates: Sandbox Repositories".
+
+To publish a sandbox build: **Actions → Module Release (publish) → Run workflow**, channel
+`sandbox`. It builds, signs and packages identically to a real release and pushes to
+`dist-sandbox`. In PixInsight, add the second URL alongside the production one:
+
+```
+https://raw.githubusercontent.com/pardovot/pixinsight-mcp/dist-sandbox/
+```
+
+Remove it when you are done testing, otherwise you keep receiving unreleased builds.
+
+**Versioning across channels.** PixInsight delivers by version, so a version installed from
+sandbox will NOT be re-delivered from production. Keep it simple: sandbox and production share the
+same version, and once a sandbox build is verified you publish that same version to `dist`.
+Everyone except the tester receives it fresh, and the tester already has the identical binary.
+
+A tag always publishes to production. A manual run defaults to sandbox, so the easy path is the
+safe one.
+
 ## Release ritual
 
 1. Bump `MCPWATCHER_VERSION_STR` (+ `RELEASE_YEAR/MONTH/DAY`) in `module/src/Version.h`.

@@ -17,13 +17,27 @@ name: Module Release (publish)
 # To cut a release:  bump module/src/Version.h, commit, then
 #   git tag module-v<version> && git push --tags
 # See docs/RELEASING.md.
+#
+# CHANNELS. A tag always publishes to `dist`, the production repository. A manual
+# run defaults to the `dist-sandbox` channel instead, which is a second
+# repository URL you add in PixInsight while testing. Sandbox exercises what a
+# local `module:install` cannot: the signature, updates.xri, the zip layout and
+# PixInsight's own install flow, which is where the macOS packaging bug of
+# 2026-08-11 would have surfaced. PixInsight's repository reference recommends
+# exactly this ("Testing Updates: Sandbox Repositories").
 
 on:
   push:
     tags: ["module-v*"]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Which repository to publish to"
+        type: choice
+        options: [sandbox, production]
+        default: sandbox
 
-# Serialize releases so two never race on the dist branch.
+# Serialize releases so two never race on a dist branch.
 concurrency:
   group: module-release
   cancel-in-progress: false
@@ -33,6 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      branch: ${{ steps.channel.outputs.branch }}
+      channel: ${{ steps.channel.outputs.channel }}
     steps:
       - uses: actions/checkout@v4
       - id: ver
@@ -52,6 +68,24 @@ jobs:
           else
             echo "Manual dispatch - publishing Version.h version $VER."
           fi
+      # A tag is always production. A manual run is sandbox unless it explicitly
+      # says otherwise, so the accident-prone direction is the safe one.
+      - id: channel
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            CHANNEL=production
+          else
+            CHANNEL="${{ inputs.channel || 'sandbox' }}"
+          fi
+          case "$CHANNEL" in
+            production) BRANCH=dist ;;
+            sandbox)    BRANCH=dist-sandbox ;;
+            *) echo "::error::Unknown channel '$CHANNEL'"; exit 1 ;;
+          esac
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Publishing to the $CHANNEL channel, branch $BRANCH."
 
   # Reuse the compile-check workflow so the release build can never drift from it.
   # contents: write is for the prebuilt PCL SDK release asset that workflow
@@ -122,17 +156,30 @@ jobs:
           node module/sign-xri.mjs pi-repo/updates.xri
           node module/sign-xri.mjs --verify pi-repo/updates.xri
 
-      - name: Publish pi-repo to the dist branch
+      - name: Publish pi-repo to the channel branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ needs.preflight.outputs.branch }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
         run: |
           cd pi-repo
-          # Fresh init each release -> dist stays a single commit (no binary
-          # history accumulates); force-push overwrites the previous publish.
-          git init -q -b dist
+          # Fresh init each publish, so the branch stays a single commit and no
+          # binary history accumulates. Force-push overwrites the previous one.
+          git init -q -b "$BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -qm "Publish MCP Watcher module v${{ needs.preflight.outputs.version }} (${GITHUB_SHA::7})"
-          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" dist
-          echo "Published -> https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/dist/updates.xri"
+          git commit -qm "Publish MCP Watcher module v${{ needs.preflight.outputs.version }} to $CHANNEL (${GITHUB_SHA::7})"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${BRANCH}/"
+          echo "Published v${{ needs.preflight.outputs.version }} to the $CHANNEL channel"
+          echo "Repository URL: $URL"
+          {
+            echo "### Published to \`$CHANNEL\`"
+            echo ""
+            echo "Version **${{ needs.preflight.outputs.version }}**, branch \`$BRANCH\`."
+            echo ""
+            echo "PixInsight repository URL:"
+            echo ""
+            echo "    $URL"
+          } >> "$GITHUB_STEP_SUMMARY"
