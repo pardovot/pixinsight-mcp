@@ -45,8 +45,10 @@ import { deflateRawSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const buildDir = path.join(repo, "module", "build");
-const piRepoDir = path.join(repo, "pi-repo");
+// Overridable so test/packaging.test.mjs can point both at temp directories.
+// Nothing else sets them, a release run uses the defaults.
+const buildDir = process.env.MCP_BUILD_DIR || path.join(repo, "module", "build");
+const piRepoDir = process.env.MCP_PI_REPO_DIR || path.join(repo, "pi-repo");
 const xriPath = path.join(piRepoDir, "updates.xri");
 const versionHeader = path.join(repo, "module", "src", "Version.h");
 
