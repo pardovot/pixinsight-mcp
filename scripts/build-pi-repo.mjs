@@ -55,9 +55,11 @@ const versionHeader = path.join(repo, "module", "src", "Version.h");
 const MODULE_BASE = "MCPWatcher-pxm"; // module Id + "-pxm" (see module/config.mjs)
 
 // os/arch values and install directory per the PixInsight Repository Reference.
-// arch "x64" == "x86_64". macOS binaries live in MacOS/, not bin/: that is the
-// binary directory inside the application bundle, which is the macOS install
-// root ("Deployment Directories" in the reference).
+// arch "x64" == "x86_64". macOS binaries live in MacOS/, not bin/: that is a
+// top-level directory of the install root, BESIDE PixInsight.app rather than
+// inside it (bin/ there holds the stock modules). Confirmed on a 1.9.4 install
+// by etc/update/installed.xri, where PixInsight's own updater records StarNet2
+// and this module installing into MacOS/.
 //
 // macOS is ONE universal binary declared arch="all", which is what RC Astro
 // ships for 1.9.4 and what the documented arch tokens support (the reference

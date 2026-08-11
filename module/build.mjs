@@ -5,9 +5,9 @@
 // Always regenerates the embedded JS handlers first, without that the module
 // compiles with STALE handler logic, which is a silent correctness bug.
 //
-// Verified on: Windows (MSVC via vcvars64 + CMake/Ninja).
-// macOS/Linux use the same CMake project with the system compiler, written
-// but not yet verified there.
+// Verified on: Windows (MSVC via vcvars64 + CMake/Ninja), Linux, and macOS
+// (clang, both slices joined with lipo and ad-hoc signed) - all three use the
+// same CMake project with the system compiler.
 
 import fs from "node:fs";
 import path from "node:path";

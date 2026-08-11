@@ -17,7 +17,7 @@
  *   baseName     view id base, default "osc"
  *   xspd         filters.xspd path (default: derived from the PixInsight install)
  *   mars         .xmars path, array of paths, or dir. MARS databases have no default location,
- *                so pass this; with nothing passed the recipe scans a few common download dirs.
+ *                so pass this. With nothing passed the recipe scans a few common download dirs.
  *                No MARS found => skip SPFC (only MGC needs it) and go straight to GC.
  *   filterPrefix SPFC/SPCC filter curve family, default "Sony Color Sensor" (IMX571 etc.)
  *   gradientScale MGC gradient scale, default 1024
@@ -69,7 +69,7 @@ function OSC_RGB_LINEAR(cfg) {
       }
       // MARS databases have NO default location: the user downloads them and
       // points MGC's Preferences at wherever they put them. cfg.mars is the real
-      // input; the rest is a courtesy scan of where a default download tends to
+      // input, the rest is a courtesy scan of where a default download tends to
       // land, and finding nothing means "tell me the path", not "not installed".
       var dirs = [];
       if (cfg.mars && typeof cfg.mars === "string") dirs.push(cfg.mars);
