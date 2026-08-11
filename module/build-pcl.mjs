@@ -85,7 +85,7 @@ function main() {
     // macOS needs BOTH slices for the universal module, and the two per-arch
     // makefiles both finish with `cp libPCL-pxi.a $PCLLIBDIR64` under the same
     // name. The bundled top-level Makefile runs them back to back with one
-    // output directory, so the second silently overwrites the first; drive each
+    // output directory, so the second silently overwrites the first. Drive each
     // makefile ourselves with its own PCLLIBDIR64 instead.
     for (const target of cfg.macTargets) {
       const libDir = cfg.pclLibDirFor(target.arch);

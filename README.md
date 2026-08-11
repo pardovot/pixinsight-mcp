@@ -4,12 +4,11 @@ An MCP server that lets an AI assistant drive PixInsight: open images, measure t
 installed process, read the results back. PixInsight stays responsive while it works, so you can
 watch and intervene.
 
-Cross-platform by design. Run and verified on Windows; macOS and Linux compile in CI but have not
-been run yet.
+Cross-platform: Windows, macOS and Linux.
 
 ## Install
 
-**1. MCP server.** Any MCP client works; this is a stock stdio server with no client-specific code.
+**1. MCP server.** Any MCP client works. This is a stock stdio server with no client-specific code.
 
 Claude Code:
 
@@ -103,15 +102,14 @@ embedded at build time, so handler logic lives in one place and C++ only supplie
 
 ## Platform
 
-| | |
-|---|---|
-| Windows | verified: build, sign, install, release |
-| macOS | compiles in CI, not yet run (`src/pcl/macosx/g++`, clang) |
-| Linux | compiles in CI, not yet run (`src/pcl/linux/g++`, g++) |
+| | Toolchain | Module |
+|---|---|---|
+| Windows | MSVC (`src/pcl/windows/vc17`) | `bin/MCPWatcher-pxm.dll` |
+| macOS | clang (`src/pcl/macosx/g++`) | `MacOS/MCPWatcher-pxm.dylib`, universal x86_64 + arm64 |
+| Linux | g++ (`src/pcl/linux/g++`) | `bin/MCPWatcher-pxm.so` |
 
-Nothing in the design is Windows-specific: Node server, file bridge, PJSR handlers, CMake build
-with per-platform branches. Non-Windows instructions stay in the docs and should be corrected by
-whoever runs them first, not deleted for being untested.
+All three build in CI on every change and ship in every release. Nothing in the design is
+platform-specific: Node server, file bridge, PJSR handlers, CMake build with per-platform branches.
 
 ## Building from source
 

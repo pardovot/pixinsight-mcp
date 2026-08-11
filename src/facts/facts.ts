@@ -16,7 +16,7 @@
 //
 // FAIL CLOSED. Each fact records the PixInsight version it was verified against,
 // but a newer PixInsight does NOT relax it. Only evidence does: re-run the probe,
-// then widen the fact. A wall a user can hit is recoverable; a deadlocked session
+// then widen the fact. A wall a user can hit is recoverable, a deadlocked session
 // mid-run is not. The single escape hatch is PIXINSIGHT_MCP_ALLOW_UNSAFE, set by
 // a human on the server process, deliberately NOT a tool parameter an agent can
 // pass to itself.
@@ -71,7 +71,7 @@ export const FACTS: Fact[] = [
       "Use broadband mode with duoband curves instead. Filter curves can be sliced out of " +
       "<PixInsight>/library/filters.xspd (the data=\"...\" attribute). Pair the " +
       "\"Sony Color Sensor R/G/B\" entries ONLY with \"Ideal QE curve\", since they already " +
-      "embed CFA + QE; a real QE curve double-counts.",
+      "embed CFA + QE, a real QE curve double-counts.",
     when: (call) => isTrue(call.settings.narrowbandMode),
     verified: V194("2026-07-28"),
   },
@@ -139,7 +139,7 @@ export const FACTS: Fact[] = [
     processes: ["StarXTerminator", "SXT"],
     severity: "block",
     deadParams: ["starmask", "linear"],
-    summary: "StarXTerminator has no starmask or linear parameter; they do not exist on the process.",
+    summary: "StarXTerminator has no starmask or linear parameter, they do not exist on the process.",
     fix: "Live parameters are stars (default false), unscreen (default false) and overlap (default 0.20).",
     verified: V194("2026-07-28"),
   },
@@ -156,7 +156,7 @@ export const FACTS: Fact[] = [
     id: "hdrmt-invertediterations-type",
     processes: ["HDRMultiscaleTransform", "HDRMT"],
     severity: "block",
-    summary: "HDRMultiscaleTransform invertedIterations must be a boolean; a number is rejected by the process.",
+    summary: "HDRMultiscaleTransform invertedIterations must be a boolean, a number is rejected by the process.",
     fix: "Pass true or false.",
     when: (call) =>
       call.settings.invertedIterations !== undefined &&
