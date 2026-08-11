@@ -38,6 +38,12 @@ baseline requirement, not a later "port" and not a nice-to-have.
 
 ## Environment
 - Dev machine: **Windows 11**, stock PixInsight install. (Machine-specific paths must never be hardcoded, see the cross-platform rule above.)
+- **Linux verified 2026-08-11** (Ubuntu 24.04, PixInsight in `/opt`): PCL + module build from
+  source, 78/78 tests, path derivation, sign + install, bridge round trip. Two gotchas found there: PixInsight's
+  bundled makefiles compile **in-tree**, so a root-owned install cannot be built in place
+  (`build-pcl.mjs` mirrors the source to `$PCL_BUILD_OUT/src` first; CI missed it because its
+  `PI_ROOT` is a writable clone), and `bin/PixInsight` is not launchable, the launcher
+  `bin/PixInsight.sh` is. Setup per platform: `docs/dev-setup.md`.
 - **PixInsight 1.9.4 "Lockhart" → V8 engine, NOT ECMAScript 5.** The original project's "ES5 only" rule does not apply here; the watcher was V8-ported (`#engine v8`, ES6 `class ... extends`, `CoreApplication.processEvents`). V8 port credit: Andre Couto (@4ndr3c0ut0).
 - Bridge (unchanged): `~/.pixinsight-mcp/bridge/{commands,results}`, command `<id>.json` in, result `<id>.json` out.
 
