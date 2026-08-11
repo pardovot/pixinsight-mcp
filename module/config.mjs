@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { defaultKeyPath } from "./signing.mjs";
 
 export const platform = process.platform; // 'win32' | 'darwin' | 'linux'
 export const isWindows = platform === "win32";
@@ -165,9 +166,15 @@ export const pclSrcMirror = env("PCL_SRC_MIRROR", path.join(pclBuildOut, "src"))
 
 // --- Code signing -----------------------------------------------------------
 
-export const signKeys = env("PI_SIGN_KEYS", path.join(os.homedir(), "key.xssk"));
-/** PixInsight instance slot for the short-lived signing process, [1,256]. */
-export const signSlot = env("PI_SIGN_SLOT", "7");
+// The key file sign.mjs actually reads, re-exported from signing.mjs rather
+// than re-derived here so the two cannot drift.
+//
+// Signing runs entirely in Node and never launches PixInsight, so there is no
+// .xssk and no instance slot involved. A .xssk is read exactly once, by
+// module/export-signing-key.js inside PixInsight's Script Editor, which writes
+// this JSON; from then on only the JSON matters. CI supplies the key through
+// PI_SIGN_KEY + PI_SIGN_DEVELOPER_ID instead, and never reads this path.
+export const signKeyFile = defaultKeyPath;
 
 // --- Toolchain (Windows) ----------------------------------------------------
 
@@ -210,6 +217,16 @@ export const ninjaDir = isWindows
 
 export const make = env("MAKE", "make");
 
+/**
+ * Where sign.mjs will get the key, and whether that source is actually there.
+ * A missing key is the difference between module:sign working and not, so say
+ * so here rather than let the first failure explain it.
+ */
+function describeSigningKey() {
+  if (process.env.PI_SIGN_KEY) return "PI_SIGN_KEY (environment)";
+  return `${signKeyFile} ${fs.existsSync(signKeyFile) ? "(present)" : "(MISSING)"}`;
+}
+
 /** Human-readable summary, for --show and error messages. */
 export function describe() {
   const rows = [
@@ -223,7 +240,7 @@ export function describe() {
     ["PCLINCDIR", pclIncDir],
     ["PCLLIBDIR", pclLibDir],
     ["PCL project", pclProjectDir],
-    ["PI_SIGN_KEYS", signKeys],
+    ["signing key", describeSigningKey()],
   ];
   if (isWindows) rows.push(["VS", vs], ["CMAKE", cmake]);
   else rows.push(["MAKE", make], ["CMAKE", cmake]);
