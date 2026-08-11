@@ -26,12 +26,20 @@ const targets = [cfg.modulePath, cfg.signaturePath];
 /**
  * Make an installed file belong to the directory it now lives in.
  *
- * macOS is the odd one out: fs.copyFileSync goes through fcopyfile with
- * COPYFILE_ALL, which clones the SOURCE file's metadata, so a copy made as root
- * still lands owned by the invoking user. (Linux creates the destination as the
- * running process, i.e. root; Windows inherits the directory's ACL.) Left alone
- * that puts a module inside the PixInsight tree that any unprivileged process
- * can overwrite, unlike every other module beside it.
+ * A copy made as root does NOT reliably land owned by root. On macOS
+ * fs.copyFileSync goes through fcopyfile with COPYFILE_ALL, which clones the
+ * SOURCE file's metadata: the installed module carried the build directory's
+ * uid, gid, mode and even its com.apple.provenance xattr, while every other
+ * module beside it was root:admin.
+ *
+ * Linux behaves the same way, so this is not a macOS quirk. Measured on Ubuntu
+ * 24.04 with Node 22, running as root, copying a user-owned source into a
+ * root-owned directory: the result was user-owned in all three cases, whether
+ * the destination was absent, already user-owned, or already ROOT-owned.
+ * Windows inherits the directory's ACL.
+ *
+ * Left alone this puts a module inside the PixInsight tree that any
+ * unprivileged process can overwrite, unlike every other module beside it.
  *
  * Follow the directory's own ownership rather than assuming root:admin, so a
  * non-standard install ends up self-consistent instead of merely conventional.
