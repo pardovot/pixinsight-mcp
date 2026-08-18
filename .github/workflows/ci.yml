@@ -19,6 +19,11 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm test
+      # The server checked the way a client sees it: startup, tool schemas,
+      # error paths, probe calls with missing required args. Runs fine without
+      # PixInsight, invalid calls are rejected before they reach the bridge.
+      - name: Flightcheck the server
+        run: npx -y mcp-flightcheck node build/index.js
       # Stale-handler guard: the checked-in generated
       # header must match the watcher JS. Linux only, the generator emits LF
       # and Windows runners' autocrlf would make the diff flaky.
