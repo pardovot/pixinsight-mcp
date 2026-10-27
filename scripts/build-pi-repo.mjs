@@ -22,7 +22,7 @@
 //
 // Usage:  node scripts/build-pi-repo.mjs   (npm run repo:build)
 //
-// SIGNING: each platform's binary must be signed (npm run module:sign) before it
+// SIGNING: each platform's binary must be signed with PixInsight before it
 // is packaged; an unsigned module is REJECTED by PixInsight on install, so a
 // platform without a .xsgn is skipped rather than shipped broken.
 //
@@ -32,11 +32,9 @@
 // signature file name is derived from the binary, so all three platforms
 // staged flat in one directory would collide on MCPWatcher-pxm.xsgn.
 //
-// This script does NOT sign updates.xri; signing is a separate step, the same
-// split as module:build / module:sign:
-//   npm run repo:sign     (node module/sign-xri.mjs pi-repo/updates.xri)
-// The release workflow runs it automatically. An unsigned index still installs,
-// but PixInsight asks the user to confirm first. See docs/SIGNING.md.
+// This script does not sign updates.xri. Sign it with PixInsight
+// (--sign-xml-file) before publishing. An unsigned index still installs, but
+// PixInsight asks the user to confirm first.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -219,7 +217,7 @@ for (const plat of PLATFORMS) {
   }
   const sgnPath = binPath.replace(/\.[^.]+$/, ".xsgn");
   if (!fs.existsSync(sgnPath)) {
-    console.log(`  ! ${plat.os}: ${MODULE_BASE}${plat.ext} present but UNSIGNED, skipped (run npm run module:sign)`);
+    console.log(`  ! ${plat.os}: ${MODULE_BASE}${plat.ext} present but UNSIGNED, skipped (sign it with PixInsight)`);
     continue;
   }
   const binary = fs.readFileSync(binPath);
@@ -239,7 +237,7 @@ for (const plat of PLATFORMS) {
 
 if (built.length === 0) {
   console.error("\n[ERROR] No signed module binary found in module/build/.");
-  console.error("        Run: npm run module:build && npm run module:sign, then retry.");
+  console.error("        Run npm run module:build, sign the module with PixInsight, then retry.");
   process.exit(1);
 }
 
@@ -251,7 +249,7 @@ if (fs.existsSync(oldZip)) {
 }
 
 // ---------------------------------------------------------------------------
-// Generate updates.xri. It is signed afterwards by `npm run repo:sign`.
+// Generate updates.xri. It is signed afterwards with PixInsight.
 // <metadata> is declared once and referenced by every platform's <package>.
 // ---------------------------------------------------------------------------
 const releaseDate = fmtDate(new Date(newestMtime));
@@ -294,5 +292,5 @@ const xri =
 
 fs.writeFileSync(xriPath, xri, "utf8");
 console.log(`\nwrote ${xriPath}  (version ${version}, releaseDate ${releaseDate}, ${built.length} platform(s))`);
-console.log("Modules are signed. updates.xri is NOT signed yet: run `npm run repo:sign` before");
+console.log("Modules are signed. updates.xri is NOT signed yet: sign it with PixInsight before");
 console.log("publishing, or PixInsight will ask users to confirm an unsigned repository.");

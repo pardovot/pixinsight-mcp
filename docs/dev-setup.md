@@ -109,7 +109,7 @@ edit that file:
 
 ```bash
 npm run module:build     # regenerate handlers, compile
-npm run module:sign      # see Signing below
+# sign with PixInsight, see Signing below
 # close PixInsight
 npm run module:install   # self-elevates: UAC on Windows, sudo elsewhere
 # reopen PixInsight, restart the MCP client
@@ -156,8 +156,12 @@ would silently keep only the slice that ran last.
 
 ### Signing
 
-- **No identity at all?** You cannot install a locally built module. Use the update repository
-  build (`README`, install section) and keep your changes on the TypeScript side.
+`AllowUnsignedModuleInstallation` is false by default, so PixInsight refuses an unsigned module and
+`install.mjs` refuses to install one. Sign with PixInsight's own signer and your
+`.xssk` (`--sign-module-file`, and `--sign-xml-file` for a repository index).
+
+- **No identity at all?** You cannot install a locally built module. Keep your changes on the
+  TypeScript side.
 
 ## Running PixInsight
 

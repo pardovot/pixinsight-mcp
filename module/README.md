@@ -131,7 +131,7 @@ Steps:
    Regenerates the embedded handlers, sets up the compiler environment (on Windows,
    `vcvars64`), points CMake at the PCL SDK, and builds `module/build/MCPWatcher-pxm.*`.
 
-3. **Sign** (`npm run module:sign`), then **install** (`npm run module:install`, admin/root) -
+3. **Sign** with PixInsight, then **install** (`npm run module:install`, admin/root) -
    see Signing below. Or PixInsight → Process → Modules → Install Modules → select the module.
 
 Build flags mirror PixInsight's own `PCL.vcxproj`: C++20, `/MD`, `/arch:AVX2`,
@@ -146,44 +146,19 @@ defines `__PCL_WINDOWS __PCL_AVX2 __PCL_FMA` etc. (encoded in `CMakeLists.txt`).
 
 `AllowUnsignedModuleInstallation = false` by default, unsigned modules are
 **blocked** (stricter than scripts). So a build must be signed before
-`install.mjs` will accept it. The identity is the CPD id `OfirPardo`, which
-resolves by name on any install.
+`install.mjs` will accept it.
 
-```
-npm run module:sign                    # sign the built module
-node module/sign.mjs <file> [<file>…]  # sign specific binaries
-node module/sign.mjs --verify <file>   # check a file against its .xsgn
-```
+Sign with PixInsight's own signer and your `.xssk`
+(`--sign-module-file`, and `--sign-xml-file` for a repository index).
 
 > **Keys file is `.xssk`** ("PixInsight XML Secure Signing Keys"), not `.xkeys`.
-> It is XML holding an Ed25519 key pair, with the private key encrypted under a
-> "custom algorithm based on AES-256" (Pleiades' wording; KDF unpublished).
-
-> typed into a PixInsight dialog. Signing itself never sees it, so the old
-> hazards (password visible in the process table, `cmd` mangling `"` or `%`)
-> are gone with the CLI round-trip that created them.
-
-
-This section used to argue that signing outside PixInsight was impractical. It
-was wrong, and the reasoning is kept here because the *shape* of the error is
-worth remembering.
-
-The two claimed blockers:
-
-- **"The module preimage is undocumented, 943 constructions found no match."**
-  Also true, but the search had been run against a *fixed* known-good Pleiades
-  signature. Once the key was in hand, probe signatures could be generated over
-  chosen inputs on demand, and a ~1M-candidate search found the construction in
-  95 seconds. The earlier failure measured the search, not the problem.
-
-What holds up: the signature is stock Ed25519 over SHA-512, there is no
-standalone signing tool in `bin/`, and `Security` lives in the closed core.
+> It is XML holding an Ed25519 key pair, with the private key encrypted.
 
 ### The full build flow
 
 ```
 build.mjs     regenerate embedded handlers -> compile -> warn "unsigned"
-sign.mjs      sign in Node -> produce .xsgn -> verify it before reporting success
+PixInsight    --sign-module-file -> produce .xsgn
 install.mjs   verify module + .xsgn, and that .xsgn is NOT older than the module
               -> copy both to the module directory: <PixInsight>/bin on Windows
                  and Linux, <PixInsight>/MacOS on macOS  (ADMIN/root, PixInsight

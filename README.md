@@ -37,14 +37,7 @@ args = ["-y", "@pardovot/pixinsight-mcp"]
 On Windows, if a client cannot resolve `npx`, use `"command": "cmd"` with
 `"args": ["/c", "npx", "-y", "@pardovot/pixinsight-mcp"]`.
 
-**2. PixInsight module.** `Resources > Updates > Manage Repositories`, add:
-
-```
-https://raw.githubusercontent.com/pardovot/pixinsight-mcp/dist/
-```
-
-Then `Resources > Updates > Check for Updates` and restart. Signed with a Certified PixInsight
-Developer identity, so the dialog shows *Verified. Certified developer: OfirPardo*.
+**2. PixInsight module.** Build and sign it from source, see Building from source below.
 
 **3. Start it.** `Process > Utilities > MCP Watcher > Start`, then ask your assistant to list your
 open images. If it answers, you are connected.
@@ -106,7 +99,7 @@ the event loop instead, which is why the application stays usable while a run is
 | macOS | `MacOS/MCPWatcher-pxm.dylib`, universal x86_64 + arm64 |
 | Linux | `bin/MCPWatcher-pxm.so` |
 
-All three build in CI on every change and ship in every release. Nothing in the design is
+All three build in CI on every change. Nothing in the design is
 platform-specific: Node server, file bridge, PJSR handlers, CMake build with per-platform branches.
 
 ## Building from source
@@ -122,6 +115,7 @@ Needs Node 18+, a C++ toolchain and CMake:
 ```bash
 npm run module:pcl       # once, builds PCL from PixInsight's bundled source
 npm run module:build     # regenerate handlers, compile
+# sign the module with PixInsight, needs your own signing identity
 npm run module:install   # admin/root, PixInsight closed
 ```
 
@@ -161,13 +155,18 @@ PI_ROOT=/opt/PixInsight-1.9.5 node module/build.mjs
 
 ## Signing
 
+PixInsight refuses unsigned modules by default. Sign with PixInsight's own signer and your
+`.xssk` (`--sign-module-file`, and `--sign-xml-file` for a repository index).
+
+Release process: [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## Layout
 
 ```
 src/                MCP server: tools/, pjsr/, bridge/
 module/             native module (the runtime), build/sign/install tooling
 pjsr/               JS watcher, source of truth for handler logic
-docs/               SIGNING, RELEASING, bridge-protocol, facts, architecture
+docs/               RELEASING, bridge-protocol, facts, architecture
 scripts/            ping-watcher, build-pi-repo
 test/               node --test suites
 ```

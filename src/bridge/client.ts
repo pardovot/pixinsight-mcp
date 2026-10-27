@@ -110,7 +110,7 @@ export class BridgeClient {
     if (rev === EXPECTED_HANDLERS_REV) return result;
 
     const reinstall =
-      "Rebuild and reinstall the module: npm run module:build, module:sign, then " +
+      "Rebuild and reinstall the module: npm run module:build, sign it with PixInsight, then " +
       "module:install as admin with PixInsight closed, then restart the MCP server.";
 
     if (rev === undefined || Number(rev) < EXPECTED_HANDLERS_REV) {

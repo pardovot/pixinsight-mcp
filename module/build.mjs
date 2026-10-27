@@ -105,8 +105,8 @@ function buildMacUniversal(env) {
   run("lipo", ["-create", ...slices, "-output", cfg.modulePath]);
 
   // Apple Silicon refuses to load unsigned code, and lipo output carries no
-  // signature. Ad-hoc signing satisfies that. It MUST happen here, before
-  // module/sign.mjs: the PixInsight signature covers the file bytes, so any
+  // signature. Ad-hoc signing satisfies that. It happens here, before
+  // the PixInsight signature, which covers the file bytes, so any
   // later modification invalidates it.
   run("codesign", ["--force", "--sign", "-", cfg.modulePath]);
   run("lipo", ["-info", cfg.modulePath]);
@@ -168,8 +168,8 @@ function main() {
   }
 
   console.log(`\n[OK] Module -> ${cfg.modulePath}`);
-  console.log("[WARN] This build is UNSIGNED. Sign it before installing:");
-  console.log("         node module/sign.mjs");
+  console.log("[WARN] This build is UNSIGNED. Sign it with PixInsight before installing:");
+  console.log("         PixInsight --sign-module-file=<module> with your .xssk");
   console.log("       PixInsight blocks unsigned modules unless");
   console.log("       AllowUnsignedModuleInstallation=true.");
 }

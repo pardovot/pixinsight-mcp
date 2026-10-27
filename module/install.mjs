@@ -126,7 +126,7 @@ function validate() {
     throw new Error(`Not built yet: ${cfg.modulePath}\nRun: node module/build.mjs`);
   if (!fs.existsSync(cfg.signaturePath))
     throw new Error(
-      `Signature missing: ${cfg.signaturePath}\nSign it first: node module/sign.mjs`,
+      `Signature missing: ${cfg.signaturePath}\nSign it with PixInsight first (--sign-module-file)`,
     );
   // A rebuild after signing silently invalidates the signature; catch it here
   // rather than let PixInsight reject the module with an unhelpful error.
@@ -134,7 +134,7 @@ function validate() {
     throw new Error(
       "Signature is OLDER than the module - it was invalidated by a rebuild.\n" +
         `  ${cfg.modulePath}\n  ${cfg.signaturePath}\n` +
-        "Re-sign it, then run this again: node module/sign.mjs",
+        "Re-sign it with PixInsight, then run this again",
     );
   if (!fs.existsSync(cfg.piBin))
     throw new Error(`PixInsight binary directory not found: ${cfg.piBin}\nSet PI_ROOT to override.`);

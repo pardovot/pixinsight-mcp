@@ -12,7 +12,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { defaultKeyPath } from "./signing.mjs";
 
 export const platform = process.platform; // 'win32' | 'darwin' | 'linux'
 export const isWindows = platform === "win32";
@@ -161,10 +160,6 @@ export const pclVcxproj = path.join(pclProjectDir, "PCL.vcxproj");
  */
 export const pclSrcMirror = env("PCL_SRC_MIRROR", path.join(pclBuildOut, "src"));
 
-// --- Code signing -----------------------------------------------------------
-
-export const signKeyFile = defaultKeyPath;
-
 // --- Toolchain (Windows) ----------------------------------------------------
 
 /**
@@ -206,16 +201,6 @@ export const ninjaDir = isWindows
 
 export const make = env("MAKE", "make");
 
-/**
- * Where sign.mjs will get the key, and whether that source is actually there.
- * A missing key is the difference between module:sign working and not, so say
- * so here rather than let the first failure explain it.
- */
-function describeSigningKey() {
-  if (process.env.PI_SIGN_KEY) return "PI_SIGN_KEY (environment)";
-  return `${signKeyFile} ${fs.existsSync(signKeyFile) ? "(present)" : "(MISSING)"}`;
-}
-
 /** Human-readable summary, for --show and error messages. */
 export function describe() {
   const rows = [
@@ -229,7 +214,6 @@ export function describe() {
     ["PCLINCDIR", pclIncDir],
     ["PCLLIBDIR", pclLibDir],
     ["PCL project", pclProjectDir],
-    ["signing key", describeSigningKey()],
   ];
   if (isWindows) rows.push(["VS", vs], ["CMAKE", cmake]);
   else rows.push(["MAKE", make], ["CMAKE", cmake]);

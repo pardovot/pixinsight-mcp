@@ -89,12 +89,10 @@ is **post-processing** (after WBPP/pre-processing).
 ## Delivery channels
 
 1. **npm**, `@pardovot/pixinsight-mcp` (the MCP server).
-2. **Signed PixInsight update repo** (`pi-repo/`), ships the compiled native
-   module via Resources > Updates; rebuilt with `npm run repo:build`. Currently
-   signed with a **local** identity, so it validates only on machines where
-   this PixInsight license is activated (public distribution needs CPD
-   registration).
-3. **Source build** (`module/`), `build-pcl.mjs` → `build.mjs` → `sign.mjs` →
+2. **PixInsight update repo** (`pi-repo/`), packages the compiled native module for
+   Resources > Updates; built with `npm run repo:build`. Not currently
+   published.
+3. **Source build** (`module/`), `build-pcl.mjs` → `build.mjs` → PixInsight signer →
    `install.mjs`, all cross-platform Node scripts.
 
 ## Design decisions

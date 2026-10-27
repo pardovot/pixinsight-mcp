@@ -33,12 +33,8 @@
     "module:config": "node module/config.mjs",
     "module:pcl": "node module/build-pcl.mjs",
     "module:build": "node module/build.mjs",
-    "module:sign": "node module/sign.mjs",
-    "module:verify": "node module/sign.mjs --verify",
     "module:install": "node module/install.mjs",
-    "repo:build": "node scripts/build-pi-repo.mjs",
-    "repo:sign": "node module/sign-xri.mjs pi-repo/updates.xri",
-    "repo:verify": "node module/sign-xri.mjs --verify pi-repo/updates.xri"
+    "repo:build": "node scripts/build-pi-repo.mjs"
   },
   "keywords": [
     "pixinsight",

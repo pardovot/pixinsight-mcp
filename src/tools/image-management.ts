@@ -94,7 +94,7 @@ export function registerImageManagementTools(server: McpServer, bridge: BridgeCl
             text:
               `Saved **${viewId}** to ${filePath}, but the installed MCPWatcher module predates ` +
               `compression support, so the file is UNCOMPRESSED and \`compression\` was ignored. ` +
-              `Rebuild and reinstall the module (npm run module:build, module:sign, then ` +
+              `Rebuild and reinstall the module (npm run module:build, sign it with PixInsight, then ` +
               `module:install as admin with PixInsight closed).`,
           }],
           isError: true,
