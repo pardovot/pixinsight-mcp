@@ -50,7 +50,7 @@ Requires PixInsight 1.9.4+ (V8 engine), Node 18+, and an MCP client.
 
 | Category | Tools |
 |---|---|
-| Execution | **`run_process`**, **`get_process_parameters`**, **`run_script`** |
+| Execution | **`run_process`**, **`get_process_parameters`**, **`run_recipe`** |
 | Images | `list_open_images`, `open_image`, `save_image`, `close_image`, **`get_image_statistics`** |
 | Measurement | **`get_noise`**, **`get_background_gradient`**, `get_background_neutrality`, **`get_star_metrics`**, `get_structure_color` |
 | Rendering | **`render_view`**, **`render_critic_pack`** |

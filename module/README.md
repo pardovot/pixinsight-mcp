@@ -40,7 +40,7 @@ Commands (delegated, not reimplemented in C++): `list_open_images`,
 `run_pixelmath`, `run_process`, `get_process_parameters`, `get_history`,
 `get_full_history`, `undo`, `redo`, `snapshot`, `restore`, `export_container`, and the
 measurement and render verbs. The command file is read as data and only the
-embedded handlers run, `run_script` is in the standalone JS watcher only.
+embedded handlers and recipes run.
 
 ### Handler logic lives in ONE place
 

@@ -163,7 +163,7 @@ Harvested from the pre-v2 KB (git 4786a13) 2026-07-28.
   multi-line, parse with a multiline regex.
 - Process availability: `try { new Name }`; a module installed after launch stays undefined
   until PI restarts.
-- Tool args: `open_image` takes `filePath`; `run_script` takes `code`; `save_image` needs
+- Tool args: `open_image` takes `filePath`; `run_recipe` takes `name` + `args`; `save_image` needs
   `overwrite:true`. `MalformedResult` usually means the process still RAN, verify by artifact,
   never retry blind.
 - Long scripts: write a file and `File.readTextFile` + eval, don't fight JSON escaping.

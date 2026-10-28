@@ -1,7 +1,10 @@
-// Regenerate src/BridgeHandlersJS.h from the JS watcher's handler section.
+// Regenerate src/BridgeHandlersJS.h from the JS watcher's handler section plus
+// the recipe scripts in RECIPE_FILES.
 //
 // Handler logic lives in ONE place, pjsr/pixinsight-mcp-watcher.js. This
 // embeds it into the C++ module so the module stays a thin non-blocking shell.
+// The recipes are embedded too, so run_recipe only ever calls code that ships
+// inside the module.
 // build.mjs runs this automatically; a stale header means the module silently
 // ships old handler logic.
 //
@@ -19,6 +22,12 @@ const END = "__MCP_HANDLERS_END__";
 const CHUNK_LINES = 80;
 
 const source = path.join(repoRoot, "pjsr", "pixinsight-mcp-watcher.js");
+// Each file defines entry functions listed in RECIPE_ENTRY_POINTS (watcher JS).
+export const RECIPE_FILES = [
+  "recipes/osc-rgb-linear.js",
+  "scripts/crop-select.js",
+  "scripts/profile.js",
+];
 const output = path.join(moduleDir, "src", "BridgeHandlersJS.h");
 
 export function generate(outputPath = output) {
@@ -31,9 +40,13 @@ export function generate(outputPath = output) {
 
   const body = lines.slice(start + 1, end);
   if (body.length === 0) throw new Error("handler section is empty, refusing to emit an empty header");
+  for (const recipe of RECIPE_FILES) {
+    body.push("", `// ---- ${recipe} ----`);
+    body.push(...fs.readFileSync(path.join(repoRoot, recipe), "utf8").split(/\r?\n/));
+  }
 
   const out = [
-    "// Auto-generated from pjsr/pixinsight-mcp-watcher.js (handler section).",
+    "// Auto-generated from pjsr/pixinsight-mcp-watcher.js (handler section) and the recipe scripts.",
     "// Regenerate with: node module/gen-handlers.mjs",
     "#ifndef __BridgeHandlersJS_h",
     "#define __BridgeHandlersJS_h",

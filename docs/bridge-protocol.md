@@ -192,17 +192,18 @@ Result:
 }
 ```
 
-### `run_script`
+### `run_recipe`
 
-Execute an arbitrary PJSR script. Standalone JS watcher only, the native module does not have it:
+Call a recipe built into the module by its entry function, with JSON arguments:
 
 ```json
 {
   "id": "...",
-  "tool": "run_script",
-  "process": "__script__",
+  "tool": "run_recipe",
+  "process": "run_recipe",
   "parameters": {
-    "code": "console.writeln('Hello from PJSR');"
+    "name": "CROP_SELECT",
+    "args": ["M51_starless"]
   }
 }
 ```

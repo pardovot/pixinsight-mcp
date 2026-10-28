@@ -9,6 +9,10 @@ import {
   formatWarnings,
   overrideEnabled,
 } from "../facts/guard.js";
+import { execHandler, jsonContent, jsonErrorContent } from "../pjsr/exec.js";
+
+// The linear recipe chains BXT, NXT, SXT and SPCC on a full-size master.
+const RECIPE_TIMEOUT_MS = 3_600_000;
 
 function processResult(result: any, successMsg: string) {
   if (result.status === "error") {
@@ -42,7 +46,7 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       "2. Watch for no-op output defaults: some processes only make a side product unless " +
       "you configure output. E.g. AutomaticBackgroundExtractor defaults to targetCorrection=0 " +
       "(no correction), to actually correct the image pass { targetCorrection: 1, replaceTarget: true }.\n" +
-      "3. Pick settings from measuring THIS image (get_image_statistics / run_script), not fixed defaults.\n" +
+      "3. Pick settings from measuring THIS image (get_image_statistics and the measurement tools), not fixed defaults.\n" +
       "4. After running, ALWAYS re-measure. If stats are byte-identical to before, it was a no-op, " +
       "stop and fix the output config; do not build the next step on it.\n" +
       "Unknown setting names are rejected (checked against get_process_parameters).",
@@ -107,27 +111,22 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     }
   );
 
-  // run_script
+  // run_recipe
   server.tool(
-    "run_script",
-    "Execute arbitrary PJSR code inside PixInsight (escape hatch for anything not covered by " +
-      "specific tools). Returns the script's final expression value (not console output). " +
-      "Available only with the standalone JS watcher script, not the native module.",
+    "run_recipe",
+    "Run a recipe built into the PixInsight module (osc-rgb-linear, crop-select, profile) " +
+      "by its entry function, with JSON arguments. Returns the recipe's report.",
     {
-      code: z.string().describe("PJSR JavaScript code to execute"),
+      name: z.enum(["OSC_RGB_LINEAR", "CROP_EXTENT", "CROP_SELECT", "runFiles"])
+        .describe("Recipe entry function"),
+      args: z.array(z.unknown()).default([]).describe("Positional arguments, as JSON values"),
     },
-    async ({ code }) => {
-      const result = await bridge.sendCommand("run_script", "__script__", { code });
-      if (result.status === "error") {
-        return {
-          content: [{ type: "text" as const, text: `Script error: ${result.error.message}` }],
-          isError: true,
-        };
+    async ({ name, args }) => {
+      try {
+        return jsonContent(await execHandler(bridge, "run_recipe", { name, args }, RECIPE_TIMEOUT_MS));
+      } catch (err) {
+        return jsonErrorContent(err);
       }
-      const output = (result as any).outputs?.returnValue ?? (result as any).message ?? "Script executed.";
-      return {
-        content: [{ type: "text" as const, text: output }],
-      };
     }
   );
 }

@@ -5,7 +5,7 @@
  * NXT -> SXT split. End-state checks only (gradient flat, no clipping, SXT produced stars);
  * per-step medians are recorded for failure triage but nothing gates mid-run.
  *
- * Run via the MCP watcher (run_script) or the Script Editor:
+ * Run through the module (run_recipe, name OSC_RGB_LINEAR, args [cfg]) or the Script Editor:
  *   (0,eval)(File.readTextFile("<repo>/recipes/osc-rgb-linear.js"));
  *   OSC_RGB_LINEAR({ src: "path/to/linear_master.xisf", out: "optional/save/dir" });
  * Returns a JSON string report. Leaves <base>_starless and <base>_stars open for the

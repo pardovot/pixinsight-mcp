@@ -73,7 +73,7 @@ baseline requirement, not a later "port" and not a nice-to-have.
 - **`run_process(processId, viewId?, settings?)`**, runs ANY PixInsight process by class name (`BlurXTerminator`, `AutomaticBackgroundExtractor`, `PixelMath`, anything).
 - **`get_process_parameters(processId)`**, introspects that process's settable params + current defaults.
 - Rationale: every PixInsight process is `new X; set params; executeOn(view)`. One generic tool covers all of them with zero per-process maintenance. Adding `run_bxt`-style tools is the **anti-pattern we deliberately moved past**.
-- The per-process tools (`run_bxt`, `run_nxt`, `run_sxt`, `sharpen`, `denoise`, `stretch_image`, `remove_gradient`, …) were **legacy convenience wrappers and were removed 2026-07-22** (along with `search_processing_recommendations`). Don't re-add them. `run_script` remains the raw PJSR escape hatch.
+- The per-process tools (`run_bxt`, `run_nxt`, `run_sxt`, `sharpen`, `denoise`, `stretch_image`, `remove_gradient`, …) were **legacy convenience wrappers and were removed 2026-07-22** (along with `search_processing_recommendations`). Don't re-add them.
 - `run_pixelmath` (the last surviving per-process MCP tool, with a restricted parameter set: no `symbols`/`rescale`/…) was **removed as an MCP tool 2026-07-26**; use `run_process("PixelMath")`. The **bridge verb + handler remain** for direct bridge callers (public contract).
 
 ## ⛔ WHERE LOGIC LIVES, and never let build cost decide it
@@ -81,8 +81,8 @@ Everything that runs inside PixInsight lives in the embedded handler section
 (`pjsr/pixinsight-mcp-watcher.js` → `BridgeHandlersJS.h`): the primitives (`open_image`,
 `save_image`, `close_image`, `run_process`, `export_container`, ...) and the measurement and
 render verbs (`get_noise`, `get_star_metrics`, `render_view`, ...). The MCP server sends a verb
-and its parameters as data, never PJSR source. `run_script` exists only in the standalone JS
-watcher, outside the handler section.
+and its parameters as data, never PJSR source. Recipes (`module/gen-handlers.mjs`
+`RECIPE_FILES`) are embedded the same way and run through `run_recipe`.
 
 | Home | For | Cost to change |
 |---|---|---|

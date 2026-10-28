@@ -1,4 +1,4 @@
-// Auto-generated from pjsr/pixinsight-mcp-watcher.js (handler section).
+// Auto-generated from pjsr/pixinsight-mcp-watcher.js (handler section) and the recipe scripts.
 // Regenerate with: node module/gen-handlers.mjs
 #ifndef __BridgeHandlersJS_h
 #define __BridgeHandlersJS_h
@@ -14,7 +14,7 @@ R"MCPJS(
 // generically (client.ts EXPECTED_HANDLERS_REV must match; the drift test
 // enforces equality). Per-feature markers (save_image outputs.hints) remain
 // for gaps that must hard-error.
-var HANDLERS_REVISION = 2;
+var HANDLERS_REVISION = 3;
 
 function handleListOpenImages(command) {
    var windows = ImageWindow.windows;
@@ -1187,6 +1187,31 @@ function handleGetViewDimensions(command) {
    return compositeResult(pjsrDims(String(p.viewId)));
 }
 
+// ============================================================================
+// Recipes
+// ----------------------------------------------------------------------------
+// Entry functions of the recipe scripts embedded with these handlers. Only
+// these names can be called, with JSON arguments.
+// ============================================================================
+
+var RECIPE_ENTRY_POINTS = ["OSC_RGB_LINEAR", "CROP_EXTENT", "CROP_SELECT", "runFiles"];
+
+function handleRunRecipe(command) {
+   var parameters = command.parameters || {};
+   var name = String(parameters.name);
+   if (RECIPE_ENTRY_POINTS.indexOf(name) < 0)
+      throw new Error("Unknown recipe: " + name + " (known: " + RECIPE_ENTRY_POINTS.join(", ") + ")");
+   var entry = globalThis[name];
+   if (typeof entry !== "function") throw new Error("Recipe " + name + " is not loaded");
+   var args = parameters.args instanceof Array ? parameters.args : [];
+   var value = entry.apply(null, args);
+   var result = value;
+   if (typeof value === "string") {
+      try { result = JSON.parse(value); } catch (parseError) { result = value; }
+   }
+   return { status: "success", outputs: { result: result }, message: name + " finished" };
+}
+
 function dispatchCommand(command) {
    var result = routeCommand(command);
    if (!result.outputs) result.outputs = {};
@@ -1208,6 +1233,8 @@ function routeCommand(command) {
    // Internal commands
    if (tool === "list_open_images") return handleListOpenImages(command);
    if (tool === "open_image") return handleOpenImage(command);
+)MCPJS"
+R"MCPJS(
    if (tool === "save_image") return handleSaveImage(command);
    if (tool === "close_image") return handleCloseImage(command);
    if (tool === "get_image_statistics") return handleGetImageStatistics(command);
@@ -1233,20 +1260,653 @@ function routeCommand(command) {
    // Measurement and rendering
    if (tool === "get_noise") return handleGetNoise(command);
    if (tool === "get_background_gradient") return handleGetBackgroundGradient(command);
-)MCPJS"
-R"MCPJS(
    if (tool === "get_background_neutrality") return handleGetBackgroundNeutrality(command);
    if (tool === "get_star_metrics") return handleGetStarMetrics(command);
    if (tool === "get_structure_color") return handleGetStructureColor(command);
    if (tool === "render_view") return handleRenderView(command);
    if (tool === "get_view_dimensions") return handleGetViewDimensions(command);
 
-   // Tools defined outside this section, by the standalone script only
-   if (typeof STANDALONE_HANDLERS !== "undefined" && STANDALONE_HANDLERS.hasOwnProperty(tool))
-      return STANDALONE_HANDLERS[tool](command);
+   // Recipes
+   if (tool === "run_recipe") return handleRunRecipe(command);
 
    throw new Error("Unknown tool: " + tool);
 }
+
+// ---- recipes/osc-rgb-linear.js ----
+/*
+ * OSC-RGB linear stage, one-shot replay-style recipe.
+ * Chain (R8 Rho Oph + R11 M31 validated): headroom guard -> BXT correct-only -> [SPFC ->
+ * MGC/MARS, decline-detected] -> GradientCorrection fallback -> SPCC broadband -> BXT sharpen ->
+ * NXT -> SXT split. End-state checks only (gradient flat, no clipping, SXT produced stars);
+ * per-step medians are recorded for failure triage but nothing gates mid-run.
+ *
+ * Run through the module (run_recipe, name OSC_RGB_LINEAR, args [cfg]) or the Script Editor:
+ *   (0,eval)(File.readTextFile("<repo>/recipes/osc-rgb-linear.js"));
+ *   OSC_RGB_LINEAR({ src: "path/to/linear_master.xisf", out: "optional/save/dir" });
+ * Returns a JSON string report. Leaves <base>_starless and <base>_stars open for the
+ * nonlinear stage.
+ *
+ * cfg:
+ *   src          REQUIRED path to the linear, plate-solved OSC master (color, 3ch)
+ *   out          optional dir; saves <base>_linear.xisf + starless/stars when set
+ *   baseName     view id base, default "osc"
+ *   xspd         filters.xspd path (default: derived from the PixInsight install)
+ *   mars         .xmars path, array of paths, or dir. MARS databases have no default location,
+ *                so pass this. With nothing passed the recipe scans a few common download dirs.
+ *                No MARS found => skip SPFC (only MGC needs it) and go straight to GC.
+ *   filterPrefix SPFC/SPCC filter curve family, default "Sony Color Sensor" (IMX571 etc.)
+ *   gradientScale MGC gradient scale, default 1024
+ *   goldenCrop   optional {x0,y0,w,h}: adds per-channel medians of starless+stars in that
+ *                rect to the report (regression fingerprint for the golden test)
+ *   gradRelMax / clipHiMax  check thresholds, defaults 0.6 / 5e-4
+ *
+ * Rules this file obeys (same as replay.js): no '#' directives (V8 eval reads '#' as
+ * private-field syntax), every line under ~255 chars (PI's preprocessor truncates).
+ */
+
+function OSC_RGB_LINEAR(cfg) {
+   if (!cfg || !cfg.src) throw new Error("cfg.src required");
+   var base = cfg.baseName || "osc";
+   var report = { recipe: "osc-rgb-linear", rev: 2, src: cfg.src, steps: [], checks: {} };
+   // Wall-clock instrumentation. Every step carries its own ms so "the run felt slow" becomes a
+   // measurement; report.timing.overheadMs (total minus the sum of the steps) is the cost of the
+   // recipe's own medians/checks/saves, which is the only part a driver change can shrink.
+   var T0 = Date.now();
+   function nowMs() { return Date.now(); }
+
+   // ---------- path derivation (cross-platform: probe, never hardcode) ----------
+)MCPJS"
+R"MCPJS(
+   function firstExisting(cands) {
+      for (var i = 0; i < cands.length; i++) if (cands[i] && File.exists(cands[i])) return cands[i];
+      return null;
+   }
+   function env(name) {
+      try { if (typeof System !== "undefined" && System.getEnvironmentVariable) return System.getEnvironmentVariable(name); } catch (e) {}
+      try { return getEnvironmentVariable(name); } catch (e2) { return ""; }
+   }
+   var xspdCands = [cfg.xspd];
+   try {
+      xspdCands.push(CoreApplication.dirPath + "/../library/filters.xspd");
+      xspdCands.push(CoreApplication.dirPath + "/../../library/filters.xspd");
+   } catch (e) { /* CoreApplication unavailable, per-platform fallbacks below */ }
+   var pf = env("ProgramFiles");
+   if (pf) xspdCands.push(pf + "/PixInsight/library/filters.xspd");     // Windows
+   // macOS keeps the whole tree inside the bundle, there is no top-level library/.
+   xspdCands.push("/Applications/PixInsight/PixInsight.app/Contents/library/filters.xspd"); // macOS [unverified]
+   xspdCands.push("/opt/PixInsight/library/filters.xspd");              // Linux
+   var xspd = firstExisting(xspdCands);
+   if (!xspd) throw new Error("filters.xspd not found; pass cfg.xspd");
+   function findMars() {
+      if (cfg.mars) {
+         var m = cfg.mars;
+         if (typeof m === "string" && m.length > 6 && m.substring(m.length - 6) === ".xmars") return [m];
+         if (m instanceof Array) return m;
+         // else treat as a directory, fall through to the scan with it first
+      }
+      // MARS databases have NO default location: the user downloads them and
+      // points MGC's Preferences at wherever they put them. cfg.mars is the real
+      // input, the rest is a courtesy scan of where a default download tends to
+      // land, and finding nothing means "tell me the path", not "not installed".
+      var dirs = [];
+      if (cfg.mars && typeof cfg.mars === "string") dirs.push(cfg.mars);
+      var appData = env("APPDATA");
+      if (appData) dirs.push(appData + "/Pleiades/XMARS");
+      var home = File.homeDirectory;
+      dirs.push(home + "/.PixInsight/XMARS");
+      dirs.push(home + "/Library/Application Support/Pleiades/XMARS");
+      dirs.push(home + "/.local/share/Pleiades/XMARS");
+      for (var d = 0; d < dirs.length; d++) {
+         try {
+            var hits = searchDirectory(dirs[d] + "/*.xmars");
+            if (hits && hits.length) return hits;
+         } catch (e) { /* dir missing, keep probing */ }
+      }
+      return [];
+   }
+   var marsFiles = findMars();
+   report.marsFiles = marsFiles;
+
+   // ---------- helpers ----------
+   function grabCurve(name) {
+      var txt = File.readTextFile(xspd);
+      var i = txt.indexOf('name="' + name + '"'); if (i < 0) throw new Error("curve missing in filters.xspd: " + name);
+      var d = txt.indexOf('data="', i), e = txt.indexOf('"', d + 6);
+      return txt.substring(d + 6, e);
+   }
+   function med(v) { var m = v.image.median(); return m; }
+   function step(name, fn, v) {
+      var t = nowMs();
+      fn();
+      var ms = nowMs() - t;
+      report.steps.push({ step: name, ms: ms, medianAfter: +med(v).toFixed(7) });
+   }
+   function rectMedians(img, r) {
+      var out = [];
+      for (var c = 0; c < 3; c++) {
+         img.selectedRect = r; img.selectedChannel = c;
+         out.push(+img.median().toFixed(7));
+         img.resetSelections();
+      }
+      return out;
+   }
+
+   // ---------- open + input guards ----------
+   var tOpen = nowMs();
+   var wins = ImageWindow.open(cfg.src);
+   if (!wins.length) throw new Error("open failed: " + cfg.src);
+   for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose(); // e.g. autocrop mask windows
+   var w = wins[0]; w.show();
+)MCPJS"
+R"MCPJS(
+   var v = w.mainView; v.id = base;
+   var img = v.image;
+   if (img.numberOfChannels < 3) { w.forceClose(); throw new Error("input is not a color image"); }
+   if (!w.hasAstrometricSolution) { w.forceClose(); throw new Error("no astrometric solution; plate-solve first (ImageSolver), recipe needs WCS for SPFC/MGC/SPCC"); }
+   var med0 = med(v);
+   if (med0 > 0.05) { w.forceClose(); throw new Error("median " + med0.toFixed(4) + " looks nonlinear; recipe takes LINEAR input"); }
+   report.steps.push({ step: "open", ms: nowMs() - tOpen, medianAfter: +med0.toFixed(7) });
+
+   // ---------- headroom guard (R11: BXT sharpen needs ~(FWHMb/FWHMa)^2 headroom, 3x held) ----------
+   var tHead = nowMs();
+   var mx = img.maximum();
+   if (mx > 0.95) {
+      var P0 = new PixelMath; P0.expression = "$T*(1/3)"; P0.useSingleExpression = true; P0.createNewImage = false;
+      P0.executeOn(v);
+      report.steps.push({ step: "headroom_x0.333", ms: nowMs() - tHead, medianAfter: +med(v).toFixed(7) });
+   } else {
+      report.steps.push({ step: "headroom_skipped_max_" + mx.toFixed(3), ms: nowMs() - tHead });
+   }
+
+   // ---------- process factories ----------
+   var FP = cfg.filterPrefix || "Sony Color Sensor";
+   // ⛔ A bare `new BlurXTerminator` inherits persisted LAST-USED settings, not factory
+   // defaults (verified: introspection returned this machine's old run values). So "run at
+   // defaults" (user rule) means pinning the factory values explicitly, every load-bearing param.
+   function bxtDefaults(P) {
+      P.sharpen_stars = 0.50; P.adjust_star_halos = 0.00; P.sharpen_nonstellar = 1.00;
+      P.nonstellar_diameter = 0.0; P.auto_nonstellar_psf = true; P.auto_nonstellar_radius = true;
+      P.lunar_planetary = false; P.overlap = 0.20;
+      return P;
+   }
+   function fBxtCorrect() { var P = bxtDefaults(new BlurXTerminator); P.correct_only = true; return P; }
+   function fSpfc() {
+      var P = new SpectrophotometricFluxCalibration; P.narrowbandMode = false;
+      P.redFilterName = FP + " R"; P.redFilterTrCurve = grabCurve(FP + " R");
+      P.greenFilterName = FP + " G"; P.greenFilterTrCurve = grabCurve(FP + " G");
+      P.blueFilterName = FP + " B"; P.blueFilterTrCurve = grabCurve(FP + " B");
+      P.grayFilterName = FP + " G"; P.grayFilterTrCurve = grabCurve(FP + " G");
+      P.deviceQECurveName = "Ideal QE curve"; P.deviceQECurve = grabCurve("Ideal QE curve");
+      P.autoLimitMagnitude = true; P.generateGraphs = false; P.generateTextFiles = false; P.generateStarMaps = false;
+      return P;
+   }
+   function fMgc() {
+      var P = new MultiscaleGradientCorrection; P.useMARSDatabase = true;
+      var t = []; for (var i = 0; i < marsFiles.length; i++) t.push([true, marsFiles[i]]);
+      P.marsDatabaseFiles = t;
+      P.structureSeparation = 3; P.modelSmoothness = 1; P.gradientScale = cfg.gradientScale || 1024; P.showGradientModel = false;
+      return P;
+   }
+   function fGc() { var P = new GradientCorrection; P.protection = true; P.protectionThreshold = 0.1; P.protectionAmount = 0.5; P.scale = 5; P.smoothness = 0.4; return P; }
+   function fSpcc() {
+      var P = new SpectrophotometricColorCalibration; P.narrowbandMode = false;
+      P.redFilterName = FP + " R"; P.redFilterTrCurve = grabCurve(FP + " R");
+      P.greenFilterName = FP + " G"; P.greenFilterTrCurve = grabCurve(FP + " G");
+      P.blueFilterName = FP + " B"; P.blueFilterTrCurve = grabCurve(FP + " B");
+      P.deviceQECurveName = "Ideal QE curve"; P.deviceQECurve = grabCurve("Ideal QE curve");
+      // white reference stays at the default (Average Spiral Galaxy), the documented natural-color standard
+      P.neutralizeBackground = true; P.applyCalibration = true; P.autoLimitMagnitude = true;
+      P.generateGraphs = false; P.generateStarMaps = false; P.generateTextFiles = false;
+      return P;
+   }
+   function fBxtSharpen() { var P = bxtDefaults(new BlurXTerminator); P.correct_only = false; return P; }
+   // NXT: iterations 2, intensity denoise 0.6 (user standard). The live dials are the per-band
+   // intensity params; top-level `denoise` is a DEAD alias (behavior-tested no-op).
+   function fNxt() {
+      var P = new NoiseXTerminator;
+      P.iterations = 2; P.denoise_intensity_low_freq = 0.6; P.denoise_intensity_high_freq = 0.6;
+      return P;
+   }
+   function fSxt() { var P = new StarXTerminator; P.stars = true; P.unscreen = false; P.unscreen_stars = false; return P; }
+
+   // ---------- the chain ----------
+   step("bxt_correct_only", function() { fBxtCorrect().executeOn(v); }, v);
+
+   // gradient: MGC when MARS is on disk (SPFC first, MGC hard-requires it), else GC directly.
+   // MGC DECLINE TRAP (R8, dec -24): outside MARS coverage executeOn returns false OR leaves
+   // stats byte-identical, no exception. Detect both, fall back to GradientCorrection.
+   report.mgc = { attempted: false, declined: false, fallback: null };
+   if (marsFiles.length) {
+      step("spfc", function() { fSpfc().executeOn(v); }, v);
+      report.mgc.attempted = true;
+)MCPJS"
+R"MCPJS(
+      var medBefore = med(v);
+      var ok = false;
+      var tMgc = nowMs();
+      try { ok = fMgc().executeOn(v); } catch (e) { ok = false; report.mgc.error = e.message; }
+      var msMgc = nowMs() - tMgc;
+      var medAfter = med(v);
+      if (!ok || Math.abs(medAfter - medBefore) < 1e-12) {
+         report.mgc.declined = true; report.mgc.fallback = "GradientCorrection";
+         report.steps.push({ step: "mgc_declined", ms: msMgc });
+         step("gradient_correction_fallback", function() { fGc().executeOn(v); }, v);
+      } else {
+         report.steps.push({ step: "mgc", ms: msMgc, medianAfter: +medAfter.toFixed(7) });
+      }
+   } else {
+      report.mgc.fallback = "GradientCorrection";
+      step("gradient_correction_no_mars", function() { fGc().executeOn(v); }, v);
+   }
+
+   step("spcc", function() { fSpcc().executeOn(v); }, v);
+   step("bxt_sharpen", function() { fBxtSharpen().executeOn(v); }, v);
+   step("nxt", function() { fNxt().executeOn(v); }, v);
+   // explicit codec: XISF format hints are session-sticky, an unhinted save is non-deterministic
+   var saveMs = 0, tSave;
+   if (cfg.out) {
+      tSave = nowMs();
+      w.saveAs(cfg.out + "/" + base + "_linear.xisf", false, false, false, false, "compression-codec zlib+sh");
+      saveMs += nowMs() - tSave;
+   }
+
+   step("sxt_split", function() { fSxt().executeOn(v); }, v);
+   v.id = base + "_starless";
+   var wStars = ImageWindow.windowById(base + "_stars");
+   if (wStars.isNull) throw new Error("SXT did not produce " + base + "_stars");
+
+   // ---------- end-state checks (the only gate) ----------
+   var tChecks = nowMs();
+   var sImg = v.image, W = sImg.width, H = sImg.height;
+   var bw = Math.floor(W * 0.1), bh = Math.floor(H * 0.1);
+   var ix = Math.floor(W * 0.05), iy = Math.floor(H * 0.05);
+   var corners = [
+      rectMedians(sImg, new Rect(ix, iy, ix + bw, iy + bh)),
+      rectMedians(sImg, new Rect(W - ix - bw, iy, W - ix, iy + bh)),
+      rectMedians(sImg, new Rect(ix, H - iy - bh, ix + bw, H - iy)),
+      rectMedians(sImg, new Rect(W - ix - bw, H - iy - bh, W - ix, H - iy))
+   ];
+   var center = rectMedians(sImg, new Rect((W - bw) >> 1, (H - bh) >> 1, (W + bw) >> 1, (H + bh) >> 1));
+   var cLum = [], k;
+   for (k = 0; k < 4; k++) cLum.push((corners[k][0] + corners[k][1] + corners[k][2]) / 3);
+   var cMin = Math.min(cLum[0], cLum[1], cLum[2], cLum[3]), cMax = Math.max(cLum[0], cLum[1], cLum[2], cLum[3]);
+   var ctr = (center[0] + center[1] + center[2]) / 3;
+   var skyRef = Math.min(ctr, cMin);
+   var rampRel = skyRef > 0 ? (cMax - cMin) / skyRef : 999;
+   var gradRelMax = (cfg.gradRelMax !== undefined) ? cfg.gradRelMax : 0.6;
+   report.checks.gradient = { cornerMedians: cLum.map(function(x){ return +x.toFixed(7); }), center: +ctr.toFixed(7),
+      rampRel: +rampRel.toFixed(4), pass: rampRel <= gradRelMax };
+
+   // sampled clip fractions on the starless + lit fraction on the stars layer
+   function sampleStats(image) {
+      var sw = image.width, sh = image.height, stride = Math.max(1, Math.floor(Math.sqrt(sw * sh / 100000)));
+      var n = 0, hi = 0, lo = 0, lit = 0, pk = 0;
+      for (var y = 0; y < sh; y += stride) for (var x = 0; x < sw; x += stride) {
+         var r = image.sample(x, y, 0), g = image.sample(x, y, 1), b = image.sample(x, y, 2);
+         var m = Math.max(r, g, b); n++;
+         if (m >= 0.999) hi++;
+         if (m <= 0) lo++;
+         if (m > 0.02) lit++;
+         if (m > pk) pk = m;
+      }
+      return { n: n, fracHi: hi / n, fracLo: lo / n, fracLit: lit / n, peak: pk };
+   }
+   var ss = sampleStats(sImg);
+   var clipHiMax = (cfg.clipHiMax !== undefined) ? cfg.clipHiMax : 5e-4;
+   report.checks.clipping = { fracHi: +ss.fracHi.toFixed(6), fracLo: +ss.fracLo.toFixed(6),
+      pass: ss.fracHi <= clipHiMax && ss.fracLo <= 1e-5 };
+   var st = sampleStats(wStars.mainView.image);
+   report.checks.stars = { peak: +st.peak.toFixed(4), fracLit: +st.fracLit.toFixed(5),
+      pass: st.peak > 0.05 && st.fracLit > 0 };
+   report.checks.ok = report.checks.gradient.pass && report.checks.clipping.pass && report.checks.stars.pass;
+
+   if (cfg.goldenCrop) {
+)MCPJS"
+R"MCPJS(
+      var gc = cfg.goldenCrop, gr = new Rect(gc.x0, gc.y0, gc.x0 + gc.w, gc.y0 + gc.h);
+      report.goldenCrop = { rect: [gc.x0, gc.y0, gc.w, gc.h],
+         starless: rectMedians(sImg, gr), stars: rectMedians(wStars.mainView.image, gr) };
+   }
+
+   var checksMs = nowMs() - tChecks;
+
+   if (cfg.out) {
+      tSave = nowMs();
+      v.window.saveAs(cfg.out + "/" + base + "_linear_starless.xisf", false, false, false, false, "compression-codec zlib+sh");
+      wStars.saveAs(cfg.out + "/" + base + "_linear_stars.xisf", false, false, false, false, "compression-codec zlib+sh");
+      saveMs += nowMs() - tSave;
+   }
+   report.views = { starless: base + "_starless", stars: base + "_stars" };
+
+   // Timing rollup. stepsMs is PixInsight doing work the recipe cannot avoid; overheadMs is
+   // everything else the recipe spends (per-step medians, checks, saves) and is the only part a
+   // driver or recipe change can shrink. Report both, never guess which one dominates.
+   var stepsMs = 0;
+   for (var si = 0; si < report.steps.length; si++) stepsMs += (report.steps[si].ms || 0);
+   var totalMs = nowMs() - T0;
+   report.timing = { totalMs: totalMs, stepsMs: stepsMs, checksMs: checksMs, saveMs: saveMs,
+      overheadMs: totalMs - stepsMs,
+      slowest: report.steps.slice().sort(function(a, b) { return (b.ms || 0) - (a.ms || 0); })
+         .slice(0, 3).map(function(s) { return s.step + ":" + (s.ms || 0) + "ms"; }) };
+   return JSON.stringify(report);
+}
+"osc-rgb-linear recipe loaded";
+
+
+// ---- scripts/crop-select.js ----
+// Crop selector for the process-v2 variant search. eval, then CROP_SELECT(viewId, opts).
+//
+// Framing is PRIMARY. The statistical gate is a FILTER over candidates, never the thing that picks
+// the position. Added 2026-07-30 after the M106 run 1: the gate scores sky p25, lum p50,
+// grainRelSky and structure RoverG/RoverB, none of which says anything about where the object sits,
+// so a crop can score 1.7% and still be 92% empty sky with the galaxy as a corner sliver. Picking
+// among gate-passing candidates by eye then put the delivered crop 230 px x / 275 px y off the
+// object: it clipped the top of the galaxy and left dead sky at the bottom. Re-measured, the
+// properly centred rect scored 6.64% vs the delivered 6.27%, so centring cost nothing. There was no
+// trade-off, only a missing criterion.
+//
+// Returns { extent, size, rect, match, gate, ref }. It does NOT refuse a breach; the driver decides
+// and records. See SKILL.md section 3.
+
+var CS_TERMS = ["skyP25", "lumP50", "grainRelSky", "RoverG", "RoverB"];
+
+function __csRect(img, x0, y0, x1, y1, target) {
+  var W = x1 - x0, H = y1 - y0;
+  var stride = Math.max(1, Math.floor(Math.sqrt(W * H / target)));
+  var lum = [], rr = [], gg = [], bb = [], d2 = [];
+  for (var y = y0; y < y1; y += stride) {
+    for (var x = x0; x < x1; x += stride) {
+      var r = img.sample(x, y, 0), g = img.sample(x, y, 1), b = img.sample(x, y, 2);
+      var L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      lum.push(L); rr.push(r); gg.push(g); bb.push(b);
+      if (x + 2 < x1) {
+        var r2 = img.sample(x + 2, y, 0), g2 = img.sample(x + 2, y, 1), b2 = img.sample(x + 2, y, 2);
+        d2.push(Math.abs(L - (0.2126 * r2 + 0.7152 * g2 + 0.0722 * b2)));
+      }
+    }
+  }
+  function pct(a, p) { var s = a.slice().sort(function (u, v) { return u - v; }); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
+  function pctS(s, p) { return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
+  function mad(a) { var m = pct(a, 50), d = []; for (var q = 0; q < a.length; q++) d.push(Math.abs(a[q] - m)); return pct(d, 50); }
+  var sl = lum.slice().sort(function (u, v) { return u - v; });
+  var n = lum.length;
+  var loT = pctS(sl, 10), loU = pctS(sl, 40), hiT = pctS(sl, 70), hiU = pctS(sl, 95);
+  var dk = [0, 0, 0], dn = 0, bk = [0, 0, 0], bn = 0;
+  for (var m = 0; m < n; m++) {
+    var Lm = lum[m], mxm = Math.max(rr[m], gg[m], bb[m]);
+    if (Lm >= loT && Lm <= loU) { dk[0] += rr[m]; dk[1] += gg[m]; dk[2] += bb[m]; dn++; }
+    else if (Lm >= hiT && Lm <= hiU && mxm < 0.9) { bk[0] += rr[m]; bk[1] += gg[m]; bk[2] += bb[m]; bn++; }
+  }
+  var dR = bk[0] / bn - dk[0] / dn, dG = bk[1] / bn - dk[1] / dn, dB = bk[2] / bn - dk[2] / dn;
+  function sig(x) { return (x && isFinite(x)) ? +x.toPrecision(6) : (isFinite(x) ? 0 : x); }
+  return {
+    skyP25: sig(pctS(sl, 25)), lumP50: sig(pctS(sl, 50)),
+    grainRelSky: sig(mad(d2) / pctS(sl, 25)),
+    RoverG: sig(dR / dG), RoverB: sig(dR / dB),
+)MCPJS"
+R"MCPJS(
+    p75: sig(pctS(sl, 75)), p95: sig(pctS(sl, 95)), p99: sig(pctS(sl, 99)),
+    n: n, stride: stride
+  };
+}
+
+// Object extent from the marginal flux profile above sky. Use ~5% of the peak marginal: 10% clips
+// the arms, 2% saturates to the whole frame as the halo merges into the noise floor (measured on
+// M106, where 5% gave x 1992-3996 / y 1504-2756, agreeing with the 10% contour and the core).
+function CROP_EXTENT(img, sky, frac, stride) {
+  frac = frac || 0.05; stride = stride || 4;
+  var W = img.width, H = img.height;
+  var col = [], row = [], i;
+  for (i = 0; i < Math.ceil(W / stride); i++) col.push(0);
+  for (i = 0; i < Math.ceil(H / stride); i++) row.push(0);
+  for (var y = 0; y < H; y += stride) {
+    for (var x = 0; x < W; x += stride) {
+      var L = 0.2126 * img.sample(x, y, 0) + 0.7152 * img.sample(x, y, 1) + 0.0722 * img.sample(x, y, 2);
+      var e = L - sky;
+      if (e > 0) { col[Math.floor(x / stride)] += e; row[Math.floor(y / stride)] += e; }
+    }
+  }
+  function span(a) {
+    var mx = 0, k;
+    for (k = 0; k < a.length; k++) if (a[k] > mx) mx = a[k];
+    var t = mx * frac, lo = 0, hi = a.length - 1;
+    for (k = 0; k < a.length; k++) if (a[k] >= t) { lo = k; break; }
+    for (k = a.length - 1; k >= 0; k--) if (a[k] >= t) { hi = k; break; }
+    return [lo * stride, hi * stride];
+  }
+  var ex = span(col), ey = span(row);
+  return { x: ex, y: ey, cx: Math.round((ex[0] + ex[1]) / 2), cy: Math.round((ey[0] + ey[1]) / 2), frac: frac };
+}
+
+function CROP_SELECT(viewId, opts) {
+  opts = opts || {};
+  var win = ImageWindow.windowById(viewId);
+  if (win.isNull) throw new Error("no view " + viewId);
+  var img = win.mainView.image;
+  img.resetSelections();
+  var W = img.width, H = img.height;
+
+  // Full-frame reference, computed ONCE. Recomputing it per candidate was pure waste in run 1.
+  var ref = __csRect(img, 0, 0, W, H, opts.refTarget || 40000);
+
+  var ext = CROP_EXTENT(img, ref.skyP25, opts.extentFrac || 0.05, opts.extentStride || 4);
+
+  // Size from the measured object, not a fixed 1500x1000: the crop must actually hold the object
+  // plus a sky margin. The margin is what buys the gate: the gate terms are sky statistics, so a
+  // crop framed tight on the object scores WORSE the tighter it is framed. Measured on M106
+  // (margin -> gate worst): 0.25 -> 9.5%, 0.40 -> 7.1%, 0.55 -> 5.3%, 0.70 -> 5.0% (passes).
+  // Hence the 0.70 default. Caps are frame-relative so `margin` keeps controlling the size instead
+  // of silently saturating on an absolute pixel clamp.
+  var mg = opts.margin === undefined ? 0.70 : opts.margin;
+  var cw = opts.cw || Math.round((ext.x[1] - ext.x[0]) * (1 + 2 * mg));
+  var ch = opts.ch || Math.round((ext.y[1] - ext.y[0]) * (1 + 2 * mg));
+  var maxFrac = opts.maxFrac === undefined ? 0.80 : opts.maxFrac;
+  cw = Math.max(1200, Math.min(cw, W, Math.round(W * maxFrac)));
+  ch = Math.max(800, Math.min(ch, H, Math.round(H * maxFrac)));
+
+  // Candidates: centred on the object, then a bounded jitter so the gate can refine WITHOUT
+  // letting it walk off the object. maxShift defaults to 10% of the crop size.
+  var sh = opts.maxShift === undefined ? 0.10 : opts.maxShift;
+  var sx = Math.round(cw * sh), sy = Math.round(ch * sh);
+  var steps = opts.steps || 2;
+  function clampX(v) { return Math.max(0, Math.min(v, W - cw)); }
+  function clampY(v) { return Math.max(0, Math.min(v, H - ch)); }
+  var cands = [], ix, iy;
+  for (ix = -steps; ix <= steps; ix++) {
+    for (iy = -steps; iy <= steps; iy++) {
+      var x0 = clampX(ext.cx - Math.round(cw / 2) + Math.round(ix * sx / steps));
+      var y0 = clampY(ext.cy - Math.round(ch / 2) + Math.round(iy * sy / steps));
+      var dup = false;
+      for (var d = 0; d < cands.length; d++) if (cands[d][0] === x0 && cands[d][1] === y0) { dup = true; break; }
+      if (!dup) cands.push([x0, y0]);
+    }
+  }
+
+  var scored = [];
+  for (var c = 0; c < cands.length; c++) {
+    var mrect = __csRect(img, cands[c][0], cands[c][1], cands[c][0] + cw, cands[c][1] + ch, opts.target || 16000);
+)MCPJS"
+R"MCPJS(
+    var per = {}, worst = 0;
+    for (var t = 0; t < CS_TERMS.length; t++) {
+      var k = CS_TERMS[t];
+      var dev = Math.abs(mrect[k] - ref[k]) / Math.abs(ref[k]);
+      per[k] = +dev.toFixed(4);
+      if (dev > worst) worst = dev;
+    }
+    // Off-centre penalty keeps framing primary: the gate refines within the jitter box, it does
+    // not get to trade framing away for a better number.
+    var offx = (cands[c][0] + cw / 2 - ext.cx) / cw, offy = (cands[c][1] + ch / 2 - ext.cy) / ch;
+    var off = Math.sqrt(offx * offx + offy * offy);
+    scored.push({ rect: [cands[c][0], cands[c][1], cands[c][0] + cw, cands[c][1] + ch],
+                  worst: +worst.toFixed(4), per: per, offCentre: +off.toFixed(4),
+                  score: +(worst + off).toFixed(4), m: mrect });
+  }
+  scored.sort(function (a, b) { return a.score - b.score; });
+  var best = scored[0];
+
+  var lim = opts.gate === undefined ? 0.05 : opts.gate;
+  var breached = [];
+  for (var g = 0; g < CS_TERMS.length; g++) if (best.per[CS_TERMS[g]] > lim) breached.push(CS_TERMS[g]);
+
+  return {
+    extent: ext, size: [cw, ch], rect: best.rect,
+    match: { worst: best.worst, per: best.per, offCentre: best.offCentre },
+    gate: { limit: lim, ok: breached.length === 0, breached: breached },
+    ref: ref, crop: best.m, candidates: scored.length
+  };
+}
+
+"crop-select loaded";
+
+
+// ---- scripts/profile.js ----
+// v3 profiler: stride-grid profile + per-tile hue/sat map. eval, then runFiles(list, scales?)
+// v3 (2026-07-30): magnitude-sensitive fields emit SIGNIFICANT FIGURES, not fixed decimals. At 5-6
+// dp the linear-stage values (deltas ~1e-5, grain ~1e-6) rounded to 1 sig fig or to 0.00000, which
+// made a structure ratio unauditable and looked like a real 3.495-vs-4.750 discrepancy.
+function __pfProfileView(view) {
+  var img = view.image;
+  var W = img.width, H = img.height;
+  var target = 40000;
+  var stride = Math.max(1, Math.floor(Math.sqrt(W * H / target)));
+  var G = 6; // tile grid
+  var tiles = [];
+  for (var t = 0; t < G * G; t++) tiles.push({ n: 0, sat: 0, r: 0, g: 0, b: 0, ach: 0 });
+  var lum = [], rr = [], gg = [], bb = [], d2 = [], d8 = [];
+  var nAch = 0, nSatLo = 0, nClipLo = 0, nClipHi = 0, n = 0;
+  for (var y = 0; y < H; y += stride) {
+    for (var x = 0; x < W; x += stride) {
+      var r = img.sample(x, y, 0), g = img.sample(x, y, 1), b = img.sample(x, y, 2);
+      var L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      lum.push(L); rr.push(r); gg.push(g); bb.push(b); n++;
+      var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      var sat = mx > 0 ? (mx - mn) / mx : 0;
+      var ti = Math.min(G - 1, Math.floor(y / H * G)) * G + Math.min(G - 1, Math.floor(x / W * G));
+      var T = tiles[ti];
+      T.n++; T.sat += sat; T.r += r; T.g += g; T.b += b;
+      if (r === g && g === b) { nAch++; T.ach++; }
+      if (mx > 0 && sat < 0.01) nSatLo++;
+      if (L <= 0.001) nClipLo++;
+      if (mx >= 0.999) nClipHi++;
+      if (x + 2 < W) {
+        var r2 = img.sample(x + 2, y, 0), g2 = img.sample(x + 2, y, 1), b2 = img.sample(x + 2, y, 2);
+        d2.push(Math.abs(L - (0.2126 * r2 + 0.7152 * g2 + 0.0722 * b2)));
+      }
+      if (x + 8 < W) {
+        var r8 = img.sample(x + 8, y, 0), g8 = img.sample(x + 8, y, 1), b8 = img.sample(x + 8, y, 2);
+        d8.push(Math.abs(L - (0.2126 * r8 + 0.7152 * g8 + 0.0722 * b8)));
+      }
+    }
+  }
+  // Scale-free rounding: keeps 6 significant figures whether the value is 0.2 or 2e-6.
+  function sig(x) { return (x && isFinite(x)) ? +x.toPrecision(6) : (isFinite(x) ? 0 : x); }
+  function pct(a, p) { var s = a.slice().sort(function(u, v) { return u - v; }); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
+  function pctS(s, p) { return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
+  var sl = lum.slice().sort(function(u, v) { return u - v; });
+  var PP = [1, 5, 25, 50, 75, 95, 99, 99.9];
+  var pl = {}, pr = {}, pg = {}, pb = {};
+  var sr = rr.slice().sort(function(u,v){return u-v;}), sg = gg.slice().sort(function(u,v){return u-v;}), sb = bb.slice().sort(function(u,v){return u-v;});
+)MCPJS"
+R"MCPJS(
+  for (var i = 0; i < PP.length; i++) {
+    var k = "p" + String(PP[i]).replace(".", "_");
+    pl[k] = sig(pctS(sl, PP[i])); pr[k] = sig(pctS(sr, PP[i]));
+    pg[k] = sig(pctS(sg, PP[i])); pb[k] = sig(pctS(sb, PP[i]));
+  }
+  var edges = [0, 0.05, 0.1, 0.2, 0.4, 0.7, 1.001];
+  var bands = [];
+  for (var e = 0; e < edges.length - 1; e++) bands.push({ lo: edges[e], hi: edges[e + 1], n: 0, sat: 0, ach: 0 });
+  for (var j = 0; j < n; j++) {
+    var Lj = lum[j];
+    for (var e2 = 0; e2 < bands.length; e2++) {
+      if (Lj >= bands[e2].lo && Lj < bands[e2].hi) {
+        var mxj = Math.max(rr[j], gg[j], bb[j]), mnj = Math.min(rr[j], gg[j], bb[j]);
+        bands[e2].n++;
+        bands[e2].sat += mxj > 0 ? (mxj - mnj) / mxj : 0;
+        if (rr[j] === gg[j] && gg[j] === bb[j]) bands[e2].ach++;
+        break;
+      }
+    }
+  }
+  var bandOut = [];
+  for (var e3 = 0; e3 < bands.length; e3++) {
+    var B = bands[e3];
+    bandOut.push({ lo: B.lo, n: B.n, meanSat: B.n ? +(B.sat / B.n).toFixed(4) : null, fracAch: B.n ? +(B.ach / B.n).toFixed(4) : null });
+  }
+  var loT = pctS(sl, 10), loU = pctS(sl, 40), hiT = pctS(sl, 70), hiU = pctS(sl, 95);
+  var dk = [0, 0, 0], dn = 0, bk = [0, 0, 0], bn = 0;
+  for (var m = 0; m < n; m++) {
+    var Lm = lum[m], mxm = Math.max(rr[m], gg[m], bb[m]);
+    if (Lm >= loT && Lm <= loU) { dk[0] += rr[m]; dk[1] += gg[m]; dk[2] += bb[m]; dn++; }
+    else if (Lm >= hiT && Lm <= hiU && mxm < 0.9) { bk[0] += rr[m]; bk[1] += gg[m]; bk[2] += bb[m]; bn++; }
+  }
+  var dR = bk[0] / bn - dk[0] / dn, dG = bk[1] / bn - dk[1] / dn, dB = bk[2] / bn - dk[2] / dn;
+  function madOf(a) { var med = pct(a, 50); var dev = []; for (var q = 0; q < a.length; q++) dev.push(Math.abs(a[q] - med)); return pct(dev, 50); }
+  var sky = pctS(sl, 25);
+  var tileSat = [], tileRB = [], minTileSat = 1, minTileIdx = -1, maxAchFrac = 0;
+  for (var t2 = 0; t2 < tiles.length; t2++) {
+    var TT = tiles[t2];
+    var ms = TT.n ? TT.sat / TT.n : 0;
+    var lvl = TT.n ? (TT.r + TT.g + TT.b) / (3 * TT.n) : 0;
+    tileSat.push(+ms.toFixed(3));
+    tileRB.push(TT.n && lvl > 0 ? +(((TT.r - TT.b) / TT.n) / lvl).toFixed(3) : 0);
+    if (TT.n > 50 && ms < minTileSat) { minTileSat = ms; minTileIdx = t2; }
+    if (TT.n && TT.ach / TT.n > maxAchFrac) maxAchFrac = TT.ach / TT.n;
+  }
+  return {
+    W: W, H: H, n: n,
+    pctLum: pl, pctR: pr, pctG: pg, pctB: pb,
+    bands: bandOut,
+    structure: { dR: sig(dR), dG: sig(dG), dB: sig(dB), RoverG: sig(dR / dG), RoverB: sig(dR / dB) },
+    tiles: { grid: G, sat: tileSat, rbBias: tileRB, minTileSat: sig(minTileSat), minTileIdx: minTileIdx, maxTileAchFrac: sig(maxAchFrac) },
+    grainD2mad: sig(madOf(d2)), textureD8med: sig(pct(d8, 50)),
+    grainRelSky: sig(madOf(d2) / sky), skyP25: sig(sky),
+    fracAch: sig(nAch / n), fracSatLt01: sig(nSatLo / n),
+    fracClipLo: sig(nClipLo / n), fracClipHi: sig(nClipHi / n)
+  };
+}
+function __pfDownsampled(srcView, f, tag) {
+  var simg = srcView.image;
+  var w = new ImageWindow(simg.width, simg.height, simg.numberOfChannels, 32, true, simg.numberOfChannels > 1, "pf_tmp_" + tag);
+  var v = w.mainView;
+  v.beginProcess();
+  v.image.assign(simg);
+  v.endProcess();
+  var P = new IntegerResample;
+  P.zoomFactor = -f;
+  P.executeOn(v);
+  return w;
+}
+function runFiles(list, scales) {
+  if (!scales) scales = [1, 2, 4, 8];
+  var results = [];
+  for (var i = 0; i < list.length; i++) {
+    var path = list[i][0], name = list[i][1];
+    var wins = ImageWindow.open(path);
+    var win = wins[0];
+    // WBPP masters spawn extra *crop_mask* windows on open; leaking one per file pollutes the
+    // session and makes later view lookups ambiguous.
+    for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose();
+    var view = win.mainView;
+)MCPJS"
+R"MCPJS(
+    view.image.resetSelections();
+    var out = { image: name, scales: {} };
+    for (var fi = 0; fi < scales.length; fi++) {
+      var f = scales[fi];
+      if (f === 1) { out.scales["s1"] = __pfProfileView(view); continue; }
+      var dw = __pfDownsampled(view, f, name.replace(/[^A-Za-z0-9]/g, "") + f);
+      out.scales["s" + f] = __pfProfileView(dw.mainView);
+      dw.forceClose();
+    }
+    win.forceClose();
+    results.push(out);
+  }
+  return JSON.stringify(results);
+}
+"profiler v3 loaded";
+
 )MCPJS"
 ;
 } // namespace pcl

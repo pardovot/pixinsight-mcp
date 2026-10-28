@@ -63,8 +63,7 @@ that no longer exists, and reusing them is exactly what the library reset was fo
 ## 2. Linear stage, one shot
 
 ```
-run_script: (0,eval)(File.readTextFile("<repo>/recipes/osc-rgb-linear.js"));
-            OSC_RGB_LINEAR({ src: "<master>", baseName: "<target>", out: "<result dir>" })
+run_recipe: name "OSC_RGB_LINEAR", args [{ src: "<master>", baseName: "<target>", out: "<result dir>" }]
 ```
 
 Read the returned JSON report. If `checks.ok` is true, move on, do NOT re-verify per step
@@ -87,8 +86,7 @@ after costing a full re-tune every time it was used. Work at native scale on les
 **Cut a matched crop, framed on the object.** One call, do not hand-roll a search:
 
 ```
-run_script: (0,eval)(File.readTextFile("<repo>/scripts/crop-select.js"));
-            JSON.stringify(CROP_SELECT("<target>_starless"))
+run_recipe: name "CROP_SELECT", args ["<target>_starless"]
 ```
 
 Measures the object's extent from the marginal flux profile above sky, sizes the crop from that
@@ -118,7 +116,7 @@ percentiles and the highlight ladder: `data/C8/M106/OSC/RGB/runs/2026-07-30/RUNL
 
 The crop is at native resolution, so **every metric is valid on it**, grain and texture included,
 and multiscale parameters transfer to full res unchanged. Iterate here: stretch (linked), tone,
-colour. Measure with `scripts/profile.js`, compare against the class slice loaded at startup.
+colour. Measure with `run_recipe` `runFiles` (`scripts/profile.js`), compare against the class slice loaded at startup.
 Thresholds are PER CLASS, never borrow another class's numbers.
 
 What the crop still cannot see: stars outside it, and whole-frame gradient. Both are covered in

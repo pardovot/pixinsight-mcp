@@ -58,14 +58,13 @@ if (!fs.existsSync(fixture)) {
 }
 
 const cfg = { src: fixture, baseName: 'smoke' };
-const code = `(0,eval)(File.readTextFile(${JSON.stringify(recipePath)})); OSC_RGB_LINEAR(${JSON.stringify(cfg)})`;
 
 console.log(`Running recipe on ${path.basename(fixture)} (minutes: BXT x2, NXT, SXT)...`);
 const t0 = Date.now();
 let report;
 try {
-  const r = await sendCommand('run_script', { code });
-  report = JSON.parse(r.outputs.returnValue);
+  const response = await sendCommand('run_recipe', { name: 'OSC_RGB_LINEAR', args: [cfg] });
+  report = response.outputs.result;
 } finally {
   for (const v of ['smoke_starless', 'smoke_stars']) {
     try { await sendCommand('close_image', { viewId: v }, 60000); } catch { /* not open */ }

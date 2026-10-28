@@ -12,6 +12,11 @@
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
+// The recipes the module embeds (module/gen-handlers.mjs RECIPE_FILES).
+#include "../recipes/osc-rgb-linear.js"
+#include "../scripts/crop-select.js"
+#include "../scripts/profile.js"
+
 // ============================================================================
 // Plate solving DISABLED in the V8 port (Bloco 2, Option A)
 // ----------------------------------------------------------------------------
@@ -107,7 +112,7 @@ function getTimestamp() {
 // generically (client.ts EXPECTED_HANDLERS_REV must match; the drift test
 // enforces equality). Per-feature markers (save_image outputs.hints) remain
 // for gaps that must hard-error.
-var HANDLERS_REVISION = 2;
+var HANDLERS_REVISION = 3;
 
 function handleListOpenImages(command) {
    var windows = ImageWindow.windows;
@@ -1252,6 +1257,31 @@ function handleGetViewDimensions(command) {
    return compositeResult(pjsrDims(String(p.viewId)));
 }
 
+// ============================================================================
+// Recipes
+// ----------------------------------------------------------------------------
+// Entry functions of the recipe scripts embedded with these handlers. Only
+// these names can be called, with JSON arguments.
+// ============================================================================
+
+var RECIPE_ENTRY_POINTS = ["OSC_RGB_LINEAR", "CROP_EXTENT", "CROP_SELECT", "runFiles"];
+
+function handleRunRecipe(command) {
+   var parameters = command.parameters || {};
+   var name = String(parameters.name);
+   if (RECIPE_ENTRY_POINTS.indexOf(name) < 0)
+      throw new Error("Unknown recipe: " + name + " (known: " + RECIPE_ENTRY_POINTS.join(", ") + ")");
+   var entry = globalThis[name];
+   if (typeof entry !== "function") throw new Error("Recipe " + name + " is not loaded");
+   var args = parameters.args instanceof Array ? parameters.args : [];
+   var value = entry.apply(null, args);
+   var result = value;
+   if (typeof value === "string") {
+      try { result = JSON.parse(value); } catch (parseError) { result = value; }
+   }
+   return { status: "success", outputs: { result: result }, message: name + " finished" };
+}
+
 function dispatchCommand(command) {
    var result = routeCommand(command);
    if (!result.outputs) result.outputs = {};
@@ -1304,39 +1334,13 @@ function routeCommand(command) {
    if (tool === "render_view") return handleRenderView(command);
    if (tool === "get_view_dimensions") return handleGetViewDimensions(command);
 
-   // Tools defined outside this section, by the standalone script only
-   if (typeof STANDALONE_HANDLERS !== "undefined" && STANDALONE_HANDLERS.hasOwnProperty(tool))
-      return STANDALONE_HANDLERS[tool](command);
+   // Recipes
+   if (tool === "run_recipe") return handleRunRecipe(command);
 
    throw new Error("Unknown tool: " + tool);
 }
 //__MCP_HANDLERS_END__
 
-// ============================================================================
-// Standalone-only tools
-// ----------------------------------------------------------------------------
-// run_script evaluates arbitrary PJSR. It lives outside the embedded section,
-// so the native module never has it; this unsigned script runs only where the
-// user's PixInsight security settings allow unsigned scripts.
-// ============================================================================
-
-function handleRunScript(command) {
-   var code = command.parameters.code;
-   try {
-      // returnValue is the script's final expression value (String(eval(code))),
-      // NOT captured console output.
-      var result = eval(code);
-      return {
-         status: "success",
-         outputs: { returnValue: String(result !== undefined ? result : "Script executed.") },
-         message: "Script executed successfully"
-      };
-   } catch (e) {
-      throw new Error("Script error: " + e.message);
-   }
-}
-
-var STANDALONE_HANDLERS = { run_script: handleRunScript };
 
 // ============================================================================
 // Main Polling Loop

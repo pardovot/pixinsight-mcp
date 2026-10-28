@@ -14,8 +14,7 @@
 //      block}. Hash changed + rev unchanged = build failure. A rev bump
 //      auto-updates the lock (commit it), the bump IS the explicit action.
 //
-// Static source analysis, no build output needed. run_script is exempt: it is
-// the generic carrier for TS-side composites (src/pjsr/*.ts).
+// Static source analysis, no build output needed.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -124,7 +123,6 @@ for (const filePath of tsFiles(srcDir)) {
   const file = path.relative(srcDir, filePath);
   const source = fs.readFileSync(filePath, "utf8");
   for (const { tool, keys } of extractSends(source)) {
-    if (tool === "run_script") continue;
     const handler = toolToHandler.get(tool);
     if (!handler) {
       errors.push(`${file}: sends verb "${tool}" but the watcher has no route for it`);
