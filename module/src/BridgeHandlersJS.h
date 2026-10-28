@@ -14,7 +14,7 @@ R"MCPJS(
 // generically (client.ts EXPECTED_HANDLERS_REV must match; the drift test
 // enforces equality). Per-feature markers (save_image outputs.hints) remain
 // for gaps that must hard-error.
-var HANDLERS_REVISION = 3;
+var HANDLERS_REVISION = 4;
 
 function handleListOpenImages(command) {
    var windows = ImageWindow.windows;
@@ -540,7 +540,9 @@ function handleExportContainer(command) {
          else if (/^[A-Za-z_]\w*\.[A-Za-z_]\w*$/.test(v)) x += pad + '<parameter id="' + id + '" value="' + v.split(".").pop() + '"/>\n';
          else if (v.charAt(0) === '"') { var str = v.slice(1, -1); x += str === "" ? pad + '<parameter id="' + id + '"></parameter>\n' : pad + '<parameter id="' + id + '">' + xmlEsc(str) + "</parameter>\n"; }
          else if (v.charAt(0) === "[") {
-            var arr; try { arr = JSON.parse(v); } catch (e) { arr = null; }
+            // toSource() writes table rows as JSON-compatible numbers, with "// x, y" style comment lines.
+            var arr; try { arr = JSON.parse(v.replace(///[^
+]*/g, "")); } catch (e) { arr = null; }
             if (arr && arr.length && arr[0] && arr[0].length === 2) x += pad + '<table id="' + id + '" rows="' + arr.length + '">\n' + tableRows(arr) + pad + "</table>\n";
             else x += pad + '<table id="' + id + '" rows="0"/>\n';
          }
@@ -575,10 +577,10 @@ function handleExportContainer(command) {
 // close firing on watcher start) would be a surprising side effect. Matches the
 // client-side cleanStaleCommands threshold.
 var STALE_COMMAND_MS = 10 * 60 * 1000;
-
-// ============================================================================
 )MCPJS"
 R"MCPJS(
+
+// ============================================================================
 // Measurement and rendering
 // ----------------------------------------------------------------------------
 // Each pjsr* function returns a JSON string, {error: "..."} on failure.
@@ -657,10 +659,10 @@ function pjsrGradient(viewId, gridSize, boxFraction) {
       var b = boxes[k], m = b.medians[c];
       if ((b.i === 0 || b.i === g-1) && (b.j === 0 || b.j === g-1)) corners.push(m);
       if (m < minM) minM = m;
-      if (m > maxM) maxM = m;
-      var row = [1, b.x, b.y];
 )MCPJS"
 R"MCPJS(
+      if (m > maxM) maxM = m;
+      var row = [1, b.x, b.y];
       for (var p = 0; p < 3; ++p) { for (var q = 0; q < 3; ++q) S[p][q] += row[p]*row[q]; t[p] += row[p]*m; }
     }
     // Solve 3x3 by Cramer.
@@ -739,10 +741,10 @@ function pjsrNeutrality(viewId, mode, signalChannel, signalIndex, targetSamples)
     if (Math.abs(rex) < 0.01) {
       nearR.push(R[i]); nearG.push(G[i]); nearB.push(B[i]);
       var mx = Math.max(ch[0],ch[1],ch[2]), mn = Math.min(ch[0],ch[1],ch[2]);
-      if (mx > 0) nearSat.push((mx-mn)/mx);
-    } else if (rex >= 0.02 && rex <= 0.05) faint.push(s);
 )MCPJS"
 R"MCPJS(
+      if (mx > 0) nearSat.push((mx-mn)/mx);
+    } else if (rex >= 0.02 && rex <= 0.05) faint.push(s);
     else if (rex > 0.05) bright.push(s);
   }
   var satMean = null;
@@ -821,10 +823,10 @@ function pjsrStars(viewId, maxStars) {
           if ((o.x-s.x)*(o.x-s.x) + (o.y-s.y)*(o.y-s.y) < minSep*minSep) { clash = true; break; }
         }
       }
-    if (!clash) { (cell[key(cx,cy)] = cell[key(cx,cy)] || []).push(s); accepted.push(s); }
-  }
 )MCPJS"
 R"MCPJS(
+    if (!clash) { (cell[key(cx,cy)] = cell[key(cx,cy)] || []).push(s); accepted.push(s); }
+  }
 
   // --- Moment measurement on the brightest maxStars ---
   var win = 12, fwhms = [], eccs = [], brightest = [], measured = 0;
@@ -903,10 +905,10 @@ function pjsrStructureColor(viewId, rect, tileGrid, targetSamples) {
   var v = View.viewById(viewId);
   if (!v || v.isNull) return JSON.stringify({error: "Image not found: " + viewId});
   var img = v.image;
-  if (!img.isColor) return JSON.stringify({error: "get_structure_color requires a color image"});
-
 )MCPJS"
 R"MCPJS(
+  if (!img.isColor) return JSON.stringify({error: "get_structure_color requires a color image"});
+
   var X0 = 0, Y0 = 0, X1 = img.width, Y1 = img.height;
   var rc = rect;
   if (rc) {
@@ -985,10 +987,10 @@ R"MCPJS(
       var tx = Math.min(TG-1, Math.floor(i5 / Math.max(1, gR[j3].length/TG)));
       var ty = Math.min(TG-1, Math.floor(j3 / Math.max(1, gh/TG)));
       tiles[ty*TG+tx].push(sat);
-    }
-  }
 )MCPJS"
 R"MCPJS(
+    }
+  }
   var tileSat = [], minT = null, minTi = -1;
   for (var t2 = 0; t2 < tiles.length; ++t2) {
     var m2 = tiles[t2].length ? median(tiles[t2]) : null;
@@ -1067,10 +1069,10 @@ function pjsrRender(viewId, outputPath, stf, rect, downsample, quality) {
     } else {
       htRows = { 0: [s[0][1], s[0][0], s[0][2]], 1: [s[1][1], s[1][0], s[1][2]], 2: [s[2][1], s[2][0], s[2][2]] };
     }
-  }
-
 )MCPJS"
 R"MCPJS(
+  }
+
   // Temp hidden window; assign honors the source selectedRect (crop at copy).
   var r = rect;
   var x0 = 0, y0 = 0, x1 = src.width, y1 = src.height;
@@ -1149,10 +1151,10 @@ function handleGetNoise(command) {
 }
 
 function handleGetBackgroundGradient(command) {
-   var p = command.parameters || {};
-   return compositeResult(pjsrGradient(String(p.viewId), Math.trunc(Number(p.gridSize)), Number(p.boxFraction)));
 )MCPJS"
 R"MCPJS(
+   var p = command.parameters || {};
+   return compositeResult(pjsrGradient(String(p.viewId), Math.trunc(Number(p.gridSize)), Number(p.boxFraction)));
 }
 
 function handleGetBackgroundNeutrality(command) {
@@ -1231,10 +1233,10 @@ function routeCommand(command) {
    }
 
    // Internal commands
-   if (tool === "list_open_images") return handleListOpenImages(command);
-   if (tool === "open_image") return handleOpenImage(command);
 )MCPJS"
 R"MCPJS(
+   if (tool === "list_open_images") return handleListOpenImages(command);
+   if (tool === "open_image") return handleOpenImage(command);
    if (tool === "save_image") return handleSaveImage(command);
    if (tool === "close_image") return handleCloseImage(command);
    if (tool === "get_image_statistics") return handleGetImageStatistics(command);
@@ -1313,10 +1315,10 @@ function OSC_RGB_LINEAR(cfg) {
    // recipe's own medians/checks/saves, which is the only part a driver change can shrink.
    var T0 = Date.now();
    function nowMs() { return Date.now(); }
-
-   // ---------- path derivation (cross-platform: probe, never hardcode) ----------
 )MCPJS"
 R"MCPJS(
+
+   // ---------- path derivation (cross-platform: probe, never hardcode) ----------
    function firstExisting(cands) {
       for (var i = 0; i < cands.length; i++) if (cands[i] && File.exists(cands[i])) return cands[i];
       return null;
@@ -1395,10 +1397,10 @@ R"MCPJS(
    var tOpen = nowMs();
    var wins = ImageWindow.open(cfg.src);
    if (!wins.length) throw new Error("open failed: " + cfg.src);
-   for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose(); // e.g. autocrop mask windows
-   var w = wins[0]; w.show();
 )MCPJS"
 R"MCPJS(
+   for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose(); // e.g. autocrop mask windows
+   var w = wins[0]; w.show();
    var v = w.mainView; v.id = base;
    var img = v.image;
    if (img.numberOfChannels < 3) { w.forceClose(); throw new Error("input is not a color image"); }
@@ -1477,10 +1479,10 @@ R"MCPJS(
    // stats byte-identical, no exception. Detect both, fall back to GradientCorrection.
    report.mgc = { attempted: false, declined: false, fallback: null };
    if (marsFiles.length) {
-      step("spfc", function() { fSpfc().executeOn(v); }, v);
-      report.mgc.attempted = true;
 )MCPJS"
 R"MCPJS(
+      step("spfc", function() { fSpfc().executeOn(v); }, v);
+      report.mgc.attempted = true;
       var medBefore = med(v);
       var ok = false;
       var tMgc = nowMs();
@@ -1559,10 +1561,10 @@ R"MCPJS(
    report.checks.stars = { peak: +st.peak.toFixed(4), fracLit: +st.fracLit.toFixed(5),
       pass: st.peak > 0.05 && st.fracLit > 0 };
    report.checks.ok = report.checks.gradient.pass && report.checks.clipping.pass && report.checks.stars.pass;
-
-   if (cfg.goldenCrop) {
 )MCPJS"
 R"MCPJS(
+
+   if (cfg.goldenCrop) {
       var gc = cfg.goldenCrop, gr = new Rect(gc.x0, gc.y0, gc.x0 + gc.w, gc.y0 + gc.h);
       report.goldenCrop = { rect: [gc.x0, gc.y0, gc.w, gc.h],
          starless: rectMedians(sImg, gr), stars: rectMedians(wStars.mainView.image, gr) };
@@ -1641,10 +1643,10 @@ function __csRect(img, x0, y0, x1, y1, target) {
   function sig(x) { return (x && isFinite(x)) ? +x.toPrecision(6) : (isFinite(x) ? 0 : x); }
   return {
     skyP25: sig(pctS(sl, 25)), lumP50: sig(pctS(sl, 50)),
-    grainRelSky: sig(mad(d2) / pctS(sl, 25)),
-    RoverG: sig(dR / dG), RoverB: sig(dR / dB),
 )MCPJS"
 R"MCPJS(
+    grainRelSky: sig(mad(d2) / pctS(sl, 25)),
+    RoverG: sig(dR / dG), RoverB: sig(dR / dB),
     p75: sig(pctS(sl, 75)), p95: sig(pctS(sl, 95)), p99: sig(pctS(sl, 99)),
     n: n, stride: stride
   };
@@ -1723,10 +1725,10 @@ function CROP_SELECT(viewId, opts) {
   }
 
   var scored = [];
-  for (var c = 0; c < cands.length; c++) {
-    var mrect = __csRect(img, cands[c][0], cands[c][1], cands[c][0] + cw, cands[c][1] + ch, opts.target || 16000);
 )MCPJS"
 R"MCPJS(
+  for (var c = 0; c < cands.length; c++) {
+    var mrect = __csRect(img, cands[c][0], cands[c][1], cands[c][0] + cw, cands[c][1] + ch, opts.target || 16000);
     var per = {}, worst = 0;
     for (var t = 0; t < CS_TERMS.length; t++) {
       var k = CS_TERMS[t];
@@ -1805,10 +1807,10 @@ function __pfProfileView(view) {
   function pctS(s, p) { return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; }
   var sl = lum.slice().sort(function(u, v) { return u - v; });
   var PP = [1, 5, 25, 50, 75, 95, 99, 99.9];
-  var pl = {}, pr = {}, pg = {}, pb = {};
-  var sr = rr.slice().sort(function(u,v){return u-v;}), sg = gg.slice().sort(function(u,v){return u-v;}), sb = bb.slice().sort(function(u,v){return u-v;});
 )MCPJS"
 R"MCPJS(
+  var pl = {}, pr = {}, pg = {}, pb = {};
+  var sr = rr.slice().sort(function(u,v){return u-v;}), sg = gg.slice().sort(function(u,v){return u-v;}), sb = bb.slice().sort(function(u,v){return u-v;});
   for (var i = 0; i < PP.length; i++) {
     var k = "p" + String(PP[i]).replace(".", "_");
     pl[k] = sig(pctS(sl, PP[i])); pr[k] = sig(pctS(sr, PP[i]));
@@ -1887,10 +1889,10 @@ function runFiles(list, scales) {
     var win = wins[0];
     // WBPP masters spawn extra *crop_mask* windows on open; leaking one per file pollutes the
     // session and makes later view lookups ambiguous.
-    for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose();
-    var view = win.mainView;
 )MCPJS"
 R"MCPJS(
+    for (var wi = 1; wi < wins.length; wi++) wins[wi].forceClose();
+    var view = win.mainView;
     view.image.resetSelections();
     var out = { image: name, scales: {} };
     for (var fi = 0; fi < scales.length; fi++) {

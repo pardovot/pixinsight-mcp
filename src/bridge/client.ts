@@ -21,7 +21,7 @@ function sleep(ms: number): Promise<void> {
 // test (scripts/check-handler-drift.mjs) enforces equality. Coarse skew
 // detector: per-feature markers (save_image outputs.hints) stay the pattern
 // for gaps that must hard-error.
-export const EXPECTED_HANDLERS_REV = 3;
+export const EXPECTED_HANDLERS_REV = 4;
 
 export class BridgeClient {
   private config: BridgeConfig;

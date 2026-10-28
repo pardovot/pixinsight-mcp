@@ -112,7 +112,7 @@ function getTimestamp() {
 // generically (client.ts EXPECTED_HANDLERS_REV must match; the drift test
 // enforces equality). Per-feature markers (save_image outputs.hints) remain
 // for gaps that must hard-error.
-var HANDLERS_REVISION = 3;
+var HANDLERS_REVISION = 4;
 
 function handleListOpenImages(command) {
    var windows = ImageWindow.windows;
@@ -626,7 +626,9 @@ function handleExportContainer(command) {
          else if (/^[A-Za-z_]\w*\.[A-Za-z_]\w*$/.test(v)) x += pad + '<parameter id="' + id + '" value="' + v.split(".").pop() + '"/>\n';
          else if (v.charAt(0) === '"') { var str = v.slice(1, -1); x += str === "" ? pad + '<parameter id="' + id + '"></parameter>\n' : pad + '<parameter id="' + id + '">' + xmlEsc(str) + "</parameter>\n"; }
          else if (v.charAt(0) === "[") {
-            var arr; try { arr = JSON.parse(v); } catch (e) { arr = null; }
+            // toSource() writes table rows as JSON-compatible numbers, with "// x, y" style comment lines.
+            var arr; try { arr = JSON.parse(v.replace(///[^
+]*/g, "")); } catch (e) { arr = null; }
             if (arr && arr.length && arr[0] && arr[0].length === 2) x += pad + '<table id="' + id + '" rows="' + arr.length + '">\n' + tableRows(arr) + pad + "</table>\n";
             else x += pad + '<table id="' + id + '" rows="0"/>\n';
          }
