@@ -17,7 +17,7 @@ straight from your PixInsight install (`<PI_ROOT>/src/pcl/windows/vc17/`).
 
 ## Provenance & license
 
-Copied verbatim from a stock PixInsight 1.9.4 install
+Copied verbatim from a stock PixInsight 1.9.5 install
 (`<PI_ROOT>/src/pcl/windows/vc17/`). Part of the PixInsight Class Library, subject
 to the **PixInsight Class Library License (PCLL)**, see the PCL repository's
 `COPYING.md` / `LICENSE`. Unmodified; the project references sources relatively

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 ######################################################################
-# PixInsight Makefile Generator Script v1.147
+# PixInsight Makefile Generator Script v1.155
 # Copyright (C) 2009-2026 Pleiades Astrophoto
 ######################################################################
-# Generated on .... 2026-06-21T15:46:34.103Z
+# Generated on .... 2026-09-27T21:03:15.259Z
 # Project id ...... PCL
 # Project type .... StaticLibrary
 # Platform ........ Windows/vc17
@@ -13,7 +13,10 @@
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
-      <UniqueIdentifier>857ef439-b511-46fa-a42b-ceff1558e9c8</UniqueIdentifier>
+      <UniqueIdentifier>6f101456-0b82-4e51-b00a-aa4b691012d0</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>5fa22d66-074a-4f50-b08e-3698de0e14a5</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -92,6 +95,9 @@
     <ClCompile Include="..\..\ColorSpace.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\ColorSpaceKernels.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\ComboBox.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
@@ -146,10 +152,7 @@
     <ClCompile Include="..\..\FFTConvolution.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\FFTRotationAndScaling.cpp">
-        <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\FFTTranslation.cpp">
+    <ClCompile Include="..\..\FFTRegistration.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\FactorialCache.cpp">
@@ -224,10 +227,16 @@
     <ClCompile Include="..\..\HistogramTransformation.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Homography.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\ICCProfile.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\ICCProfileTransformation.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Image.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\ImageColor.cpp">
@@ -278,7 +287,13 @@
     <ClCompile Include="..\..\LanczosInterpolation.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\LevenbergMarquardt.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\LinearFit.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\LinearFitReference.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\LocalNormalizationData.cpp">
@@ -398,6 +413,9 @@
     <ClCompile Include="..\..\PyramidalWaveletTransform.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\RANSACPointMatcher.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\RGBColorSystem.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
@@ -489,6 +507,9 @@
         <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\StarDetector.cpp">
+        <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Statistics.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\StatusMonitor.cpp">
@@ -587,5 +608,13 @@
     <ClCompile Include="..\..\XMLReference.cpp">
         <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\FFTEngine.h">
+        <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\StatisticsEngine.h">
+        <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

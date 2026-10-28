@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 ######################################################################
-# PixInsight Makefile Generator Script v1.147
+# PixInsight Makefile Generator Script v1.155
 # Copyright (C) 2009-2026 Pleiades Astrophoto
 ######################################################################
-# Generated on .... 2026-06-21T15:46:34.103Z
+# Generated on .... 2026-09-27T21:03:15.259Z
 # Project id ...... PCL
 # Project type .... StaticLibrary
 # Platform ........ Windows/vc17
@@ -22,7 +22,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{7B0F21A9-EBDF-423A-8670-43625840B6F8}</ProjectGuid>
+    <ProjectGuid>{D7D44A21-C523-4A5B-93BE-9FC396B7FBEC}</ProjectGuid>
     <RootNamespace>PixInsight</RootNamespace>
     <Keyword>Win32Proj</Keyword>
   </PropertyGroup>
@@ -140,6 +140,7 @@
     <ClCompile Include="..\..\ColorComboBox.cpp"/>
     <ClCompile Include="..\..\ColorDialog.cpp"/>
     <ClCompile Include="..\..\ColorSpace.cpp"/>
+    <ClCompile Include="..\..\ColorSpaceKernels.cpp"/>
     <ClCompile Include="..\..\ComboBox.cpp"/>
     <ClCompile Include="..\..\Compression.cpp"/>
     <ClCompile Include="..\..\Console.cpp"/>
@@ -158,8 +159,7 @@
     <ClCompile Include="..\..\FFT1D.cpp"/>
     <ClCompile Include="..\..\FFT2D.cpp"/>
     <ClCompile Include="..\..\FFTConvolution.cpp"/>
-    <ClCompile Include="..\..\FFTRotationAndScaling.cpp"/>
-    <ClCompile Include="..\..\FFTTranslation.cpp"/>
+    <ClCompile Include="..\..\FFTRegistration.cpp"/>
     <ClCompile Include="..\..\FactorialCache.cpp"/>
     <ClCompile Include="..\..\FastRotation.cpp"/>
     <ClCompile Include="..\..\File.cpp"/>
@@ -184,8 +184,10 @@
     <ClCompile Include="..\..\HexString.cpp"/>
     <ClCompile Include="..\..\Histogram.cpp"/>
     <ClCompile Include="..\..\HistogramTransformation.cpp"/>
+    <ClCompile Include="..\..\Homography.cpp"/>
     <ClCompile Include="..\..\ICCProfile.cpp"/>
     <ClCompile Include="..\..\ICCProfileTransformation.cpp"/>
+    <ClCompile Include="..\..\Image.cpp"/>
     <ClCompile Include="..\..\ImageColor.cpp"/>
     <ClCompile Include="..\..\ImageOp.cpp"/>
     <ClCompile Include="..\..\ImageStatistics.cpp"/>
@@ -202,7 +204,9 @@
     <ClCompile Include="..\..\Keyboard.cpp"/>
     <ClCompile Include="..\..\Label.cpp"/>
     <ClCompile Include="..\..\LanczosInterpolation.cpp"/>
+    <ClCompile Include="..\..\LevenbergMarquardt.cpp"/>
     <ClCompile Include="..\..\LinearFit.cpp"/>
+    <ClCompile Include="..\..\LinearFitReference.cpp"/>
     <ClCompile Include="..\..\LocalNormalizationData.cpp"/>
     <ClCompile Include="..\..\MD5.cpp"/>
     <ClCompile Include="..\..\Median.cpp"/>
@@ -242,6 +246,7 @@
     <ClCompile Include="..\..\ProjectionFactory.cpp"/>
     <ClCompile Include="..\..\PushButton.cpp"/>
     <ClCompile Include="..\..\PyramidalWaveletTransform.cpp"/>
+    <ClCompile Include="..\..\RANSACPointMatcher.cpp"/>
     <ClCompile Include="..\..\RGBColorSystem.cpp"/>
     <ClCompile Include="..\..\RadioButton.cpp"/>
     <ClCompile Include="..\..\Random.cpp"/>
@@ -273,6 +278,7 @@
     <ClCompile Include="..\..\StandardStatus.cpp"/>
     <ClCompile Include="..\..\StarDatabaseFile.cpp"/>
     <ClCompile Include="..\..\StarDetector.cpp"/>
+    <ClCompile Include="..\..\Statistics.cpp"/>
     <ClCompile Include="..\..\StatusMonitor.cpp"/>
     <ClCompile Include="..\..\String.cpp"/>
     <ClCompile Include="..\..\SurfaceSimplifier.cpp"/>
@@ -305,6 +311,10 @@
     <ClCompile Include="..\..\XISFWriter.cpp"/>
     <ClCompile Include="..\..\XML.cpp"/>
     <ClCompile Include="..\..\XMLReference.cpp"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\FFTEngine.h"/>
+    <ClInclude Include="..\..\StatisticsEngine.h"/>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
   <ImportGroup Label="ExtensionTargets">
