@@ -194,7 +194,7 @@ Result:
 
 ### `run_script`
 
-Execute an arbitrary PJSR script:
+Execute an arbitrary PJSR script. Standalone JS watcher only, the native module does not have it:
 
 ```json
 {

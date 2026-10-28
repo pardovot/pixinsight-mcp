@@ -230,6 +230,22 @@ int BridgePoller::ProcessPending( int maxPerTick )
 
 // ----------------------------------------------------------------------------
 
+// A double-quoted JS string literal holding text, so command data is never
+// parsed as code.
+static String JsStringLiteral( const String& text )
+{
+   String literal = text;
+   literal.ReplaceString( String( "\\" ), String( "\\\\" ) );
+   literal.ReplaceString( String( "\"" ), String( "\\\"" ) );
+   literal.ReplaceString( String( "\n" ), String( "\\n" ) );
+   literal.ReplaceString( String( "\r" ), String( "\\r" ) );
+   literal.ReplaceString( String( char16_type( 0x2028 ) ), String( "\\u2028" ) );
+   literal.ReplaceString( String( char16_type( 0x2029 ) ), String( "\\u2029" ) );
+   return String( "\"" ) + literal + String( "\"" );
+}
+
+// ----------------------------------------------------------------------------
+
 void BridgePoller::HandleCommandFile( const String& fileName )
 {
    // Command file is "<id>.json"; the result uses the same basename.
@@ -238,10 +254,10 @@ void BridgePoller::HandleCommandFile( const String& fileName )
 
    String rawJson = File::ReadTextFile( cmdPath ).UTF8ToUTF16();
 
-   // Build the delegating script: the proven JS handlers (which define
-   // dispatchCommand) followed by a wrapper that runs THIS command. The raw
-   // command JSON is embedded directly as a JS object literal, JSON is a valid
-   // JS expression, so no escaping is needed.
+   // Build the delegating script: the embedded JS handlers (which define
+   // dispatchCommand) followed by a wrapper that runs the command. The command
+   // file goes in as a string literal and is read with JSON.parse, so its
+   // content is only ever data.
    //
    // CRITICAL: the wrapper WRITES its own result file (File.writeTextFile) from
    // the local __out it just built, and we do NOT trust EvaluateScript's return
@@ -252,19 +268,15 @@ void BridgePoller::HandleCommandFile( const String& fileName )
    // computed AFTER the process returns, so it is immune. The results dir is
    // injected from m_resultsDir (NOT re-derived from File.homeDirectory) so the
    // JS writes into THIS instance's per-slot bridge, matching resPath above.
-   String resDirLit = m_resultsDir;
-   resDirLit.ReplaceString( String( "\\" ), String( "\\\\" ) ); // escape for a JS
-   resDirLit.ReplaceString( String( "\"" ), String( "\\\"" ) ); //   string literal
-
    String script = String( MCP_HANDLERS_JS );
    script += "\n;(function(){"
              "var __start=Date.now();"
-             "var __cmd=";
-   script += rawJson;
+             "var __cmd=JSON.parse(";
+   script += JsStringLiteral( rawJson );
+   script += ");"
+             "var __resDir=";
+   script += JsStringLiteral( m_resultsDir );
    script += ";"
-             "var __resDir=\"";
-   script += resDirLit;
-   script += "\";"
              "var __resPath=__resDir+\"/\"+__cmd.id+\".json\";"
              "var __tmpPath=__resDir+\"/\"+__cmd.id+\".tmp\";"
              "var __out;"

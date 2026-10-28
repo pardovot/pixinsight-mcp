@@ -1,18 +1,11 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { execPjsrJson, jsonContent, jsonErrorContent } from "../pjsr/exec.js";
-import { noiseScript } from "../pjsr/measure-noise.js";
-import { gradientScript } from "../pjsr/measure-gradient.js";
-import { neutralityScript } from "../pjsr/measure-neutrality.js";
-import { starMetricsScript } from "../pjsr/measure-stars.js";
-import { structureColorScript } from "../pjsr/measure-structure-color.js";
+import { execHandler, jsonContent, jsonErrorContent } from "../pjsr/exec.js";
 
 /**
- * M2 measurement tools. Delivered via run_script -
- * the PJSR bodies live in src/pjsr/measure-*.ts (promotion-ready as embedded
- * handlers if run_script delivery ever shows a problem). These replace the
- * per-run hand-rolled measurement code the agent previously improvised.
+ * Measurement tools. Each is a bridge verb implemented in the watcher's handler
+ * section (pjsr/pixinsight-mcp-watcher.js), so it runs inside the native module.
  */
 export function registerMeasurementTools(server: McpServer, bridge: BridgeClient): void {
 
@@ -26,7 +19,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     },
     async ({ viewId }) => {
       try {
-        return jsonContent(await execPjsrJson(bridge, noiseScript(viewId)));
+        return jsonContent(await execHandler(bridge, "get_noise", { viewId }));
       } catch (err) {
         return jsonErrorContent(err);
       }
@@ -47,7 +40,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     },
     async ({ viewId, gridSize, boxFraction }) => {
       try {
-        return jsonContent(await execPjsrJson(bridge, gradientScript(viewId, gridSize, boxFraction)));
+        return jsonContent(await execHandler(bridge, "get_background_gradient", { viewId, gridSize, boxFraction }));
       } catch (err) {
         return jsonErrorContent(err);
       }
@@ -72,7 +65,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     },
     async ({ viewId, mode, signalChannel, targetSamples }) => {
       try {
-        return jsonContent(await execPjsrJson(bridge, neutralityScript(viewId, mode, signalChannel, targetSamples)));
+        return jsonContent(await execHandler(bridge, "get_background_neutrality", { viewId, mode, signalChannel, targetSamples }));
       } catch (err) {
         return jsonErrorContent(err);
       }
@@ -94,7 +87,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     },
     async ({ viewId, maxStars }) => {
       try {
-        return jsonContent(await execPjsrJson(bridge, starMetricsScript(viewId, maxStars), 600000));
+        return jsonContent(await execHandler(bridge, "get_star_metrics", { viewId, maxStars }, 600000));
       } catch (err) {
         return jsonErrorContent(err);
       }
@@ -125,8 +118,8 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     },
     async ({ viewId, rect, tileGrid, targetSamples }) => {
       try {
-        return jsonContent(await execPjsrJson(
-          bridge, structureColorScript(viewId, rect ?? null, tileGrid, targetSamples)));
+        return jsonContent(await execHandler(
+          bridge, "get_structure_color", { viewId, rect: rect ?? null, tileGrid, targetSamples }));
       } catch (err) {
         return jsonErrorContent(err);
       }

@@ -3,12 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { execPjsrJson, jsonContent, jsonErrorContent } from "../pjsr/exec.js";
-import { renderScript, dimsScript } from "../pjsr/render.js";
-import { noiseScript } from "../pjsr/measure-noise.js";
-import { gradientScript } from "../pjsr/measure-gradient.js";
-import { neutralityScript } from "../pjsr/measure-neutrality.js";
-import { starMetricsScript } from "../pjsr/measure-stars.js";
+import { execHandler, jsonContent, jsonErrorContent } from "../pjsr/exec.js";
 
 /**
  * Rendering for QA: the render is the judge; metrics corroborate.
@@ -37,7 +32,7 @@ export function registerRenderTools(server: McpServer, bridge: BridgeClient): vo
     async ({ viewId, outputPath, stf, rect, downsample, quality }) => {
       try {
         return jsonContent(
-          await execPjsrJson(bridge, renderScript(viewId, outputPath, stf, rect, downsample, quality))
+          await execHandler(bridge, "render_view", { viewId, outputPath, stf, rect: rect ?? null, downsample, quality })
         );
       } catch (err) {
         return jsonErrorContent(err);
@@ -84,15 +79,14 @@ export async function generateCriticPack(
 ) {
   await mkdir(outputDir, { recursive: true });
   const stf = phase === "linear" ? "auto" : "asis";
-  const dims = await execPjsrJson(bridge, dimsScript(viewId));
+  const dims = await execHandler(bridge, "get_view_dimensions", { viewId });
   const W = dims.width as number, H = dims.height as number;
 
   const renders: Record<string, any> = {};
   const render = async (name: string, rect?: [number, number, number, number], downsample?: number) => {
-    renders[name] = await execPjsrJson(
-      bridge,
-      renderScript(viewId, join(outputDir, name), stf, rect, downsample)
-    );
+    renders[name] = await execHandler(bridge, "render_view", {
+      viewId, outputPath: join(outputDir, name), stf, rect: rect ?? null, downsample,
+    });
   };
 
   // Full field, ~1500px long edge.
@@ -114,19 +108,18 @@ export async function generateCriticPack(
 
   // Metrics + brightest-star crop.
   const metrics: Record<string, any> = { viewId, phase, width: W, height: H };
-  metrics.noise = await execPjsrJson(bridge, noiseScript(viewId));
-  metrics.gradient = await execPjsrJson(bridge, gradientScript(viewId, 5, 0.04));
+  metrics.noise = await execHandler(bridge, "get_noise", { viewId });
+  metrics.gradient = await execHandler(bridge, "get_background_gradient", { viewId, gridSize: 5, boxFraction: 0.04 });
   if (dims.isColor) {
     try {
-      metrics.neutrality = await execPjsrJson(
-        bridge,
-        neutralityScript(viewId, phase === "linear" ? "linear" : "poststretch", "R", 150000)
-      );
+      metrics.neutrality = await execHandler(bridge, "get_background_neutrality", {
+        viewId, mode: phase === "linear" ? "linear" : "poststretch", signalChannel: "R", targetSamples: 150000,
+      });
     } catch (err) {
       metrics.neutrality = { error: err instanceof Error ? err.message : String(err) };
     }
   }
-  metrics.stars = await execPjsrJson(bridge, starMetricsScript(viewId, 200), 600000);
+  metrics.stars = await execHandler(bridge, "get_star_metrics", { viewId, maxStars: 200 }, 600000);
   // Pairwise packs must share starsRect, each pack's auto-pick lands on a different
   // star and the critic ends up comparing different fields (found by the critic itself
   // in the v1 calibration run).

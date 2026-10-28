@@ -77,21 +77,17 @@ baseline requirement, not a later "port" and not a nice-to-have.
 - `run_pixelmath` (the last surviving per-process MCP tool, with a restricted parameter set: no `symbols`/`rescale`/…) was **removed as an MCP tool 2026-07-26**; use `run_process("PixelMath")`. The **bridge verb + handler remain** for direct bridge callers (public contract).
 
 ## ⛔ WHERE LOGIC LIVES, and never let build cost decide it
-There are two legitimate homes for tool logic. Pick by **what the thing is**, never by what is
-cheaper to ship.
+Everything that runs inside PixInsight lives in the embedded handler section
+(`pjsr/pixinsight-mcp-watcher.js` → `BridgeHandlersJS.h`): the primitives (`open_image`,
+`save_image`, `close_image`, `run_process`, `export_container`, ...) and the measurement and
+render verbs (`get_noise`, `get_star_metrics`, `render_view`, ...). The MCP server sends a verb
+and its parameters as data, never PJSR source. `run_script` exists only in the standalone JS
+watcher, outside the handler section.
 
 | Home | For | Cost to change |
 |---|---|---|
-| **Embedded JS handler** (`pjsr/pixinsight-mcp-watcher.js` → `BridgeHandlersJS.h`) | **Primitives**: the bridge protocol's own verbs. `open_image`, `save_image`, `close_image`, `run_process`, `run_script`, `export_container`. Stable, rarely change. | `module:build` → sign with PixInsight → close PI → `module:install` (admin) → reopen → restart MCP |
-| **TS-generated PJSR** (`src/pjsr/*.ts` + `execPjsrJson`) | **Composites** built on those primitives that evolve with the knowledge base: the measurement tools, `render_view`, `render_critic_pack`. | `npm run build` + MCP restart |
-
-**The test (all three must hold for the handler; any failure means TS-side):**
-1. **Stability**: semantics do not evolve with the knowledge layer.
-2. **Contract value**: useful to any bridge client, not just the MCP agent loop.
-3. **Boundary fit**: benefits from validation/error semantics at the PixInsight edge.
-
-(The old test, "does the bridge expose it as a command", was circular: the bridge exposes
-whatever someone put there. Replaced 2026-07-26 after the placement audit.)
+| **Embedded JS handler** | Everything that runs in PixInsight | `module:build` → sign with PixInsight → close PI → `module:install` (admin) → reopen → restart MCP |
+| **TS** (`src/tools/*.ts`) | Orchestration over verbs (`render_critic_pack`), input validation | `npm run build` + MCP restart |
 
 ⛔ **"I'll do it TS-side to avoid the rebuild-sign-admin-install cycle" is not an architecture
 argument.** It is a cost argument, and it produces the actual failure mode: **two implementations of
@@ -102,8 +98,6 @@ inconvenient. Corrected by putting it back in the handler.
 
 **Smells that you are making a cost call and calling it architecture:**
 - You are about to leave a handler you *know* is wrong, and describe it as "a trap for direct callers".
-- You justify placement by "there is precedent" without checking whether the precedent is a
-  *composite* (legitimate) or a primitive that drifted (not).
 - The reason a parameter is missing is that it was never plumbed, not that the logic is evolving.
 
 **The rebuild cycle is routine, budget it.** It is the same loop `get_full_history` and

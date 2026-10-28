@@ -35,10 +35,12 @@ The module is a **thin non-blocking shell around the JS handlers**. It:
   `MetaModule::EvaluateScript` on the root thread.
 - Exposes a tiny UI: status + Start/Stop, so the timer is easy to control.
 
-Full command coverage (delegated, not reimplemented in C++): `list_open_images`,
+Commands (delegated, not reimplemented in C++): `list_open_images`,
 `open_image`, `save_image`, `close_image`, `get_image_statistics`,
-`run_pixelmath`, `run_process`, `get_process_parameters`, `run_script`,
-`get_history`, `undo`, `redo`, `snapshot`, `restore`.
+`run_pixelmath`, `run_process`, `get_process_parameters`, `get_history`,
+`get_full_history`, `undo`, `redo`, `snapshot`, `restore`, `export_container`, and the
+measurement and render verbs. The command file is read as data and only the
+embedded handlers run, `run_script` is in the standalone JS watcher only.
 
 ### Handler logic lives in ONE place
 

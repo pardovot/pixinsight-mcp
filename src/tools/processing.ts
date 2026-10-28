@@ -111,7 +111,8 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
   server.tool(
     "run_script",
     "Execute arbitrary PJSR code inside PixInsight (escape hatch for anything not covered by " +
-      "specific tools). Returns the script's final expression value (not console output).",
+      "specific tools). Returns the script's final expression value (not console output). " +
+      "Available only with the standalone JS watcher script, not the native module.",
     {
       code: z.string().describe("PJSR JavaScript code to execute"),
     },
