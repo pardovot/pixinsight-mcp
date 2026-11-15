@@ -1,6 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { BridgeClient } from "../bridge/client.js";
+import {
+  checkProcessCall,
+  deadParamsFor,
+  formatBlocks,
+  formatNotes,
+  formatWarnings,
+  overrideEnabled,
+} from "../facts/guard.js";
 import { textContent } from "./content.js";
 import { registerTool } from "./register.js";
 
@@ -28,11 +36,16 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       settings: z.record(z.string(), z.unknown()).optional()
         .describe("Process parameters as { name: value } (see get_process_parameters)"),
     },
-    async ({ processId, viewId, settings }) => {
-      const result = await bridge.call("run_process", { processId, settings: settings ?? {} },
-        { targetView: viewId ?? null });
+    async ({ processId, viewId, settings = {} }) => {
+      // Verified defects are refused before the call reaches PixInsight. Some hang the
+      // application, and the no-op ones would return success with an unchanged image.
+      const { blocks, warnings } = checkProcessCall({ processId, viewId, settings });
+      if (blocks.length > 0 && !overrideEnabled()) throw new Error(formatBlocks(processId, blocks));
+
+      const result = await bridge.call("run_process", { processId, settings }, { targetView: viewId ?? null });
       if (result.status === "error") throw new Error(result.error.message);
-      return textContent(result.message || `${processId} executed${viewId ? ` on **${viewId}**` : " (global)"}`);
+      const summary = result.message || `${processId} executed${viewId ? ` on **${viewId}**` : " (global)"}`;
+      return textContent(summary + (warnings.length > 0 ? formatWarnings(warnings) : ""));
     },
   );
 
@@ -44,8 +57,14 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     async ({ processId }) => {
       const { parameters } = await bridge.request<{ parameters: Record<string, unknown> }>(
         "get_process_parameters", { processId });
-      const lines = Object.entries(parameters).map(([name, value]) => `- ${name} = ${JSON.stringify(value)}`);
-      return textContent(`**${processId}** parameters:\n${lines.join("\n")}`);
+      // Introspection lists dead aliases as ordinary parameters, so they are marked here.
+      const dead = deadParamsFor(processId);
+      const lines = Object.entries(parameters).map(([name, value]) => {
+        const fact = dead.get(name.toLowerCase());
+        const mark = fact ? `   [DEAD, ${fact.id}: setting this is refused, ${fact.fix ?? "no effect"}]` : "";
+        return `- ${name} = ${JSON.stringify(value)}${mark}`;
+      });
+      return textContent(`**${processId}** parameters:\n${lines.join("\n")}${formatNotes(processId)}`);
     },
   );
 }
