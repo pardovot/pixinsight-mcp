@@ -13,6 +13,7 @@ const PJSR_SOURCES = [
   "pjsr/core.js",
   "pjsr/images.js",
   "pjsr/processes.js",
+  "pjsr/history.js",
   "pjsr/dispatch.js",
 ];
 

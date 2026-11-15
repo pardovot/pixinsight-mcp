@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { BridgeClient } from "./bridge/client.js";
+import { registerHistoryTools } from "./tools/history.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
 import { registerProcessingTools } from "./tools/processing.js";
 
@@ -15,6 +16,7 @@ const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.me
 const TOOL_GROUPS = [
   registerImageManagementTools,
   registerProcessingTools,
+  registerHistoryTools,
 ];
 
 const bridge = new BridgeClient();

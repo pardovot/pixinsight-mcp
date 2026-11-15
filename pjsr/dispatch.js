@@ -14,7 +14,13 @@ var ROUTES = {
    close_image: handleCloseImage,
    get_image_statistics: handleGetImageStatistics,
    run_process: handleRunProcess,
-   get_process_parameters: handleGetProcessParameters
+   get_process_parameters: handleGetProcessParameters,
+   get_history: handleGetHistory,
+   get_full_history: handleGetFullHistory,
+   undo: handleUndo,
+   redo: handleRedo,
+   snapshot: handleSnapshot,
+   restore: handleRestore
 };
 
 function dispatchCommand(command) {
