@@ -20,7 +20,12 @@ var ROUTES = {
    undo: handleUndo,
    redo: handleRedo,
    snapshot: handleSnapshot,
-   restore: handleRestore
+   restore: handleRestore,
+   get_noise: handleGetNoise,
+   get_background_gradient: handleGetBackgroundGradient,
+   get_background_neutrality: handleGetBackgroundNeutrality,
+   get_star_metrics: handleGetStarMetrics,
+   get_structure_color: handleGetStructureColor
 };
 
 function dispatchCommand(command) {

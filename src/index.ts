@@ -6,6 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { BridgeClient } from "./bridge/client.js";
 import { registerHistoryTools } from "./tools/history.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
+import { registerMeasurementTools } from "./tools/measurement.js";
 import { registerProcessingTools } from "./tools/processing.js";
 
 // package.json ships next to build/ in the npm package, so it is the one version source.
@@ -17,6 +18,7 @@ const TOOL_GROUPS = [
   registerImageManagementTools,
   registerProcessingTools,
   registerHistoryTools,
+  registerMeasurementTools,
 ];
 
 const bridge = new BridgeClient();

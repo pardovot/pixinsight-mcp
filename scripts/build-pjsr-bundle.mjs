@@ -14,6 +14,12 @@ const PJSR_SOURCES = [
   "pjsr/images.js",
   "pjsr/processes.js",
   "pjsr/history.js",
+  "pjsr/measure-common.js",
+  "pjsr/measure-noise.js",
+  "pjsr/measure-gradient.js",
+  "pjsr/measure-neutrality.js",
+  "pjsr/measure-stars.js",
+  "pjsr/measure-structure-color.js",
   "pjsr/dispatch.js",
 ];
 
