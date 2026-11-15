@@ -7,6 +7,7 @@ import { BridgeClient } from "./bridge/client.js";
 import { registerExportTools } from "./tools/export.js";
 import { registerHistoryTools } from "./tools/history.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
+import { registerInstanceTools } from "./tools/instances.js";
 import { registerMeasurementTools } from "./tools/measurement.js";
 import { registerProcessingTools } from "./tools/processing.js";
 import { registerRenderTools } from "./tools/render.js";
@@ -23,6 +24,7 @@ const TOOL_GROUPS = [
   registerMeasurementTools,
   registerRenderTools,
   registerExportTools,
+  registerInstanceTools,
 ];
 
 const bridge = new BridgeClient();
