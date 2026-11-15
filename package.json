@@ -1,0 +1,41 @@
+{
+  "name": "@pardovot/pixinsight-mcp",
+  "version": "1.0.0",
+  "description": "MCP server that lets an AI assistant drive PixInsight for astrophotography processing",
+  "type": "module",
+  "bin": {
+    "pixinsight-mcp": "build/index.js"
+  },
+  "files": [
+    "build/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "author": "pardovot",
+  "homepage": "https://github.com/pardovot/pixinsight-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pardovot/pixinsight-mcp.git"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
+    "dev": "tsc --watch",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "pixinsight",
+    "mcp",
+    "astrophotography",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
