@@ -21,6 +21,7 @@ const PJSR_SOURCES = [
   "pjsr/measure-stars.js",
   "pjsr/measure-structure-color.js",
   "pjsr/render.js",
+  "pjsr/export.js",
   "pjsr/dispatch.js",
 ];
 
