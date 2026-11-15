@@ -20,6 +20,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc",
+    "test": "npm run build && node --test \"test/*.test.mjs\"",
     "dev": "tsc --watch",
     "prepack": "npm run build"
   },
