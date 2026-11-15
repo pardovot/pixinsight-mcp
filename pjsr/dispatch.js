@@ -25,7 +25,8 @@ var ROUTES = {
    get_background_gradient: handleGetBackgroundGradient,
    get_background_neutrality: handleGetBackgroundNeutrality,
    get_star_metrics: handleGetStarMetrics,
-   get_structure_color: handleGetStructureColor
+   get_structure_color: handleGetStructureColor,
+   render_view: handleRenderView
 };
 
 function dispatchCommand(command) {

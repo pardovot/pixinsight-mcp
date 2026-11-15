@@ -20,6 +20,7 @@ const PJSR_SOURCES = [
   "pjsr/measure-neutrality.js",
   "pjsr/measure-stars.js",
   "pjsr/measure-structure-color.js",
+  "pjsr/render.js",
   "pjsr/dispatch.js",
 ];
 

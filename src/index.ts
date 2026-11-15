@@ -8,6 +8,7 @@ import { registerHistoryTools } from "./tools/history.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
 import { registerMeasurementTools } from "./tools/measurement.js";
 import { registerProcessingTools } from "./tools/processing.js";
+import { registerRenderTools } from "./tools/render.js";
 
 // package.json ships next to build/ in the npm package, so it is the one version source.
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as {
@@ -19,6 +20,7 @@ const TOOL_GROUPS = [
   registerProcessingTools,
   registerHistoryTools,
   registerMeasurementTools,
+  registerRenderTools,
 ];
 
 const bridge = new BridgeClient();
