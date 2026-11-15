@@ -19,10 +19,11 @@
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc && node scripts/build-pjsr-bundle.mjs",
+    "build": "npm run clean && tsc && node scripts/build-pjsr-bundle.mjs && node scripts/check-handler-drift.mjs",
     "test": "npm run build && node --test \"test/*.test.mjs\"",
     "dev": "tsc --watch",
     "start": "node build/index.js",
+    "ping": "node scripts/ping.mjs",
     "prepack": "npm run build"
   },
   "keywords": [
