@@ -124,7 +124,7 @@ Every path is a default an environment variable overrides, so a stock install ne
 ```bash
 npm install
 npm run build    # compiles src/, builds the handler bundle, runs the handler drift check
-npm test
+npm test         # lint, build and the test suites
 ```
 
 Local setup and the layout of the code: [`docs/dev-setup.md`](docs/dev-setup.md) and

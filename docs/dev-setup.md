@@ -10,7 +10,8 @@ Everything here is cross platform. Where a command differs per platform, all thr
 
 ## Prerequisites
 
-- Node.js 18 or later, installed for the same OS that runs PixInsight.
+- Node.js 20.19 or later for development (ESLint needs it), installed for the same OS that runs
+  PixInsight. The published server runs on Node 18 or later.
 - PixInsight 1.9.4 "Lockhart" or later (V8 PJSR engine).
 - An MCP client.
 
@@ -73,6 +74,7 @@ verbatim.
 
 ```bash
 npm run build     # then restart the MCP client
+npm test          # lint, build and the test suites
 ```
 
 That covers `src/` and `pjsr/`. Every command includes the handler bundle afresh, so a change

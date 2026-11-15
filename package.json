@@ -20,7 +20,9 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc && node scripts/build-pjsr-bundle.mjs && node scripts/check-handler-drift.mjs",
-    "test": "npm run build && node --test \"test/*.test.mjs\"",
+    "test": "npm run lint && npm run build && node --test \"test/*.test.mjs\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "dev": "tsc --watch",
     "start": "node build/index.js",
     "ping": "node scripts/ping.mjs",
@@ -38,7 +40,12 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^6.0.0",
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.72.2"
   }
 }

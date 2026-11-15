@@ -26,6 +26,10 @@ Every new script, path and default is written cross platform from the start, not
 - PJSR files use `var` at top level: every `-x` script runs in one persistent global scope, so the
   bundle is evaluated again on each command, and a second top level `const` or `let` of the same
   name throws.
+- PixInsight's script engine accepts arrow functions, `let`/`const` inside functions and trailing
+  commas in array and object literals. It rejects template literals, trailing commas in calls and
+  parameters, `?.` and `??` with a syntax error that kills the whole driver, so the command times
+  out. ESLint enforces this on `pjsr/`.
 
 ## The command line transport
 PJSR is single threaded: a running script holds the main thread, modeless script interfaces do not
@@ -69,5 +73,6 @@ uncompressed files for every other caller.
 `scripts/check-handler-drift.mjs` (runs in `npm run build`) fails when a tool sends a bridge
 parameter its handler never reads.
 
-`npm run build` covers both sides. A handler change is live on the next command, since every driver
-includes the bundle afresh, a TS change needs an MCP restart.
+`npm run lint` checks code and formatting, `npm run lint:fix` fixes what it can. `npm test` runs
+lint, build and the tests. `npm run build` covers both sides. A handler change is live on the next
+command, since every driver includes the bundle afresh, a TS change needs an MCP restart.
