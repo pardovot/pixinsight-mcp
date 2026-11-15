@@ -22,6 +22,7 @@
     "build": "npm run clean && tsc && node scripts/build-pjsr-bundle.mjs",
     "test": "npm run build && node --test \"test/*.test.mjs\"",
     "dev": "tsc --watch",
+    "start": "node build/index.js",
     "prepack": "npm run build"
   },
   "keywords": [

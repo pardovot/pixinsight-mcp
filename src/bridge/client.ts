@@ -124,6 +124,16 @@ export class BridgeClient {
   }
 
   /**
+   * Run one bridge verb and return its outputs, throwing the handler's error message on failure.
+   * The caller states the outputs' shape, which is the handler's contract in pjsr/.
+   */
+  async request<Outputs>(tool: string, parameters: Record<string, unknown> = {}, options: CallOptions = {}): Promise<Outputs> {
+    const result = await this.call(tool, parameters, options);
+    if (result.status === "error") throw new Error(result.error.message);
+    return result.outputs as Outputs;
+  }
+
+  /**
    * Hand one command to the running PixInsight instance.
    *
    * PJSR has no way to keep a listener alive: a script holds the main thread
