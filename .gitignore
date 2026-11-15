@@ -1,0 +1,6 @@
+node_modules/
+build/
+*.tgz
+
+# Images and run outputs are machine local.
+data/
