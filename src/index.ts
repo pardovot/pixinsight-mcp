@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { BridgeClient } from "./bridge/client.js";
 import { registerImageManagementTools } from "./tools/image-management.js";
+import { registerProcessingTools } from "./tools/processing.js";
 
 // package.json ships next to build/ in the npm package, so it is the one version source.
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as {
@@ -13,6 +14,7 @@ const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.me
 
 const TOOL_GROUPS = [
   registerImageManagementTools,
+  registerProcessingTools,
 ];
 
 const bridge = new BridgeClient();

@@ -12,6 +12,7 @@ const outputPath = path.join(repoRoot, "build", "pjsr", "mcp-handlers.js");
 const PJSR_SOURCES = [
   "pjsr/core.js",
   "pjsr/images.js",
+  "pjsr/processes.js",
   "pjsr/dispatch.js",
 ];
 

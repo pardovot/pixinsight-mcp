@@ -12,7 +12,9 @@ var ROUTES = {
    open_image: handleOpenImage,
    save_image: handleSaveImage,
    close_image: handleCloseImage,
-   get_image_statistics: handleGetImageStatistics
+   get_image_statistics: handleGetImageStatistics,
+   run_process: handleRunProcess,
+   get_process_parameters: handleGetProcessParameters
 };
 
 function dispatchCommand(command) {
