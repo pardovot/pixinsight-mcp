@@ -26,6 +26,7 @@
     "dev": "tsc --watch",
     "start": "node build/index.js",
     "ping": "node scripts/ping.mjs",
+    "smoke:scripts": "node scripts/smoke-scripts.mjs",
     "prepack": "npm run build"
   },
   "keywords": [

@@ -95,6 +95,9 @@ Start it normally. Check the server can reach it:
 npm run ping
 ```
 
+`npm run smoke:scripts` runs bundled scripts through `run_process("Script")` on a synthetic image
+and checks each result. Windows the scripts open are left open.
+
 ## Running a second instance
 
 1. Start the second PixInsight in its own slot:

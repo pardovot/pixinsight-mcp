@@ -1,5 +1,5 @@
 // The run_script handler code from the bundle, run in a Node context with small substitutes for the
-// PixInsight classes it uses.
+// PixInsight classes it uses. PixInsight itself is covered by npm run smoke:scripts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
