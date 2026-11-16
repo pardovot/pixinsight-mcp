@@ -12,7 +12,7 @@ Everything here is cross platform. Where a command differs per platform, all thr
 
 - Node.js 20.19 or later for development (ESLint needs it), installed for the same OS that runs
   PixInsight. The published server runs on Node 18 or later.
-- PixInsight 1.9.4 "Lockhart" or later (V8 PJSR engine).
+- PixInsight 1.9.4 "Lockhart" or later.
 - An MCP client.
 
 No compiler, no signing identity and nothing installed inside PixInsight.

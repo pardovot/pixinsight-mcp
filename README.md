@@ -38,7 +38,7 @@ On Windows, if a client cannot resolve `npx`, use `"command": "cmd"` with
 **2. Start PixInsight** and ask your assistant to list your open images. If it answers, you are
 connected. Nothing is installed inside PixInsight.
 
-Requires PixInsight 1.9.4 or later (V8 engine) and Node 18 or later.
+Requires PixInsight 1.9.4 or later and Node 18 or later.
 
 ## Tools
 
@@ -55,6 +55,17 @@ Requires PixInsight 1.9.4 or later (V8 engine) and Node 18 or later.
 `run_process` runs any process by class name, third party ones included, so a newly installed tool
 needs nothing added here. Calls that hit a verified tool defect (a parameter that does nothing, a
 setting that hangs PixInsight) are refused with what to do instead, see `src/facts/facts.ts`.
+
+With processId `Script` it runs a script instead, named as in the Script menu or by file path,
+through the script's own code and with no user interaction. `inspect` lists the script's dialog
+with its controls and buttons, `controls` sets them by name or label (an image picker takes a view
+id, a color box `#RRGGBB`, a list the items to check), and `button` clicks one, or else the dialog's
+own OK button is clicked so its handler reads the settings. `dialogs` gives settings per dialog for
+scripts that open more than one. `parameters` reach scripts that read them like a script instance
+dropped on the view. `answers` picks the button for message boxes by a fragment of their text,
+others get their first button, and file pickers are cancelled, all reported back. A script that
+keeps asking for something the run cannot give is stopped. Windows a script opens stay open and are
+listed in the result.
 
 The measurement tools exist so settings come from your frame rather than a tutorial. `get_noise`
 returns an MRS estimate, since `stdDev` is dominated by signal on astro frames.

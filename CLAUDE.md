@@ -20,16 +20,25 @@ Every new script, path and default is written cross platform from the start, not
 - Dev machine: Windows 11, stock PixInsight install.
 - Linux and macOS: unverified. On Linux `bin/PixInsight` is not launchable, the launcher
   `bin/PixInsight.sh` is, so that is what the server runs. Setup per platform: `docs/dev-setup.md`.
-- **PixInsight 1.9.4+ "Lockhart" runs V8.** PixInsight's V8 build does not define `globalThis`
-  (`pjsr/core.js` captures the global object with `Function("return this")()`), and
-  `processEvents()` is a global function, not a `CoreApplication` method.
+- **PixInsight 1.9.4+ "Lockhart" has two script engines.** A script runs on V8 only when it
+  declares `#engine v8`, every other script runs on the legacy engine. The bridge driver runs on the
+  legacy engine, except a Script run of a V8 script, so `pjsr/` must run on both. The legacy engine
+  has no `globalThis` (`pjsr/core.js` captures the global object with `Function("return this")()`).
+  `processEvents()` is a global function on both engines.
 - PJSR files use `var` at top level: every `-x` script runs in one persistent global scope, so the
   bundle is evaluated again on each command, and a second top level `const` or `let` of the same
   name throws.
-- PixInsight's script engine accepts arrow functions, `let`/`const` inside functions and trailing
-  commas in array and object literals. It rejects template literals, trailing commas in calls and
+- The legacy engine accepts arrow functions, `let`/`const` inside functions and trailing commas in
+  array and object literals. It rejects `class`, template literals, trailing commas in calls and
   parameters, `?.` and `??` with a syntax error that kills the whole driver, so the command times
   out. ESLint enforces this on `pjsr/`.
+- PixInsight's preprocessor reads a slash star as the start of a block comment even inside a line
+  comment, string or regex, and swallows the code up to the next star slash, so every command fails
+  to parse and times out. `scripts/build-pjsr-bundle.mjs` refuses to build a `pjsr/` file that
+  contains one.
+- On V8, native methods are read only own properties of each instance (`dialog.execute`,
+  `console.writeln`), and a native class such as `Dialog` can only be built with `new` or
+  `Reflect.construct`. On the legacy engine they live on the prototype and can be patched there.
 
 ## The command line transport
 PJSR is single threaded: a running script holds the main thread, modeless script interfaces do not
@@ -63,7 +72,11 @@ reproducible tool behaviour only, never a preference.
 | `pjsr/*.js` | Everything that runs in PixInsight, one file per verb group, routed in `pjsr/dispatch.js` |
 | `src/tools/*.ts` | Tool definitions, input validation, formatting results for the assistant |
 
-The server sends a verb and its parameters as data, never PJSR source. A new PJSR file is added to
+The server sends a verb and its parameters as data, never PJSR source. The one exception is a
+Script run (`run_process` with processId `Script`): its driver includes the script file the caller
+names, inside `runIncludedScript`, on the engine the script declares (`driverSource` in
+`src/bridge/client.ts`, the handler in `pjsr/scripts.js` with `pjsr/script-engines.js` and
+`pjsr/script-controls.js`). A new PJSR file is added to
 `PJSR_SOURCES` in `scripts/build-pjsr-bundle.mjs`, a new verb to `ROUTES`.
 
 ⛔ **Never implement a verb on both sides.** Two implementations drift, and the handler is left

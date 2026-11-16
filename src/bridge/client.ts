@@ -26,16 +26,87 @@ const STALE_FILE_MS = 600_000;
 // rather than caught mid-write.
 const MALFORMED_GRACE_MS = 2_000;
 
+// `#engine v8` at the start of a line selects PixInsight's V8 engine, a script
+// without it runs on the legacy engine.
+const V8_DIRECTIVE = /^#engine\s+v8\b/m;
+
+/**
+ * The globals an included script sees replaced, the parameters of the driver's
+ * runIncludedScript. pjsr/scripts.js passes a substitute for each, or the real
+ * global, and refuses to run when it builds a substitute for a name missing here.
+ */
+export const SCRIPT_SHADOWED_NAMES = [
+  "Parameters", "Dialog", "MessageBox", "console",
+  "OpenFileDialog", "SaveFileDialog", "GetDirectoryDialog", "ColorDialog", "FontDialog",
+];
+
+export interface DriverFiles {
+  bundlePath: string;
+  commandPath: string;
+  resultPath: string;
+  /** The script a run_script driver includes, with its source to pick the engine. */
+  script?: { path: string; source: string };
+}
+
+/**
+ * The driver script for one command: include the bundle, run the command,
+ * write the result. A run_script driver runs on the engine the script declares:
+ * the legacy engine cannot parse V8 syntax such as class, and on V8 the legacy
+ * pjsr includes redeclare classes the V8 bootstrap preloads. It includes the
+ * script inside a function, whose parameters shadow the globals in
+ * SCRIPT_SHADOWED_NAMES and which keeps the script's own top level
+ * declarations out of PixInsight's persistent global scope.
+ */
+export function driverSource(files: DriverFiles): string {
+  const quoted = (path: string) => {
+    const pixinsightPath = toPixInsightPath(path);
+    // A double quote or line break would end the #include string early.
+    if (/["\r\n]/.test(pixinsightPath)) throw new Error(`Path not usable in a PixInsight #include: ${path}`);
+    return `"${pixinsightPath}"`;
+  };
+  const header = [`#include ${quoted(files.bundlePath)}`];
+  if (files.script) {
+    if (V8_DIRECTIVE.test(files.script.source)) header.unshift("#engine v8");
+    header.push(
+      `function runIncludedScript( ${SCRIPT_SHADOWED_NAMES.join(", ")} ) {`,
+      `#include ${quoted(files.script.path)}`,
+      `}`,
+      `runIncludedScript.shadowedNames = ${JSON.stringify(SCRIPT_SHADOWED_NAMES)};`,
+    );
+  }
+  return [
+    ...header,
+    `var __started = Date.now();`,
+    `var __command = JSON.parse( File.readTextFile( ${quoted(files.commandPath)} ) );`,
+    `var __result;`,
+    `try {`,
+    `   var __handled = dispatchCommand( __command );`,
+    `   __result = { id: __command.id, status: __handled.status, duration_ms: Date.now() - __started,`,
+    `                outputs: __handled.outputs, message: __handled.message || "" };`,
+    `} catch ( __error ) {`,
+    `   __result = { id: __command.id, status: "error", duration_ms: Date.now() - __started,`,
+    `                error: { message: String( __error.message || __error ),`,
+    `                         type: __error.name || "Error", stack: __error.stack || "" } };`,
+    `}`,
+    // Renamed into place, so the server never reads a partial result.
+    `File.writeTextFile( ${quoted(files.resultPath + ".tmp")}, JSON.stringify( __result ) );`,
+    `File.move( ${quoted(files.resultPath + ".tmp")}, ${quoted(files.resultPath)} );`,
+    "",
+  ].join("\n");
+}
+
 /**
  * Hands a written command to PixInsight. Injectable so tests can drive the
  * polling and result handling without launching the application.
  */
-export type CommandDispatcher = (command: BridgeCommand, commandPath: string) => Promise<void>;
+export type CommandDispatcher = (command: BridgeCommand, commandPath: string, includeScript?: string) => Promise<void>;
 
 export interface CallOptions {
   /** View a process runs on. Omitted, the process runs globally. */
   targetView?: string | null;
   timeoutMs?: number;
+  /** Script file the driver includes, for run_script. */
+  includeScript?: string;
 }
 
 function errorResult(id: string, started: number, type: string, message: string): BridgeResult {
@@ -64,7 +135,7 @@ export class BridgeClient {
 
   constructor(config?: Partial<BridgeConfig>, options?: { dispatch?: CommandDispatcher }) {
     this.config = { ...configFromEnv(), ...config };
-    this.dispatcher = options?.dispatch ?? ((command, path) => this.dispatch(command, path));
+    this.dispatcher = options?.dispatch ?? ((command, path, includeScript) => this.dispatch(command, path, includeScript));
     this.commandsDir = join(this.config.bridgeDir, "commands");
     this.scriptsDir = join(this.config.bridgeDir, "scripts");
     this.resultsDir = join(this.config.bridgeDir, "results");
@@ -111,7 +182,7 @@ export class BridgeClient {
 
     try {
       try {
-        await this.dispatcher(command, commandPath);
+        await this.dispatcher(command, commandPath, options.includeScript);
       } catch (error: unknown) {
         return errorResult(command.id, started, "DispatchError",
           error instanceof Error ? error.message : String(error));
@@ -144,7 +215,7 @@ export class BridgeClient {
    * that arrive while PixInsight is busy are queued by the core application,
    * so a long process delays a command but never loses it.
    */
-  private async dispatch(command: BridgeCommand, commandPath: string): Promise<void> {
+  private async dispatch(command: BridgeCommand, commandPath: string, includeScript?: string): Promise<void> {
     if (!existsSync(bundlePath))
       throw new Error(`Handler bundle missing: ${bundlePath}. Run npm run build.`);
 
@@ -152,29 +223,10 @@ export class BridgeClient {
     if (running !== null && running.length === 0)
       throw new Error("PixInsight is not running. Start PixInsight and try again.");
 
-    const quoted = (path: string) => JSON.stringify(toPixInsightPath(path));
     const resultPath = join(this.resultsDir, `${command.id}.json`);
     const scriptPath = join(this.scriptsDir, `${command.id}.js`);
-    const driver = [
-      `#include ${quoted(bundlePath)}`,
-      `var __started = Date.now();`,
-      `var __command = JSON.parse( File.readTextFile( ${quoted(commandPath)} ) );`,
-      `var __result;`,
-      `try {`,
-      `   var __handled = dispatchCommand( __command );`,
-      `   __result = { id: __command.id, status: __handled.status, duration_ms: Date.now() - __started,`,
-      `                outputs: __handled.outputs, message: __handled.message || "" };`,
-      `} catch ( __error ) {`,
-      `   __result = { id: __command.id, status: "error", duration_ms: Date.now() - __started,`,
-      `                error: { message: String( __error.message || __error ),`,
-      `                         type: __error.name || "Error", stack: __error.stack || "" } };`,
-      `}`,
-      // Renamed into place, so the server never reads a partial result.
-      `File.writeTextFile( ${quoted(resultPath + ".tmp")}, JSON.stringify( __result ) );`,
-      `File.move( ${quoted(resultPath + ".tmp")}, ${quoted(resultPath)} );`,
-      "",
-    ].join("\n");
-    await writeFile(scriptPath, driver, "utf-8");
+    const script = includeScript === undefined ? undefined : { path: includeScript, source: await readFile(includeScript, "utf-8") };
+    await writeFile(scriptPath, driverSource({ bundlePath, commandPath, resultPath, script }), "utf-8");
 
     const executable = pixinsightExecutable();
     const slot = this.config.instance;

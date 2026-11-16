@@ -11,6 +11,16 @@ PixInsight -x=N:<bridge>/scripts/<id>.js        instance in slot N
 The driver includes the handler bundle (`build/pjsr/mcp-handlers.js`), reads the command, passes it
 to `dispatchCommand`, and writes the result file. Nothing is installed inside PixInsight.
 
+A `run_script` driver starts with `#engine v8` when the script declares it, and includes the script
+inside a function the handler calls:
+
+```
+function runIncludedScript( Parameters, Dialog, MessageBox, console, ... ) {
+#include "<script path>"
+}
+runIncludedScript.shadowedNames = ["Parameters", "Dialog", "MessageBox", "console", ...];
+```
+
 ## Files
 
 ```
@@ -42,7 +52,7 @@ any bridge file older than ten minutes, left by a session that died during a cal
 | `timestamp` | Creation time. The handlers refuse a command older than ten minutes, so a request PixInsight reaches only after a long process never fires once its caller has given up |
 | `tool` | Verb, a key of `ROUTES` in `pjsr/dispatch.js` |
 | `parameters` | Verb arguments, as JSON |
-| `targetView` | View a process runs on, or `null` to run it globally. Only `run_process` uses it |
+| `targetView` | View a process or script runs on, or `null` to run it globally. Only `run_process` and `run_script` use it |
 
 ## Result
 
@@ -101,6 +111,7 @@ message.
 | `close_image` | `viewId` | |
 | `get_image_statistics` | `viewId` | `statistics[]`: `channelName`, `mean`, `median`, `stdDev`, `min`, `max` |
 | `run_process` | `processId`, `settings`, plus `targetView` | `processId`, `applied` |
+| `run_script` | `filePath`, `parameters`, `dialogs[]` with `controls` and `button`, `answers`, `inspect`, plus `targetView` | `engine`, `milliseconds`, `historyBefore`, `historyAfter`, `newWindows`, `dialogs[]` with `controls`, `applied`, `clicked`, `messages`, `output`, `unusedAnswers` |
 | `get_process_parameters` | `processId` | `parameters`, name to default value |
 | `get_history`, `undo`, `redo` | `viewId`, and `steps` for undo and redo | `historyIndex`, `canUndo`, `canRedo`, and `undone` or `redone` |
 | `get_full_history` | `viewId`, `maxParamLines` | the history position, `stepCount`, `steps[]` |

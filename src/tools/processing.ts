@@ -11,6 +11,7 @@ import {
 } from "../facts/guard.js";
 import { textContent } from "./content.js";
 import { registerTool } from "./register.js";
+import { formatScriptRun, parseScriptSettings, SCRIPT_PROCESS_ID, SCRIPT_SETTINGS_HELP, type ScriptRunOutputs } from "./script.js";
 
 const processIdField = z.string().describe("Process class name, e.g. 'BlurXTerminator'");
 
@@ -29,7 +30,9 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       "3. Pick settings from measuring THIS image (get_image_statistics and the measurement tools), not fixed defaults.\n" +
       "4. After running, ALWAYS re-measure. If stats are byte-identical to before, it was a no-op, " +
       "stop and fix the output config; do not build the next step on it.\n" +
-      "Unknown setting names are rejected (checked against get_process_parameters).",
+      "Unknown setting names are rejected (checked against get_process_parameters).\n" +
+      "processId 'Script' runs a script file (Script menu scripts included) with no user interaction, " +
+      "see get_process_parameters('Script').",
     {
       processId: processIdField,
       viewId: z.string().optional().describe("Target view id (omit for a global process)"),
@@ -37,6 +40,16 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
         .describe("Process parameters as { name: value } (see get_process_parameters)"),
     },
     async ({ processId, viewId, settings = {} }) => {
+      if (processId === SCRIPT_PROCESS_ID) {
+        const script = parseScriptSettings(settings);
+        const result = await bridge.call("run_script", {
+          filePath: script.filePath, parameters: script.parameters, dialogs: script.dialogs,
+          answers: script.answers, inspect: script.inspect,
+        }, { targetView: viewId ?? null, includeScript: script.filePath });
+        if (result.status === "error") throw new Error(result.error.message);
+        return textContent(formatScriptRun(result.message ?? "Script ran", result.outputs as unknown as ScriptRunOutputs));
+      }
+
       // Verified defects are refused before the call reaches PixInsight. Some hang the
       // application, and the no-op ones would return success with an unchanged image.
       const { blocks, warnings } = checkProcessCall({ processId, viewId, settings });
@@ -55,6 +68,7 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       "so you know what 'settings' run_process accepts.",
     { processId: processIdField },
     async ({ processId }) => {
+      if (processId === SCRIPT_PROCESS_ID) return textContent(SCRIPT_SETTINGS_HELP);
       const { parameters } = await bridge.request<{ parameters: Record<string, unknown> }>(
         "get_process_parameters", { processId });
       // Introspection lists dead aliases as ordinary parameters, so they are marked here.

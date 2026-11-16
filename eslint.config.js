@@ -46,13 +46,18 @@ function formatting(indent, commaDangle) {
 // PixInsight's scripting API, as used by pjsr/.
 const PIXINSIGHT_GLOBALS = [
   "console",
+  "Control",
+  "Dialog",
   "File",
   "FileInfo",
+  "gc",
   "HistogramTransformation",
   "ImageWindow",
   "IntegerResample",
+  "processEvents",
   "ProcessInstance",
   "Rect",
+  "Timer",
   "View",
 ];
 
@@ -106,8 +111,11 @@ export default tseslint.config(
       // where a repeated top level const or let throws.
       "no-var": "off",
       "prefer-const": "off",
-      // Verified unsupported by PixInsight's script engine, though the parser version allows it.
-      "no-restricted-syntax": ["error", { selector: "TemplateLiteral", message: "PixInsight rejects template literals." }],
+      // The bundle also runs on the legacy engine (scripts without #engine v8), which rejects these
+      // though the parser version allows them.
+      "no-restricted-syntax": ["error",
+        { selector: "TemplateLiteral", message: "The legacy engine rejects template literals." },
+        { selector: ":matches(ClassDeclaration, ClassExpression)", message: "The legacy engine rejects class." }],
     },
   },
 );

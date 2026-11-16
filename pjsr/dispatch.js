@@ -27,7 +27,8 @@ var ROUTES = {
    get_star_metrics: handleGetStarMetrics,
    get_structure_color: handleGetStructureColor,
    render_view: handleRenderView,
-   export_container: handleExportContainer
+   export_container: handleExportContainer,
+   run_script: handleRunScript
 };
 
 function dispatchCommand(command) {
