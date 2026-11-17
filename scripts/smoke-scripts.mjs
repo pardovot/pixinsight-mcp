@@ -29,15 +29,16 @@ const client = new Client({ name: "smoke-scripts", version: "1.0.0" });
 await client.connect(transport);
 
 let failures = 0;
-async function step(label, tool, args, { expectError = false, expect = [] } = {}) {
+async function step(label, tool, args, { expectError = false, expect = [], absent = [] } = {}) {
   const started = Date.now();
   const result = await client.callTool({ name: tool, arguments: args }, undefined, { timeout: CALL_TIMEOUT_MS + 30_000 });
   const text = result.content[0].text;
   const missing = expect.filter((pattern) => !pattern.test(text));
-  const failed = Boolean(result.isError) !== expectError || missing.length > 0;
+  const present = absent.filter((pattern) => pattern.test(text));
+  const failed = Boolean(result.isError) !== expectError || missing.length > 0 || present.length > 0;
   if (failed) failures++;
   console.log(`${failed ? "FAIL" : "ok  "}  ${label} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
-  if (failed) console.log(`${text}\n${missing.length ? `missing: ${missing.join(", ")}` : ""}`);
+  if (failed) console.log(`${text}\n${[...missing.map((pattern) => `missing: ${pattern}`), ...present.map((pattern) => `present: ${pattern}`)].join("\n")}`);
   return text;
 }
 const script = (name, settings = {}) => ({ processId: "Script", viewId: VIEW, settings: { script: name, ...settings } });
@@ -80,8 +81,17 @@ await step("a list, and settings for a dialog the script never opens", "run_proc
   script("PreviewAggregator", { dialogs: [{ controls: { target_List: [] } }, { controls: { target_List: [] } }], answers: { "No preview": "No" } }),
   { expectError: true, expect: [/settings for dialog 2 were never applied/] });
 
-await step("a script that keeps asking is stopped", "run_process", script("PreviewAggregator"),
-  { expectError: true, expect: [/opened its dialog 10 times/, /\(x10\)/] });
+await step("a dialog opened again with no settings for it is closed", "run_process", script("PreviewAggregator"),
+  { expect: [/opened again, closed/, /\[Yes\]/] });
+await step("an Execute and Close loop runs once, and a checkbox reaches onClick", "run_process",
+  script("CorrectMagentaStars", { controls: { "Amount": 0.5, "Show Automask": false }, button: "Execute" }),
+  { expect: [/\(1 step/, /opened again, closed/], absent: [/Magenta_Automask/] });
+await step("inspect with parameters shows the dialog of a script that runs view targets without one", "run_process",
+  script("CorrectMagentaStars", { inspect: true, parameters: { CMSAmount: 0.5 } }), { expect: [/The view is unchanged/, /Amount/] });
+await step("inspect clicks Cancel, whose handler closes the windows the dialog made", "run_process",
+  script("BackgroundEnhance", { inspect: true }), { expect: [/"Small Scales Layers"/], absent: [/New windows/] });
+await step("a button the script draws itself", "run_process",
+  script("AstroContrastEnhancer", { controls: { Texture: "20" }, button: "applyButton" }), { expect: [/\(1 step/, /\[Yes\]/] });
 await step("a misspelled control is refused before running", "run_process",
   script("DarkStructureEnhance", { controls: { Strength: 1 } }), { expectError: true, expect: [/has no control 'Strength'/] });
 // A failed V8 run followed by a legacy run with a dialog, which leftovers of the failed run could break.

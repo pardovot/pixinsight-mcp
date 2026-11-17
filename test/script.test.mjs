@@ -5,7 +5,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { BridgeClient, driverSource, SCRIPT_SHADOWED_NAMES } from "../build/bridge/client.js";
-import { definesDialog, findScript, parseScriptSettings, scriptNames } from "../build/tools/script.js";
+import { definesDialog, findScript, scriptNames } from "../build/script-files.js";
+import { parseScriptSettings } from "../build/tools/script.js";
 
 const files = { bundlePath: "C:\\bridge\\mcp-handlers.js", commandPath: "C:\\bridge\\command.json", resultPath: "C:\\bridge\\result.json" };
 

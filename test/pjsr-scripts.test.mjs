@@ -53,6 +53,7 @@ test("colors read as #AARRGGBB and take #RRGGBB, #AARRGGBB or a number", () => {
 test("labels lose markup, mnemonics and a trailing colon", () => {
   const pjsr = loadBundle();
   assert.equal(pjsr.cleanLabel("<b>&Amount:</b> "), "Amount");
+  assert.equal(pjsr.cleanLabel("Version 2.0 &mdash; &copy; R&amp;D, &lt;*new*&gt; &#65;"), "Version 2.0 - (c) R&D, <*new*> A");
 });
 
 test("a message box gets the button its answer names, or else its first button", () => {
@@ -108,10 +109,10 @@ function v8Dialog(pjsr, run, { withShowHandler }) {
 
     ok() { this.done(1); }
     cancel() { this.done(0); }
-    done(code) { this.visible = false; this.result = code; }
+    done(code) { this.visible = false; this.result = code; this.closes = (this.closes ?? 0) + 1; }
   }
   pjsr.NativeDialog = NativeDialog;
-  const engine = runInContext("Dialog = NativeDialog; v8ScriptEngine", pjsr)(run);
+  const engine = runInContext("Dialog = NativeDialog; scriptEngine", pjsr)(run, true);
   const ToolDialog = class extends engine.scope.Dialog {
     constructor() {
       super();
@@ -122,7 +123,29 @@ function v8Dialog(pjsr, run, { withShowHandler }) {
   return { engine, dialog: new ToolDialog() };
 }
 
-const newRun = (inspect = false) => ({ inspect, dialogSettings: [], dialogs: [], output: [], failure: null });
+// Ticks from a dialog showing to the run closing it, when no button the run clicks closes it.
+const closeTicks = (pjsr) => pjsr.V8_OPEN_POLLS - 1 + pjsr.V8_SETTLE_POLLS;
+
+const newRun = (inspect = false, dialogSettings = []) =>
+  ({ inspect, dialogSettings, dialogs: [], openedDialogs: [], messages: [], output: [], failure: null });
+
+test("a dialog the script opens again after its work is closed, unless settings are given for it", () => {
+  for (const [dialogSettings, results] of [[[], [1, 0]], [[{}, {}], [1, 1]]]) {
+    const pjsr = loadBundle({ processEvents: () => {} });
+    const run = newRun(false, dialogSettings);
+    const { engine, dialog } = v8Dialog(pjsr, run, { withShowHandler: false });
+    const seen = [];
+    for (let opening = 0; opening < 2; ++opening) {
+      dialog.visible = true;
+      tick(pjsr, closeTicks(pjsr));
+      seen.push(dialog.result);
+      tick(pjsr);
+    }
+    assert.deepEqual(seen, results);
+    assert.equal(run.dialogs[1].closed, dialogSettings.length ? undefined : true);
+    engine.restore();
+  }
+});
 
 test("a V8 dialog is driven after two checks open, through its own OK button", () => {
   const pjsr = loadBundle({ processEvents: () => {} });
@@ -153,6 +176,8 @@ test("a V8 dialog waits while the script's onShow is still running", () => {
   assert.equal(dialog.shown, 1);
   tick(pjsr, 2);
   assert.equal(run.dialogs.length, 1);
+  assert.equal(dialog.visible, true);
+  tick(pjsr, closeTicks(pjsr) - 2);
   assert.equal(dialog.result, 0);
   engine.restore();
 });
@@ -163,9 +188,108 @@ test("a V8 dialog the script opens again is driven again", () => {
   const { engine, dialog } = v8Dialog(pjsr, run, { withShowHandler: false });
   for (let opening = 0; opening < 2; ++opening) {
     dialog.visible = true;
-    tick(pjsr, 2);
+    tick(pjsr, closeTicks(pjsr));
     tick(pjsr);
   }
   assert.equal(run.dialogs.length, 2);
+  engine.restore();
+});
+
+test("a V8 dialog left hidden while its run goes on is closed once more", () => {
+  const pjsr = loadBundle({ processEvents: () => {} });
+  const run = newRun(true);
+  const { engine, dialog } = v8Dialog(pjsr, run, { withShowHandler: false });
+  dialog.visible = true;
+  tick(pjsr, closeTicks(pjsr));
+  assert.equal(dialog.closes, 1);
+  tick(pjsr, pjsr.V8_RECLOSE_POLLS - 1);
+  assert.equal(dialog.closes, 1);
+  tick(pjsr);
+  assert.equal(dialog.closes, 2);
+  tick(pjsr, pjsr.V8_RECLOSE_POLLS * 2);
+  assert.equal(dialog.closes, 2);
+  assert.equal(run.dialogs.length, 1);
+  engine.restore();
+});
+
+test("a dialog that fails its settings is cancelled and the failure recorded", () => {
+  const pjsr = loadBundle({ processEvents: () => {} });
+  const run = newRun(false, [{ controls: { Strength: 1 } }]);
+  const { engine, dialog } = v8Dialog(pjsr, run, { withShowHandler: false });
+  dialog.visible = true;
+  tick(pjsr, closeTicks(pjsr));
+  assert.match(run.failure, /has no control 'Strength'/);
+  assert.equal(dialog.result, 0);
+  engine.restore();
+});
+
+// The bundle with a legacy engine Dialog, whose native methods live on its prototype, and a dialog of
+// it with an OK button.
+function legacyDialog() {
+  class Dialog extends Control {
+    constructor() {
+      super(null, { width: 200, height: 100 });
+      this.windowTitle = "Legacy";
+    }
+  }
+  Dialog.prototype.execute = () => { throw new Error("shown"); };
+  Dialog.prototype.ok = () => {};
+  Dialog.prototype.cancel = () => {};
+  Dialog.prototype.done = () => {};
+  const console = { writeln() {}, write() {}, warningln() {}, criticalln() {}, noteln() {}, show() {} };
+  const pjsr = loadBundle({ Dialog, console });
+  const dialog = new Dialog();
+  dialog.ok_Button = Object.assign(new PushButton(dialog, { width: 50, height: 20 }), { text: "OK", onClick: () => dialog.ok() });
+  return { pjsr, dialog };
+}
+
+test("a legacy dialog is never shown, and gets the result execute returns", () => {
+  const { pjsr, dialog } = legacyDialog();
+  const run = newRun();
+  const engine = pjsr.scriptEngine(run, false);
+  assert.equal(dialog.execute(), 1);
+  assert.equal(dialog.result, 1);
+  assert.equal(run.dialogs[0].clicked, "OK");
+  engine.restore();
+  assert.throws(() => dialog.execute(), /shown/);
+});
+
+test("a script that keeps opening its dialog is stopped and the dialog rejected", () => {
+  const { pjsr, dialog } = legacyDialog();
+  // Settings for every opening, so no opening counts as the close of an Execute and Close loop.
+  const run = newRun(false, Array.from({ length: pjsr.MAX_DIALOGS + 1 }, () => ({})));
+  const engine = pjsr.scriptEngine(run, false);
+  for (let opening = 0; opening < pjsr.MAX_DIALOGS; ++opening)
+    assert.equal(dialog.execute(), 1);
+  assert.equal(run.failure, null);
+  assert.equal(dialog.execute(), 0);
+  assert.match(run.failure, /opened its dialog 10 times/);
+  engine.restore();
+});
+
+test("a script that keeps showing messages is stopped", () => {
+  const pjsr = loadBundle();
+  const run = { inspect: false, answers: {}, usedAnswers: {}, messages: [], failure: null };
+  const scope = pjsr.sandboxScope(run, null, {});
+  const ask = () => new scope.MessageBox("Try again?", "Script", 0, pjsr.MESSAGE_BUTTONS.Yes, pjsr.MESSAGE_BUTTONS.No).execute();
+  for (let count = 0; count < pjsr.MAX_MESSAGES; ++count)
+    assert.equal(ask(), pjsr.MESSAGE_BUTTONS.Yes);
+  assert.throws(ask, /showed 30 messages/);
+  assert.match(run.failure, /showed 30 messages/);
+});
+
+test("a V8 dialog a named button leaves open settles, then is closed with its own Close button", () => {
+  const pjsr = loadBundle({ processEvents: () => {} });
+  const run = newRun(false, [{ button: "Apply" }]);
+  const { engine, dialog } = v8Dialog(pjsr, run, { withShowHandler: false });
+  let applied = 0;
+  dialog.apply_Button = Object.assign(new PushButton(dialog, { width: 50, height: 20 }), { text: "Apply", onClick: () => { applied++; } });
+  dialog.close_Button = Object.assign(new PushButton(dialog, { width: 50, height: 20 }), { text: "Close", onClick: () => dialog.cancel() });
+  dialog.visible = true;
+  tick(pjsr, pjsr.V8_OPEN_POLLS);
+  assert.equal(applied, 1);
+  assert.equal(run.dialogs[0].stayedOpen, true);
+  assert.equal(dialog.result, 0);
+  assert.equal(dialog.closes, 1);
   engine.restore();
 });

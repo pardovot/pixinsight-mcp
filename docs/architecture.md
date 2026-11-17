@@ -54,7 +54,7 @@ test/                   node --test suites, no PixInsight needed
   settable parameters. Every process is `new X, set parameters, executeOn(view)`, so one generic
   tool covers all of them and there are no per process tools. With processId `Script` it runs a
   script file through the `run_script` verb, and `get_process_parameters("Script")` describes the
-  settings (`src/tools/script.ts`).
+  settings (`src/tools/script.ts`, with script lookup in `src/script-files.ts`).
 - `run_process` checks each call against `src/facts/facts.ts` first and refuses the ones that hit
   a verified defect. `PIXINSIGHT_MCP_ALLOW_UNSAFE=1` on the server process disarms that, it is
   deliberately not a tool parameter.
@@ -78,22 +78,33 @@ top level declarations out of the persistent global scope.
 
 | File | Part |
 |---|---|
-| `pjsr/scripts.js` | The handler: the sandbox (`Parameters`, message boxes, pickers), the engine for the run, the result |
-| `pjsr/script-engines.js` | Taking over dialogs and the console on each engine, and applying a dialog's settings |
+| `pjsr/scripts.js` | The handler: the sandbox (`Parameters`, message boxes, pickers), applying each dialog's settings, the result |
+| `pjsr/script-engines.js` | Taking over dialogs and the console on each engine, handing each dialog to the handler |
 | `pjsr/script-controls.js` | Finding, describing and setting a dialog's controls, one table entry per kind of control |
 
 - The legacy engine resolves native methods through prototypes, so `Dialog.prototype.execute` is
   patched and a dialog is never shown, and `ok`, `cancel` and `done` record how a handler closed it.
+  The patched `execute` also sets the dialog's `result`, which some scripts read instead.
 - On V8 `execute` cannot be replaced, so the `Dialog` substitute builds the real dialog and a timer
-  drives it once it has been open for two checks, each time the script opens it. A dialog closed
-  while `execute` is still showing it stays modal and invisible, so one that stays hidden while its
-  run goes on is closed once more. A script's own `onShow` is wrapped, since it may run processes
-  that let the timer run during `show()`, and the dialog counts as open once it has returned. The
-  run never adds an event handler the script did not set, such as `onExecute`: PixInsight keeps it
-  connected after the run, and calls into the finished script.
+  drives it once it has been open for two checks, each time the script opens it. A dialog left open
+  after driving is closed half a second later, once work its handlers queued on the script's own
+  timers has run: closing it before, as after AstroContrastEnhancer's Apply, leaves `execute` waiting
+  on a hidden dialog. One that stays hidden while its run goes on is closed once more. A script's own
+  `onShow` is wrapped, since it may run processes that let the timer run during `show()`, and the
+  dialog counts as open once it has returned. The run never adds an event handler the script did not
+  set, such as `onExecute`: PixInsight keeps it connected after the run, and calls into the finished
+  script.
+- `Parameters` reports a view or global target only when the call gives parameters and does not
+  inspect. Many scripts run such a target without their dialog, so without parameters a script
+  starts as from the Script menu, on the target's window brought to the front.
 - A dialog is driven by setting its controls and clicking the requested button or its own OK
-  button, so the script's handlers run as they would for a user. A run is stopped after 10 dialogs
-  or 30 messages, since a script that keeps asking gets the same answer every time.
+  button, so the script's handlers run as they would for a user. A drawing area, often a button the
+  script draws itself, is clicked with a mouse press and release at its centre. A dialog still open
+  after the click is closed with its own Cancel or Close button, else accepted, and so is the same
+  dialog opened again with no settings given, as in an Execute and Close loop. Inspect closes each
+  dialog with its Cancel or Close button, whose handler may clean up windows the dialog made. A run
+  is stopped after 10 dialogs or 30 messages, since a script that keeps asking gets the same answer
+  every time.
 - Controls are found through the properties a script assigns and, on V8, a dialog's children. A
   control's label is the one laid out beside or above it, read from positions, which a dialog has
   even when never shown. On the legacy engine a control only a local variable holds cannot be

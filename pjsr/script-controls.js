@@ -10,10 +10,18 @@ var CONTROL_LINKS = ["parent", "nextSiblingToFocus", "previousSiblingToFocus"];
 // label may sit.
 var LABEL_OVERLAP = 4;
 var LABEL_ABOVE = 40;
+// Added to the distance of a label above a control, so any label beside the control is nearer.
+var LABEL_ABOVE_PENALTY = 400;
+// Characters a control's label can have. Longer label text is a description, not a label.
+var LABEL_LENGTH = 60;
+// The HTML entities scripts write in labels and tooltips, others are dropped.
+var HTML_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ", mdash: "-", ndash: "-", copy: "(c)" };
 // Characters of a tooltip kept in a control's description.
 var TOOLTIP_LENGTH = 160;
-// Mouse handlers that make a control a drawing area, which a headless run cannot use.
+// Mouse handlers that make a control a drawing area, which a run can only click.
 var MOUSE_HANDLERS = ["onMousePress", "onMouseRelease", "onMouseMove", "onMouseDoubleClick"];
+// MouseButton_Left, which the legacy engine defines only through includes.
+var MOUSE_LEFT = 1;
 
 function isInstanceOf(value, typeName) {
    var type = GLOBAL_SCOPE[typeName];
@@ -24,9 +32,22 @@ function hasMouseHandler(control) {
    return MOUSE_HANDLERS.some(function (handler) { return typeof control[handler] === "function"; });
 }
 
-// Label text without markup, mnemonic ampersands or a trailing colon.
+// Label text without markup, mnemonic ampersands or a trailing colon, with entities decoded.
 function cleanLabel(text) {
-   return String(text).replace(/<[^>]*>/g, "").replace(/&/g, "").replace(/:\s*$/, "").trim();
+   // An entity, a name or a decimal code between & and a semicolon. Group 1 is the name, group 2 the code.
+   var entity = /&(?:([a-z]+)|#(\d+));/gi;
+   // A mnemonic ampersand: one that starts no entity.
+   var mnemonic = /&(?![a-z]+;|#\d+;)/gi;
+   return String(text).replace(/<[^>]*>/g, "").replace(mnemonic, "")
+      .replace(entity, function (match, name, code) {
+         return code ? String.fromCharCode(Number(code)) : HTML_ENTITIES[name.toLowerCase()] || "";
+      })
+      .replace(/:\s*$/, "").trim();
+}
+
+// Whether label text is short enough to label a control.
+function isLabelText(text) {
+   return text !== "" && text.length <= LABEL_LENGTH;
 }
 
 function callHandler(control, handler, argumentList) {
@@ -72,6 +93,35 @@ function colorValue(value) {
    return parseInt(match[1].length === 6 ? "ff" + match[1] : match[1], 16) >>> 0;
 }
 
+// A checkbox or radio button, which carries its own label. A click reports the new state to onCheck,
+// then to onClick, and scripts listen on either.
+function toggleKind(kind, typeName) {
+   return {
+      kind: kind,
+      matches: function (control) { return isInstanceOf(control, typeName); },
+      label: function (control) { return cleanLabel(control.text); },
+      describe: function (control) { return { value: control.checked }; },
+      set: function (control, value) {
+         control.checked = value === true || value === "true";
+         callHandler(control, "onCheck", [control.checked]);
+         callHandler(control, "onClick", [control.checked]);
+      }
+   };
+}
+
+// A spin box or slider, which takes a whole number in its range.
+function rangeKind(kind, typeName) {
+   return {
+      kind: kind, labelled: true,
+      matches: function (control) { return isInstanceOf(control, typeName); },
+      describe: function (control) { return { value: control.value, range: [control.minValue, control.maxValue] }; },
+      set: function (control, value) {
+         control.value = Math.round(Number(value));
+         callHandler(control, "onValueUpdated", [control.value]);
+      }
+   };
+}
+
 // The kinds of control a run can describe and set, in the order they are recognized: a ColorComboBox
 // and a ViewList are combo boxes too. NumericControl and ColorComboBox are script code (the pjsr
 // includes or the V8 bootstrap), recognized by their parts. A kind with labelled set takes the text of
@@ -104,26 +154,8 @@ var CONTROL_KINDS = [
          callHandler(control, "onColorSelected", [color]);
       }
    },
-   {
-      kind: "checkbox",
-      matches: function (control) { return isInstanceOf(control, "CheckBox"); },
-      label: function (control) { return cleanLabel(control.text); },
-      describe: function (control) { return { value: control.checked }; },
-      set: function (control, value) {
-         control.checked = value === true || value === "true";
-         callHandler(control, "onCheck", [control.checked]);
-      }
-   },
-   {
-      kind: "radio",
-      matches: function (control) { return isInstanceOf(control, "RadioButton"); },
-      label: function (control) { return cleanLabel(control.text); },
-      describe: function (control) { return { value: control.checked }; },
-      set: function (control, value) {
-         control.checked = value === true || value === "true";
-         callHandler(control, "onCheck", [control.checked]);
-      }
-   },
+   toggleKind("checkbox", "CheckBox"),
+   toggleKind("radio", "RadioButton"),
    {
       kind: "view", labelled: true,
       matches: function (control) { return isInstanceOf(control, "ViewList"); },
@@ -156,24 +188,8 @@ var CONTROL_KINDS = [
          callHandler(control, "onItemSelected", [index]);
       }
    },
-   {
-      kind: "spin", labelled: true,
-      matches: function (control) { return isInstanceOf(control, "SpinBox"); },
-      describe: function (control) { return { value: control.value, range: [control.minValue, control.maxValue] }; },
-      set: function (control, value) {
-         control.value = Math.round(Number(value));
-         callHandler(control, "onValueUpdated", [control.value]);
-      }
-   },
-   {
-      kind: "slider", labelled: true,
-      matches: function (control) { return isInstanceOf(control, "Slider"); },
-      describe: function (control) { return { value: control.value, range: [control.minValue, control.maxValue] }; },
-      set: function (control, value) {
-         control.value = Math.round(Number(value));
-         callHandler(control, "onValueUpdated", [control.value]);
-      }
-   },
+   rangeKind("spin", "SpinBox"),
+   rangeKind("slider", "Slider"),
    {
       kind: "edit", labelled: true,
       matches: function (control) { return isInstanceOf(control, "Edit"); },
@@ -260,13 +276,12 @@ function placedLabel(control, labels, dialog) {
    labels.forEach(function (label) {
       var place = dialogRect(label, dialog);
       var text = cleanLabel(label.text);
-      if (place === null || place.width === 0 || text === "")
+      if (place === null || place.width === 0 || !isLabelText(text))
          return;
       var beside = place.y <= middle && middle <= place.y + place.height && place.x + place.width <= rect.x + LABEL_OVERLAP;
       var gapAbove = rect.y - (place.y + place.height);
       var above = gapAbove >= -LABEL_OVERLAP && gapAbove <= LABEL_ABOVE && place.x < rect.x + rect.width && rect.x < place.x + place.width;
-      // Any label beside the control is nearer than every label above it.
-      var distance = beside ? rect.x - (place.x + place.width) : above ? LABEL_ABOVE * 10 + gapAbove : Infinity;
+      var distance = beside ? rect.x - (place.x + place.width) : above ? LABEL_ABOVE_PENALTY + gapAbove : Infinity;
       if (distance < bestDistance) {
          bestDistance = distance;
          best = text;
@@ -287,7 +302,9 @@ function dialogControls(dialog) {
       seen.push(node);
       if (isInstanceOf(node, "Label")) {
          labels.push(node);
-         lastLabel = cleanLabel(node.text);
+         var text = cleanLabel(node.text);
+         if (isLabelText(text))
+            lastLabel = text;
          return;
       }
       var kind = node === dialog ? null : controlKind(node);
@@ -335,7 +352,7 @@ function describeControl(entry) {
 
 function setControl(entry, value) {
    if (entry.kind.kind === "canvas")
-      throw new Error("Control '" + entry.name + "' is a drawing area that needs the mouse, which a headless run cannot use");
+      throw new Error("Control '" + entry.name + "' is a drawing area, which takes no value. Name it in button to click it");
    if (!entry.kind.set)
       throw new Error("Control '" + entry.name + "' is a " + entry.kind.kind + ", which takes no value");
    entry.kind.set(entry.control, value, entry.label || entry.name);
@@ -350,8 +367,17 @@ function matchControls(entries, key) {
    return entries.filter(function (entry) { return entry.label !== "" && entry.label.toLowerCase() === wanted; });
 }
 
+// Clicks a button, or a drawing area, which may be a button the script draws itself, with a left mouse
+// press and release at its center.
 function clickButton(entry) {
    var button = entry.control;
-   if (typeof button.onClick === "function") button.onClick.call(button, false);
-   else if (typeof button.onPress === "function") button.onPress.call(button);
+   if (entry.kind.kind === "canvas") {
+      var x = Math.floor(button.width / 2), y = Math.floor(button.height / 2);
+      callHandler(button, "onMousePress", [x, y, MOUSE_LEFT, MOUSE_LEFT, 0]);
+      callHandler(button, "onMouseRelease", [x, y, MOUSE_LEFT, 0, 0]);
+   } else if (typeof button.onClick === "function") {
+      button.onClick.call(button, false);
+   } else if (typeof button.onPress === "function") {
+      button.onPress.call(button);
+   }
 }
