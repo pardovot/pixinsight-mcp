@@ -1,6 +1,8 @@
 // Runs bundled PixInsight scripts through run_process("Script") on a synthetic image and checks each
 // result. PixInsight must be running. Windows the scripts open are left open.
 
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -42,6 +44,17 @@ async function step(label, tool, args, { expectError = false, expect = [], absen
   return text;
 }
 const script = (name, settings = {}) => ({ processId: "Script", viewId: VIEW, settings: { script: name, ...settings } });
+
+// Runs PJSR source as a script file, with no view.
+async function runSource(label, source, expectations) {
+  const file = path.join(os.tmpdir(), `script-smoke-${process.pid}.js`);
+  fs.writeFileSync(file, source);
+  try {
+    return await step(label, "run_process", { processId: "Script", settings: { filePath: file } }, expectations);
+  } finally {
+    fs.rmSync(file);
+  }
+}
 
 await step("synthetic image", "run_process", {
   processId: "NewImage",
@@ -116,6 +129,26 @@ await step("view list showing it, V8 engine", "run_process",
   { processId: "Script", viewId: CLOSING, settings: { script: "AutoLinearFit", inspect: true } }, { expect: [/Target View/] });
 await step("close the image the view lists showed", "close_image", { viewId: CLOSING });
 await step("close the synthetic image", "close_image", { viewId: VIEW });
+
+// A failed LocalFuzzyHistogramHyperbolization run and EZ Soft Stretch both select the image in a view
+// list, and EZ Soft Stretch adds members to native prototypes. Closing the image right after, with no
+// other run between, calls their freed handlers unless the runs cleared the selections.
+const STRETCHED = "script_smoke_stretch";
+const onStretched = (name, settings) => ({ processId: "Script", viewId: STRETCHED, settings: { script: name, ...settings } });
+await step("image to stretch", "run_process", {
+  processId: "NewImage", settings: { id: STRETCHED, width: SIZE / 2, height: SIZE / 2, numberOfChannels: 3, colorSpace: 0, sampleFormat: 3 },
+});
+await step("image to stretch noise", "run_process",
+  { processId: "NoiseGenerator", viewId: STRETCHED, settings: { amount: NOISE_AMOUNT, distribution: NORMAL_DISTRIBUTION } });
+await step("a failed run with a view list showing the image", "run_process",
+  onStretched("LocalFuzzyHistogramHyperbolization", { controls: { "Target Image": STRETCHED, "NoSuchControl": 1 } }),
+  { expectError: true, expect: [/has no control 'NoSuchControl'/] });
+await step("a script that adds members to native prototypes", "run_process",
+  onStretched("EZ Soft Stretch", { controls: { mainViewSelector: STRETCHED }, button: "Run EZ Soft Stretch" }),
+  { expect: [/clicked "Run EZ Soft Stretch"/, /step/] });
+await step("close the image they showed", "close_image", { viewId: STRETCHED });
+await runSource("the members the script added are deleted", "console.writeln(\"Sizer.prototype.items is \" + typeof Sizer.prototype.items);\n",
+  { expect: [/items is undefined/] });
 await client.close();
 console.log(`\n${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

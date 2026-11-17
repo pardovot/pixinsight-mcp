@@ -72,6 +72,27 @@ test("a run of the same message is shown once with its count", () => {
   assert.deepEqual([...pjsr.collapsedMessages(["a", "a", "a", "b", "a"])], ["a (x3)", "b", "a"]);
 });
 
+test("members a run adds to the prototypes scripts extend are deleted, existing ones kept", () => {
+  const pjsr = loadBundle();
+  const members = pjsr.prototypeMembers();
+  runInContext("Control.prototype.items = []; String.prototype.format = function () {}; String.prototype.trim = String.prototype.trim;", pjsr);
+  pjsr.removeAddedMembers(members);
+  assert.equal(Object.hasOwn(pjsr.Control.prototype, "items"), false);
+  assert.equal(runInContext("typeof String.prototype.format + ' ' + typeof String.prototype.trim", pjsr), "undefined function");
+});
+
+test("the view lists of the dialogs a run opened end with no selection", () => {
+  class ViewList extends ComboBox {}
+  class View { constructor(id = "") { this.id = id; } }
+  const pjsr = loadBundle({ ViewList, View });
+  const dialog = new Control(null, { width: 300, height: 200 });
+  dialog.target_List = Object.assign(new ViewList(dialog, { width: 100, height: 20 }), { currentView: new View("M31") });
+  const run = { openedDialogs: [dialog], failure: null };
+  pjsr.clearViewLists(run);
+  assert.equal(dialog.target_List.currentView.id, "");
+  assert.equal(run.failure, null);
+});
+
 test("controls are found through properties and children, and labelled by position", () => {
   const pjsr = loadBundle();
   const dialog = new Control(null, { width: 300, height: 200 });

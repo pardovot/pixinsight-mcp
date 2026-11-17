@@ -111,9 +111,19 @@ top level declarations out of the persistent global scope.
   reached: the engine does not list children, and recording controls at construction or sampling
   positions with `childByPos` make PixInsight read freed memory in later runs.
 - A run's objects are garbage collected before it returns. A script's dialogs otherwise live on
-  until some later collection, and their controls keep reacting to PixInsight, a view list to an
-  image closing, calling into the finished script. With enough of them left over, PixInsight reads
-  freed memory.
+  until some later collection, and their controls keep reacting to PixInsight. A collection in a
+  later command makes the crash below more frequent, not less, so a run's own collection is the only
+  one.
+- Every view list in the dialogs a run opened ends the run with no selection. A view list's native
+  control can outlive its script, and closing or changing the image it selected calls the script's
+  `onViewSelected` or `onCurrentViewUpdated`, which a collection may have freed by then. Closing an
+  image that LocalFuzzyHistogramHyperbolization or DarkStructureEnhance and then EZ Soft Stretch ran
+  on makes PixInsight read freed memory that way. With no selection neither handler is called.
+- Members a run adds to the prototypes of the classes scripts extend (`Sizer`, `Control`, `Dialog`,
+  `String` and a few more), as EZ Soft Stretch adds methods and a list of its controls, are deleted
+  when it ends, since they keep the script's objects alive and later scripts would see them. Only
+  those prototypes are listed: listing the members of every global object and prototype at the start
+  of a run makes PixInsight hang on a later image close.
 
 ## Instances
 

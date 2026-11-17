@@ -20,6 +20,12 @@ var OK_NAME = /(^|\.)ok_?button$/i;
 // A dialog's own Cancel or Close button, labelled so or kept as cancel_Button, closeButton and the like.
 var CANCEL_LABEL = /^(cancel|close)$/i;
 var CANCEL_NAME = /(^|\.)(cancel|close)_?button$/i;
+// The classes whose prototypes scripts extend, as EZ Soft Stretch adds methods and a list of its
+// controls to Sizer.prototype. What a run adds there keeps its objects alive and later scripts see it.
+// A fixed list, since listing the members of every global and prototype around a run makes PixInsight
+// hang on a later image close.
+var EXTENDED_CLASSES = ["Object", "Array", "String", "Control", "Sizer", "Dialog", "Frame", "Label", "TabBox", "GroupBox",
+                        "View", "ImageWindow", "Image", "Matrix", "Point"];
 
 function errorText(error) {
    return String(error.message || error);
@@ -230,15 +236,54 @@ function scriptEngine(run, onV8) {
    return engine;
 }
 
+// Each extended prototype with the names of its own members. Names are prefixed, so none collides with
+// a member of Object.prototype.
+function prototypeMembers() {
+   return EXTENDED_CLASSES.filter(function (name) { return typeof GLOBAL_SCOPE[name] === "function"; }).map(function (name) {
+      var prototype = GLOBAL_SCOPE[name].prototype;
+      var names = {};
+      Object.getOwnPropertyNames(prototype).forEach(function (member) { names["#" + member] = true; });
+      return { prototype: prototype, names: names };
+   });
+}
+
+// Deletes the members a run added to the extended prototypes.
+function removeAddedMembers(snapshot) {
+   snapshot.forEach(function (entry) {
+      Object.getOwnPropertyNames(entry.prototype).forEach(function (member) {
+         if (entry.names["#" + member] !== true)
+            delete entry.prototype[member];
+      });
+   });
+}
+
 // A script's dialogs and controls live until collected, and meanwhile their controls still react to
 // PixInsight, a view list to an image closing, calling into the finished script. Enough of them left
 // over from earlier runs makes PixInsight read freed memory, so a run's objects are collected while
-// its context still exists.
+// its context still exists. Collecting again in a later command, outside the run, makes such crashes
+// more frequent, not less.
 function collectScriptObjects() {
    processEvents();
    if (typeof gc === "function")
       gc(true);
    processEvents();
+}
+
+// Clears the selection of every view list in the dialogs a run opened, while the script's handlers
+// still exist. A view list's native control can outlive the run, and closing or changing the image it
+// selected calls its onViewSelected or onCurrentViewUpdated, which a later collection may have freed.
+// With no selection neither is called.
+function clearViewLists(run) {
+   run.openedDialogs.forEach(function (dialog) {
+      try {
+         dialogControls(dialog).forEach(function (entry) {
+            if (entry.kind.kind === "view")
+               entry.control.currentView = new View();
+         });
+      } catch (error) {
+         recordFailure(run, new Error("Could not clear the view lists of dialog '" + dialog.windowTitle + "': " + errorText(error)));
+      }
+   });
 }
 
 function openWindowIds() {
@@ -306,6 +351,7 @@ function handleRunScript(command) {
    var historyBefore = view ? view.historyIndex : null;
    if (view)
       view.window.bringToFront();
+   var members = prototypeMembers();
    var started = Date.now();
    try {
       included.apply(GLOBAL_SCOPE, included.shadowedNames.map(function (name) {
@@ -315,6 +361,8 @@ function handleRunScript(command) {
       recordFailure(run, error);
    } finally {
       engine.restore();
+      removeAddedMembers(members);
+      clearViewLists(run);
       // The run's own references to the script's objects go first, or they survive the collection.
       scope = null;
       run.openedDialogs.length = 0;
