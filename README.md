@@ -65,7 +65,10 @@ scripts that open more than one. `parameters` reach scripts that read them like 
 dropped on the view. `answers` picks the button for message boxes by a fragment of their text,
 others get their first button, and file pickers are cancelled, all reported back. A script that
 keeps asking for something the run cannot give is stopped. Windows a script opens stay open and are
-listed in the result.
+listed in the result. `arguments` are the script's command line arguments, which lets a script with
+an automation mode run with no dialog at all, WeightedBatchPreprocessing for one:
+`["automationMode=true", "dir=<lights and calibration>", "outputDirectory=<folder>"]`, with its
+frame selection options to cull subframes.
 
 The measurement tools exist so settings come from your frame rather than a tutorial. `get_noise`
 returns an MRS estimate, since `stdDev` is dominated by signal on astro frames.

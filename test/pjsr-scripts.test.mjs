@@ -81,6 +81,23 @@ test("members a run adds to the prototypes scripts extend are deleted, existing 
   assert.equal(runInContext("typeof String.prototype.format + ' ' + typeof String.prototype.trim", pjsr), "undefined function");
 });
 
+test("a file picker forwards to the real one, except execute, which cancels", () => {
+  class OpenFileDialog {
+    constructor() { this.filters = []; this.fileNames = []; }
+    loadImageFilters() { this.filters = [["All known formats", "*.xisf", "*.fits"]]; }
+    execute() { throw new Error("a headless run never shows a picker"); }
+  }
+  const pjsr = loadBundle({ OpenFileDialog });
+  const run = { inspect: false, answers: {}, usedAnswers: {}, messages: [] };
+  const picker = new (pjsr.sandboxScope(run, null, {}).OpenFileDialog)();
+  picker.loadImageFilters();
+  picker.multipleSelections = true;
+  assert.deepEqual(picker.filters[0], ["All known formats", "*.xisf", "*.fits"]);
+  assert.equal(picker.execute(), false);
+  assert.deepEqual(picker.fileNames, []);
+  assert.match(run.messages[0], /OpenFileDialog cancelled/);
+});
+
 test("the view lists of the dialogs a run opened end with no selection", () => {
   class ViewList extends ComboBox {}
   class View { constructor(id = "") { this.id = id; } }

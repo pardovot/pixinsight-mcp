@@ -99,14 +99,35 @@ export function driverSource(files: DriverFiles): string {
  * Hands a written command to PixInsight. Injectable so tests can drive the
  * polling and result handling without launching the application.
  */
-export type CommandDispatcher = (command: BridgeCommand, commandPath: string, includeScript?: string) => Promise<void>;
+export type CommandDispatcher = (command: BridgeCommand, commandPath: string, script?: IncludedScript) => Promise<void>;
+
+/**
+ * The script file a run_script driver includes, and the command line arguments it reads, as
+ * Runtime.jsArguments on V8 and jsArguments on the legacy engine.
+ */
+export interface IncludedScript {
+  path: string;
+  arguments: string[];
+}
 
 export interface CallOptions {
   /** View a process runs on. Omitted, the process runs globally. */
   targetView?: string | null;
   timeoutMs?: number;
-  /** Script file the driver includes, for run_script. */
-  includeScript?: string;
+  /** The script the driver includes, for run_script. */
+  script?: IncludedScript;
+}
+
+// PixInsight splits a -x script's argument list at commas.
+const ARGUMENT_SEPARATOR = ",";
+
+/** The -x handoff for a driver: the instance slot, the driver's path and the included script's arguments. */
+export function handoffArgument(slot: number | null, driverPath: string, scriptArguments: string[] = []): string {
+  const unusable = scriptArguments.find((argument) => argument.includes(ARGUMENT_SEPARATOR) || /[\r\n"]/.test(argument));
+  if (unusable !== undefined)
+    throw new Error(`Script argument not usable on the PixInsight command line, it holds a comma, quote or line break: ${unusable}`);
+  const target = slot === null ? "" : `${slot}:`;
+  return `-x=${target}${[toPixInsightPath(driverPath), ...scriptArguments].join(ARGUMENT_SEPARATOR)}`;
 }
 
 function errorResult(id: string, started: number, type: string, message: string): BridgeResult {
@@ -135,7 +156,7 @@ export class BridgeClient {
 
   constructor(config?: Partial<BridgeConfig>, options?: { dispatch?: CommandDispatcher }) {
     this.config = { ...configFromEnv(), ...config };
-    this.dispatcher = options?.dispatch ?? ((command, path, includeScript) => this.dispatch(command, path, includeScript));
+    this.dispatcher = options?.dispatch ?? ((command, path, script) => this.dispatch(command, path, script));
     this.commandsDir = join(this.config.bridgeDir, "commands");
     this.scriptsDir = join(this.config.bridgeDir, "scripts");
     this.resultsDir = join(this.config.bridgeDir, "results");
@@ -182,7 +203,7 @@ export class BridgeClient {
 
     try {
       try {
-        await this.dispatcher(command, commandPath, options.includeScript);
+        await this.dispatcher(command, commandPath, options.script);
       } catch (error: unknown) {
         return errorResult(command.id, started, "DispatchError",
           error instanceof Error ? error.message : String(error));
@@ -215,7 +236,7 @@ export class BridgeClient {
    * that arrive while PixInsight is busy are queued by the core application,
    * so a long process delays a command but never loses it.
    */
-  private async dispatch(command: BridgeCommand, commandPath: string, includeScript?: string): Promise<void> {
+  private async dispatch(command: BridgeCommand, commandPath: string, included?: IncludedScript): Promise<void> {
     if (!existsSync(bundlePath))
       throw new Error(`Handler bundle missing: ${bundlePath}. Run npm run build.`);
 
@@ -225,14 +246,14 @@ export class BridgeClient {
 
     const resultPath = join(this.resultsDir, `${command.id}.json`);
     const scriptPath = join(this.scriptsDir, `${command.id}.js`);
-    const script = includeScript === undefined ? undefined : { path: includeScript, source: await readFile(includeScript, "utf-8") };
+    const script = included === undefined ? undefined : { path: included.path, source: await readFile(included.path, "utf-8") };
+    const handoff = handoffArgument(this.config.instance, scriptPath, included?.arguments);
     await writeFile(scriptPath, driverSource({ bundlePath, commandPath, resultPath, script }), "utf-8");
 
     const executable = pixinsightExecutable();
     const slot = this.config.instance;
-    const target = slot === null ? "" : `${slot}:`;
     await new Promise<void>((resolveHandoff, rejectHandoff) => {
-      const client = spawn(executable, [`-x=${target}${toPixInsightPath(scriptPath)}`], {
+      const client = spawn(executable, [handoff], {
         stdio: "ignore",
         windowsHide: true,
       });

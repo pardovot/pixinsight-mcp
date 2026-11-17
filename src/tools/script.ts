@@ -24,6 +24,7 @@ const scriptSettingsSchema = z.strictObject({
   dialogs: z.array(dialogSettingsSchema).optional(),
   answers: z.record(z.string(), z.string()).optional(),
   inspect: z.boolean().optional(),
+  arguments: z.array(z.string()).optional(),
 });
 
 export type DialogSettings = z.output<typeof dialogSettingsSchema>;
@@ -35,10 +36,12 @@ export interface ScriptSettings {
   dialogs: DialogSettings[];
   answers?: Record<string, string>;
   inspect?: boolean;
+  /** The script's command line arguments. */
+  arguments: string[];
 }
 
 export const SCRIPT_SETTINGS_HELP =
-  "**Script** runs a PixInsight script file (.js) on the view with no user interaction. Settings:\n" +
+  "**Script** runs a PixInsight script file (.js), on the view if one is given, with no user interaction. Settings:\n" +
   "- script: the Script menu name, e.g. \"StarStretch\" or \"Halo-B-Gon\", found under <PixInsight>/src/scripts\n" +
   "- filePath: absolute path of a script file, in place of script\n" +
   "- parameters: { name: value } a script reads through Parameters. With them the script runs as a script instance " +
@@ -54,12 +57,16 @@ export const SCRIPT_SETTINGS_HELP =
   "again after its work (an Execute and Close loop), which is closed as a user would.\n" +
   "- answers: { text fragment: button } answers message boxes whose text contains the fragment, with Ok, " +
   "Cancel, Yes, No, Abort, Retry, Ignore, YesToAll or NoToAll. Other message boxes get their first button.\n" +
+  "- arguments: [\"name=value\", ...] the script's command line arguments, which it reads as Runtime.jsArguments " +
+  "(jsArguments on the legacy engine), e.g. WeightedBatchPreprocessing's automation mode (\"automationMode=true\", " +
+  "\"dir=<lights and calibration folder>\", \"outputDirectory=<folder>\", its options listed in " +
+  "BatchPreprocessing/BPP-automation.js). An argument cannot hold a comma, a quote or a line break.\n" +
   "- inspect: true lists the dialogs and their controls, with labels, tooltips, buttons and current values, " +
   "then cancels them. Inspect is refused for a script that defines no dialog, since it would do its work.\n" +
   "File pickers are cancelled and every message is reported. Every requested control must exist, so run " +
   "inspect first. A drawing area (a control the script draws itself, often a button) takes no value, but button " +
-  "can name one to click it at its centre. A script that keeps " +
-  "asking again (the same dialog 10 times, 30 messages) is stopped, and a dialog whose OK button refuses " +
+  "can name one to click it at its center. A script that keeps " +
+  "asking again is stopped, and a dialog whose OK button refuses " +
   "the settings fails the run. On the legacy engine (scripts without #engine v8) only controls the script " +
   "keeps as dialog properties are found. Windows a script opens stay open and are listed in the result. " +
   "A script that remembers its settings saves the values a run sets, as after a user's run.";
@@ -79,18 +86,19 @@ export function parseScriptSettings(settings: Record<string, unknown>, directory
     const problems = parsed.error.issues.map((issue) => `${issue.path.join(".") || "settings"}: ${issue.message}`);
     throw new Error(`Invalid Script settings, ${problems.join("; ")}.\n\n${SCRIPT_SETTINGS_HELP}`);
   }
-  const { filePath, script, controls, button, dialogs, ...rest } = parsed.data;
+  const { filePath, script, controls, button, dialogs, arguments: scriptArguments = [], ...rest } = parsed.data;
   if (dialogs !== undefined && (controls !== undefined || button !== undefined))
     throw new Error("Script takes dialogs or controls and button, not both");
   const dialogSettings = dialogs ?? (controls !== undefined || button !== undefined ? [{ controls, button }] : []);
+  const common = { ...rest, arguments: scriptArguments, dialogs: dialogSettings };
   if (script !== undefined) {
     if (filePath !== undefined) throw new Error("Script takes script (a name) or filePath, not both");
-    return checkInspectable({ ...rest, dialogs: dialogSettings, filePath: findScript(script, directory) });
+    return checkInspectable({ ...common, filePath: findScript(script, directory) });
   }
   if (filePath === undefined) throw new Error(`Script needs script (a name) or filePath.\n\n${SCRIPT_SETTINGS_HELP}`);
   if (!isAbsolute(filePath)) throw new Error(`Script filePath must be absolute: ${filePath}`);
   if (!existsSync(filePath) || !statSync(filePath).isFile()) throw new Error(`No script file at ${filePath}`);
-  return checkInspectable({ ...rest, dialogs: dialogSettings, filePath });
+  return checkInspectable({ ...common, filePath });
 }
 
 interface ControlDescription {
@@ -133,6 +141,7 @@ export interface ScriptRunOutputs {
 
 // Console lines quoted back after a run.
 const OUTPUT_LINES_SHOWN = 8;
+const MS_PER_SECOND = 1_000;
 // PixInsight console markup such as <end>, <cbr>, <br> and <b>.
 const CONSOLE_TAG = /<\/?[a-z]+[^>]*>/gi;
 
@@ -147,7 +156,7 @@ function describeControl(control: ControlDescription): string {
 }
 
 export function formatScriptRun(message: string, outputs: ScriptRunOutputs): string {
-  const lines = [`${message} (${outputs.engine} engine, ${(outputs.milliseconds / 1000).toFixed(1)} s)`];
+  const lines = [`${message} (${outputs.engine} engine, ${(outputs.milliseconds / MS_PER_SECOND).toFixed(1)} s)`];
   if (outputs.historyBefore !== null && outputs.historyAfter !== null) {
     const steps = outputs.historyAfter - outputs.historyBefore;
     lines.push(steps === 0 ? "- The view is unchanged." : `- History ${outputs.historyBefore} to ${outputs.historyAfter} (${steps} step(s)).`);

@@ -4,8 +4,9 @@
 // and drives each dialog with its settings, a script engine (pjsr/script-engines.js) takes over the
 // dialogs and the console, and pjsr/script-controls.js finds and sets a dialog's controls.
 
-// Console lines kept for the result.
+// Console lines kept for the result, and the last ones quoted in an error.
 var OUTPUT_LINES = 60;
+var ERROR_OUTPUT_LINES = 5;
 var PICKERS = ["OpenFileDialog", "SaveFileDialog", "GetDirectoryDialog", "ColorDialog", "FontDialog"];
 // The StdButton values, which the legacy engine defines only through includes.
 var MESSAGE_BUTTONS = { Ok: 1, Cancel: 2, Yes: 3, No: 4, Abort: 5, Retry: 6, Ignore: 7, YesToAll: 8, NoToAll: 9 };
@@ -57,7 +58,7 @@ function scriptParameters(view, values, asInstance) {
       getReal: function (name) { return Number(stored[name]); },
       getInteger: function (name) { return Math.round(Number(stored[name])); },
       getUInt: function (name) { return Math.round(Number(stored[name])); },
-      getBoolean: function (name) { return stored[name] === true || stored[name] === "true" || stored[name] === "1"; },
+      getBoolean: function (name) { return [true, 1, "true", "1"].indexOf(stored[name]) >= 0; },
       set: function (name, value) { stored[name] = value; },
       remove: function (name) { delete stored[name]; },
       clear: function () { stored = {}; },
@@ -89,7 +90,8 @@ function messageAnswer(run, text, offered) {
 }
 
 // The sandbox both engines share: Parameters, message boxes answered as requested or with their first
-// button, and file pickers that cancel. None of them is a Control, so plain objects replace them.
+// button, and file pickers that cancel. None of them is a Control, so plain objects replace them, and
+// a picker's object forwards to the real picker.
 function sandboxScope(run, view, parameterValues) {
    var asInstance = !run.inspect && Object.keys(parameterValues).length > 0;
    var scope = { Parameters: scriptParameters(view, parameterValues, asInstance) };
@@ -111,12 +113,21 @@ function sandboxScope(run, view, parameterValues) {
          }
       } };
    };
+   // A picker is the real one with execute replaced, so a script can still use the rest, such as
+   // loadImageFilters, which WeightedBatchPreprocessing's automation mode needs to read a directory.
    PICKERS.forEach(function (name) {
+      var Picker = GLOBAL_SCOPE[name];
+      if (typeof Picker !== "function")
+         return;
       scope[name] = function () {
-         return { fileName: "", fileNames: [], directory: "", filters: [], execute: function () {
-            run.messages.push(name + " cancelled, a headless run cannot pick files");
-            return false;
-         } };
+         return forwardingObject(new Picker(), function (memberName) {
+            if (memberName !== "execute")
+               return undefined;
+            return function () {
+               run.messages.push(name + " cancelled, a headless run cannot pick files");
+               return false;
+            };
+         });
       };
    });
    return scope;
@@ -307,7 +318,7 @@ function runContext(run) {
    var context = "";
    if (run.messages.length)
       context += "\nMessages: " + collapsedMessages(run.messages).join(" | ");
-   var lines = run.output.slice(-5).map(cleanLabel).filter(function (line) { return line !== ""; });
+   var lines = run.output.slice(-ERROR_OUTPUT_LINES).map(cleanLabel).filter(function (line) { return line !== ""; });
    if (lines.length)
       context += "\nLast console lines: " + lines.join(" | ");
    return context;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { BridgeClient, driverSource, SCRIPT_SHADOWED_NAMES } from "../build/bridge/client.js";
+import { BridgeClient, driverSource, handoffArgument, SCRIPT_SHADOWED_NAMES } from "../build/bridge/client.js";
 import { definesDialog, findScript, scriptNames } from "../build/script-files.js";
 import { parseScriptSettings } from "../build/tools/script.js";
 
@@ -45,17 +45,35 @@ test("a path that would break the #include string is refused", () => {
   assert.throws(() => driverSource({ ...files, script: { path: 'C:\\odd"name.js', source: "" } }), /not usable in a PixInsight #include/);
 });
 
-test("the client hands the script path to the dispatcher", async (context) => {
+test("the client hands the script and its arguments to the dispatcher", async (context) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pixinsight-mcp-test-"));
   context.after(() => fs.rm(dir, { recursive: true, force: true }));
   let handed;
   const client = new BridgeClient({ bridgeDir: dir, pollIntervalMs: 25, defaultTimeoutMs: 200 }, {
-    dispatch: async (command, commandPath, includeScript) => {
-      handed = includeScript;
+    dispatch: async (command, commandPath, script) => {
+      handed = script;
     },
   });
-  await client.call("run_script", { filePath: "/scripts/A.js" }, { includeScript: "/scripts/A.js" });
-  assert.equal(handed, "/scripts/A.js");
+  const script = { path: "/scripts/A.js", arguments: ["automationMode=true"] };
+  await client.call("run_script", { filePath: "/scripts/A.js" }, { script });
+  assert.deepEqual(handed, script);
+});
+
+test("script arguments follow the driver in the -x handoff, and a comma is refused", () => {
+  assert.equal(handoffArgument(null, "C:\\bridge\\d.js"), "-x=C:/bridge/d.js");
+  assert.equal(handoffArgument(2, "C:\\bridge\\d.js", ["automationMode=true", "dir=C:/My Data"]),
+    "-x=2:C:/bridge/d.js,automationMode=true,dir=C:/My Data");
+  assert.throws(() => handoffArgument(null, "/d.js", ["dir=C:/a,b"]), /holds a comma/);
+});
+
+test("Script settings take the script's arguments", async (context) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pixinsight-mcp-test-"));
+  context.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const scriptPath = path.join(dir, "Batch.js");
+  await fs.writeFile(scriptPath, "main();\n");
+  const settings = parseScriptSettings({ filePath: scriptPath, arguments: ["a=1", "loadOnly"] });
+  assert.deepEqual(settings.arguments, ["a=1", "loadOnly"]);
+  assert.deepEqual(parseScriptSettings({ filePath: scriptPath }).arguments, []);
 });
 
 test("Script settings need an absolute path to an existing file", async (context) => {
@@ -65,8 +83,8 @@ test("Script settings need an absolute path to an existing file", async (context
   await fs.writeFile(scriptPath, "main();\n");
 
   assert.deepEqual(parseScriptSettings({ filePath: scriptPath, controls: { Amount: 0.6 }, button: "Execute" }),
-    { filePath: scriptPath, dialogs: [{ controls: { Amount: 0.6 }, button: "Execute" }] });
-  assert.deepEqual(parseScriptSettings({ filePath: scriptPath }), { filePath: scriptPath, dialogs: [] });
+    { filePath: scriptPath, arguments: [], dialogs: [{ controls: { Amount: 0.6 }, button: "Execute" }] });
+  assert.deepEqual(parseScriptSettings({ filePath: scriptPath }), { filePath: scriptPath, arguments: [], dialogs: [] });
   assert.throws(() => parseScriptSettings({}), /needs script \(a name\) or filePath/);
   assert.throws(() => parseScriptSettings({ filePath: "Example.js" }), /must be absolute/);
   assert.throws(() => parseScriptSettings({ filePath: path.join(dir, "Missing.js") }), /No script file/);

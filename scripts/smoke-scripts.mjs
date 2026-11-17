@@ -46,11 +46,11 @@ async function step(label, tool, args, { expectError = false, expect = [], absen
 const script = (name, settings = {}) => ({ processId: "Script", viewId: VIEW, settings: { script: name, ...settings } });
 
 // Runs PJSR source as a script file, with no view.
-async function runSource(label, source, expectations) {
+async function runSource(label, source, expectations, settings = {}) {
   const file = path.join(os.tmpdir(), `script-smoke-${process.pid}.js`);
   fs.writeFileSync(file, source);
   try {
-    return await step(label, "run_process", { processId: "Script", settings: { filePath: file } }, expectations);
+    return await step(label, "run_process", { processId: "Script", settings: { filePath: file, ...settings } }, expectations);
   } finally {
     fs.rmSync(file);
   }
@@ -116,6 +116,10 @@ await step("an unknown script name is refused", "run_process", script("NoSuchScr
   { expectError: true, expect: [/No Script menu script named/] });
 await step("an unknown setting is refused", "run_process", script("Halo-B-Gon", { md5sum: "x" }),
   { expectError: true, expect: [/Invalid Script settings/] });
+await runSource("command line arguments, V8 engine", "#engine v8\nconsole.writeln(\"arguments \" + JSON.stringify(Runtime.jsArguments));\n",
+  { expect: [/arguments \["automationMode=true","dir=C:\/My Data"\]/] }, { arguments: ["automationMode=true", "dir=C:/My Data"] });
+await step("an argument with a comma is refused", "run_process", script("Halo-B-Gon", { arguments: ["dir=C:/a,b"] }),
+  { expectError: true, expect: [/holds a comma/] });
 
 // Closing an image that finished runs' view lists showed, which calls their handlers if they are
 // still alive.

@@ -63,37 +63,51 @@ function legacyScriptEngine(output, handleDialog) {
    return engine;
 }
 
-// V8 installs most of console's members as read only own properties, so a plain object forwards each
-// one, own or inherited (hide is inherited), to the real console and records what the write methods
-// print.
-function recordingConsole(output) {
-   var recording = {};
-   var names = Object.getOwnPropertyNames(console);
-   for (var proto = Object.getPrototypeOf(console); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto))
-      Object.getOwnPropertyNames(proto).forEach(function (name) {
+// A plain object standing in for a native one whose members cannot be replaced, as on V8, which
+// installs them as read only own properties that not even a Proxy may change. Each member, own or
+// inherited, forwards to the native object, a method called on it and a property read and written
+// there, except those replace(name, member) returns a substitute for.
+function forwardingObject(target, replace) {
+   var forwarding = {};
+   var names = Object.getOwnPropertyNames(target);
+   var prototype = Object.getPrototypeOf(target);
+   while (prototype && prototype !== Object.prototype) {
+      Object.getOwnPropertyNames(prototype).forEach(function (name) {
          if (name !== "constructor" && names.indexOf(name) < 0)
             names.push(name);
       });
+      prototype = Object.getPrototypeOf(prototype);
+   }
    names.forEach(function (name) {
-      var member = console[name];
-      if (name === "show") {
-         recording.show = function () {};
-      } else if (typeof member === "function" && CONSOLE_WRITERS.indexOf(name) >= 0) {
-         recording[name] = function () {
-            output.push(Array.prototype.join.call(arguments, ""));
-            return member.apply(console, arguments);
-         };
+      var member = target[name];
+      var substitute = replace(name, member);
+      if (substitute !== undefined) {
+         forwarding[name] = substitute;
       } else if (typeof member === "function") {
-         recording[name] = member.bind(console);
+         forwarding[name] = member.bind(target);
       } else {
-         Object.defineProperty(recording, name, {
-            get: function () { return console[name]; },
-            set: function (value) { console[name] = value; },
+         Object.defineProperty(forwarding, name, {
+            get: function () { return target[name]; },
+            set: function (value) { target[name] = value; },
             enumerable: true
          });
       }
    });
-   return recording;
+   return forwarding;
+}
+
+// The V8 console, recording what the write methods print (hide is inherited, so it forwards too).
+function recordingConsole(output) {
+   return forwardingObject(console, function (name, member) {
+      if (name === "show")
+         return function () {};
+      if (typeof member === "function" && CONSOLE_WRITERS.indexOf(name) >= 0)
+         return function () {
+            output.push(Array.prototype.join.call(arguments, ""));
+            return member.apply(console, arguments);
+         };
+      return undefined;
+   });
 }
 
 // On V8 a native class can only be built with new and its methods cannot be replaced, so the Dialog

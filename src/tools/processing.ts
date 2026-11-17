@@ -45,7 +45,7 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
         const result = await bridge.call("run_script", {
           filePath: script.filePath, parameters: script.parameters, dialogs: script.dialogs,
           answers: script.answers, inspect: script.inspect,
-        }, { targetView: viewId ?? null, includeScript: script.filePath });
+        }, { targetView: viewId ?? null, script: { path: script.filePath, arguments: script.arguments } });
         if (result.status === "error") throw new Error(result.error.message);
         return textContent(formatScriptRun(result.message ?? "Script ran", result.outputs as unknown as ScriptRunOutputs));
       }

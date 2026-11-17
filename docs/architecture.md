@@ -94,6 +94,13 @@ top level declarations out of the persistent global scope.
   dialog counts as open once it has returned. The run never adds an event handler the script did not
   set, such as `onExecute`: PixInsight keeps it connected after the run, and calls into the finished
   script.
+- A file picker is the real one with only `execute` replaced, which cancels, so a script can still
+  use the rest, such as `loadImageFilters`. On V8 a forwarding object stands in for it, since its
+  members are read only own properties that not even a `Proxy` may change.
+- A call's `arguments` reach the script as its command line arguments (`Runtime.jsArguments`, and
+  `jsArguments` on the legacy engine). A script with an automation mode then runs with no dialog at
+  all, as WeightedBatchPreprocessing does with `automationMode=true`, `dir=`, `outputDirectory=` and
+  its options, frame selection included.
 - `Parameters` reports a view or global target only when the call gives parameters and does not
   inspect. Many scripts run such a target without their dialog, so without parameters a script
   starts as from the Script menu, on the target's window brought to the front.

@@ -11,8 +11,11 @@ PixInsight -x=N:<bridge>/scripts/<id>.js        instance in slot N
 The driver includes the handler bundle (`build/pjsr/mcp-handlers.js`), reads the command, passes it
 to `dispatchCommand`, and writes the result file. Nothing is installed inside PixInsight.
 
-A `run_script` driver starts with `#engine v8` when the script declares it, and includes the script
-inside a function the handler calls:
+A `run_script` call's script arguments follow the driver's path, `-x=<driver>,arg1,arg2`, and the
+script reads them as `Runtime.jsArguments`, or `jsArguments` on the legacy engine. PixInsight splits
+the list at commas, so an argument with a comma, a quote or a line break is refused. A `run_script`
+driver starts with `#engine v8` when the script declares it, and includes the script inside a
+function the handler calls:
 
 ```
 function runIncludedScript( Parameters, Dialog, MessageBox, console, ... ) {
