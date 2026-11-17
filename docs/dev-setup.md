@@ -95,8 +95,11 @@ Start it normally. Check the server can reach it:
 npm run ping
 ```
 
-`npm run smoke:scripts` runs bundled scripts through `run_process("Script")` on a synthetic image
-and checks each result. Windows the scripts open are left open.
+`npm run smoke:scripts` runs bundled scripts through `run_process("Script")` on a synthetic image,
+checks each result and fails when PixInsight logged an access violation meanwhile. The count reads
+the Process Console from a file PixInsight's `log` command writes, and looks for the Windows
+exception code (`C0000005`): what macOS and Linux log for a caught crash is unverified. Windows the
+scripts open are left open.
 
 ## Running a second instance
 

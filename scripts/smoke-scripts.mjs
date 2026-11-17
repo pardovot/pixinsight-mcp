@@ -1,12 +1,15 @@
 // Runs bundled PixInsight scripts through run_process("Script") on a synthetic image and checks each
-// result. PixInsight must be running. Windows the scripts open are left open.
+// result, then counts the access violations PixInsight logged meanwhile, which it catches, so no
+// result shows them. PixInsight must be running. Windows the scripts open are left open.
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { pixinsightExecutable, toPixInsightPath } from "../build/pixinsight.js";
 
 // A run that hangs fails within this, instead of holding the session.
 const CALL_TIMEOUT_MS = 120_000;
@@ -19,6 +22,40 @@ const SYNTHETIC_IMAGE =
 // Gaussian noise on top, which noise measuring scripts need.
 const NOISE_AMOUNT = 0.01;
 const NORMAL_DISTRIBUTION = 1;
+// The Windows exception code PixInsight logs for an access violation it caught. What it logs for one
+// on macOS and Linux is unverified, so there the count finds none.
+const ACCESS_VIOLATION = /C0000005/g;
+// How long PixInsight may take to run a console command handed to it, and how often that is checked.
+const CONSOLE_COMMAND_MS = 30_000;
+const POLL_MS = 250;
+
+// The Process Console, mirrored to a file by PixInsight's log command, which a command file (.scp)
+// handed over like a script runs. PixInsight holds the file open, on Windows exclusively, until the
+// log is closed.
+const consoleLog = path.join(os.tmpdir(), `script-smoke-${process.pid}.log`);
+const commandFiles = [];
+function runConsoleCommand(command) {
+  const file = path.join(os.tmpdir(), `script-smoke-${process.pid}-${commandFiles.length}.scp`);
+  fs.writeFileSync(file, `${command}\n`);
+  commandFiles.push(file);
+  execFileSync(pixinsightExecutable(), [`-x=${toPixInsightPath(file)}`], { stdio: "ignore", timeout: CONSOLE_COMMAND_MS });
+}
+function consoleLogText() {
+  try {
+    return fs.readFileSync(consoleLog, "utf8");
+  } catch (error) {
+    // Missing until PixInsight opens it, busy while it is open on Windows.
+    if (error.code === "ENOENT" || error.code === "EBUSY") return null;
+    throw error;
+  }
+}
+async function waitFor(condition, what) {
+  const started = Date.now();
+  while (!condition()) {
+    if (Date.now() - started > CONSOLE_COMMAND_MS) throw new Error(`PixInsight did not ${what} within ${CONSOLE_COMMAND_MS / 1000} s`);
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+}
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const transport = new StdioClientTransport({
@@ -55,6 +92,10 @@ async function runSource(label, source, expectations, settings = {}) {
     fs.rmSync(file);
   }
 }
+
+fs.rmSync(consoleLog, { force: true });
+runConsoleCommand(`log -t -f="${toPixInsightPath(consoleLog)}"`);
+await waitFor(() => fs.existsSync(consoleLog), "open the console log");
 
 await step("synthetic image", "run_process", {
   processId: "NewImage",
@@ -154,5 +195,12 @@ await step("close the image they showed", "close_image", { viewId: STRETCHED });
 await runSource("the members the script added are deleted", "console.writeln(\"Sizer.prototype.items is \" + typeof Sizer.prototype.items);\n",
   { expect: [/items is undefined/] });
 await client.close();
+
+runConsoleCommand("log --close");
+await waitFor(() => (consoleLogText() ?? "").includes("log --close"), "close the console log");
+const violations = (consoleLogText().match(ACCESS_VIOLATION) ?? []).length;
+if (violations) failures++;
+console.log(`\n${violations ? "FAIL" : "ok  "}  ${violations} access violation(s) in the Process Console`);
+[consoleLog, ...commandFiles].forEach((file) => fs.rmSync(file, { force: true }));
 console.log(`\n${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

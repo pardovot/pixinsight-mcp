@@ -88,7 +88,8 @@ parameter its handler never reads.
 
 `npm run lint` checks code and formatting, `npm run lint:fix` fixes what it can. `npm test` runs
 lint, build and the tests. `npm run build` covers both sides. `npm run smoke:scripts` checks
-Script runs against a running PixInsight, run it after a change to a `pjsr/script*.js` file, and
-look for access violations (`C0000005`) in the Process Console afterwards: PixInsight catches them,
-so no check fails. A handler change is live on the next
+Script runs against a running PixInsight and counts the access violations (`C0000005`) PixInsight
+logged meanwhile, which it catches, so no result shows them. Run it after a change to a
+`pjsr/script*.js` file, at least twice in one PixInsight session: leftovers of earlier runs show only
+in later ones. A handler change is live on the next
 command, since every driver includes the bundle afresh, a TS change needs an MCP restart.
