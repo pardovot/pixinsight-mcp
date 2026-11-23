@@ -38,7 +38,7 @@ On Windows, if a client cannot resolve `npx`, use `"command": "cmd"` with
 **2. Start PixInsight** and ask your assistant to list your open images. If it answers, you are
 connected. Nothing is installed inside PixInsight.
 
-Requires PixInsight 1.9.4 or later and Node 18 or later.
+Requires PixInsight 1.9.4 or later and Node 22 or later.
 
 ## Tools
 

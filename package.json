@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "MCP server that lets an AI assistant drive PixInsight for astrophotography processing",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "pixinsight-mcp": "build/index.js"
   },

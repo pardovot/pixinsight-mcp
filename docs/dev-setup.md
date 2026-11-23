@@ -10,8 +10,8 @@ Everything here is cross platform. Where a command differs per platform, all thr
 
 ## Prerequisites
 
-- Node.js 20.19 or later for development (ESLint needs it), installed for the same OS that runs
-  PixInsight. The published server runs on Node 18 or later.
+- Node.js 22.13 or later (ESLint needs it), installed for the same OS that runs PixInsight. The
+  published server runs on Node 22 or later.
 - PixInsight 1.9.4 "Lockhart" or later.
 - An MCP client.
 
@@ -95,8 +95,10 @@ Start it normally. Check the server can reach it:
 npm run ping
 ```
 
-`npm run smoke:scripts` runs bundled scripts through `run_process("Script")` on a synthetic image,
-checks each result and fails when PixInsight logged an access violation meanwhile. The count reads
+`npm run smoke:scripts` runs installed scripts through `run_process("Script")` on a synthetic image,
+checks each result and fails when PixInsight logged an access violation meanwhile. Besides stock
+scripts it needs Halo-B-Gon, StatisticalStretch, StarStretch, FAME, RepairStarCores, AutoLinearFit,
+AstroContrastEnhancer and EZ Soft Stretch installed, and a step whose script is missing fails. The count reads
 the Process Console from a file PixInsight's `log` command writes, and looks for the Windows
 exception code (`C0000005`): what macOS and Linux log for a caught crash is unverified. Windows the
 scripts open are left open.
@@ -123,15 +125,23 @@ scripts open are left open.
 
 ## Troubleshooting
 
-**MCP server not connecting.** Check the client's logs. Use an absolute path to `node` if it is
+### MCP server not connecting
+
+Check the client's logs. Use an absolute path to `node` if it is
 not on the client's PATH, and confirm `build/index.js` exists.
 
-**"PixInsight not found at ...".** The executable was not where the server looked. Set `PI_ROOT`
+### "PixInsight not found at ..."
+
+The executable was not where the server looked. Set `PI_ROOT`
 or `PIXINSIGHT_EXE`.
 
-**Commands time out.** PixInsight runs requests only when its main thread is free, so a long
-process or an open modal dialog holds everything behind it. Check PixInsight's window and its
-Process Console, which also shows handler errors.
+### Commands time out
 
-**A process "failed" with no reason.** Many processes report only to the Process Console, a
-missing license for example. The error result says so, read the console.
+PixInsight runs requests only when its main thread is free, so a long process or an open modal
+dialog holds everything behind it. Check PixInsight's window and its Process Console, which also
+shows handler errors.
+
+### A process "failed" with no reason
+
+Many processes report only to the Process Console, a missing license for example. The error
+result says so, read the console.
