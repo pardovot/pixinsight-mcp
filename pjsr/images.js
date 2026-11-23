@@ -1,12 +1,5 @@
 // Image windows: list, open, save, close and statistics.
 
-// The codecs the save_image tool offers. A typo from a direct caller is rejected instead of
-// left to the writer.
-var SAVE_CODECS = ["zlib", "zlib+sh", "zstd", "zstd+sh", "lz4", "lz4+sh", "lz4hc", "lz4hc+sh", "none"];
-
-// Compressed by default. On a 6159x7396 float RGB master: 521.7 MB -> 384.2 MB.
-var DEFAULT_SAVE_CODEC = "zlib+sh";
-
 function describeWindow(window) {
    var image = window.mainView.image;
    return {
@@ -25,6 +18,7 @@ function handleListOpenImages() {
    return success({ images: images }, images.length + " open image(s)");
 }
 
+// A file can hold several images, and each opens in a window of its own.
 function handleOpenImage(command) {
    var path = command.parameters.filePath;
    if (!File.exists(path))
@@ -32,28 +26,30 @@ function handleOpenImage(command) {
    var opened = ImageWindow.open(path);
    if (!opened.length)
       throw new Error("PixInsight could not open " + path);
-   opened[0].show();
-   var info = describeWindow(opened[0]);
-   return success({ id: info.id, width: info.width, height: info.height, channels: info.channels },
-                  "Opened " + info.id);
+   var images = Array.prototype.map.call(opened, function (window) {
+      window.show();
+      return describeWindow(window);
+   });
+   return success({ images: images }, "Opened " + images.map(function (image) { return image.id; }).join(", "));
 }
 
 function handleSaveImage(command) {
    var parameters = command.parameters;
    var path = parameters.filePath;
-   var codec = parameters.compression || DEFAULT_SAVE_CODEC;
-   if (SAVE_CODECS.indexOf(codec) < 0)
-      throw new Error("Unknown compression codec " + codec + ", expected one of " + SAVE_CODECS.join(", "));
    if (File.exists(path) && !parameters.overwrite)
       throw new Error(path + " already exists, pass overwrite to replace it");
+   requireFolderOf(path);
    var window = requireView(parameters.viewId).window;
 
    // XISF always gets an explicit codec. An empty hints string means "format defaults", and
    // those defaults are session mutable: one saveAs with a codec hint changes them, so a later
    // empty hint save inherits it (the same image wrote 16.95 MB with "", then 12.07 MB with ""
    // after a single zlib+sh save). Other writers reject an unknown codec hint, so they get none.
-   var hints = /\.xisf$/i.test(path) ? "compression-codec " + codec : "";
-   window.saveAs(path, false, false, false, false, hints);
+   var hints = /\.xisf$/i.test(path) ? "compression-codec " + parameters.compression : "";
+   // saveAs returns false when the writer refuses, and says why only in the Process Console.
+   if (!window.saveAs(path, false, false, false, false, hints))
+      throw new Error("PixInsight could not save " + parameters.viewId + " to " + path +
+                      ". Its reason is in the Process Console.");
 
    // PJSR has no File.size(), FileInfo carries the size.
    var bytes = File.exists(path) ? new FileInfo(path).size : -1;
@@ -61,10 +57,15 @@ function handleSaveImage(command) {
                   "Saved " + parameters.viewId + " to " + path);
 }
 
+// A preview id is refused, since closing its window would close the whole image.
 function handleCloseImage(command) {
    var view = requireView(command.parameters.viewId);
+   if (view.isPreview)
+      throw new Error(view.id + " is a preview of " + view.window.mainView.id +
+         ". close_image closes whole image windows, pass the main view id to close the image");
+   var viewId = view.id;
    view.window.forceClose();
-   return success({}, "Closed " + view.id);
+   return success({}, "Closed " + viewId);
 }
 
 function handleGetImageStatistics(command) {

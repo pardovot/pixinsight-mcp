@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { BridgeClient } from "../bridge/client.js";
 import { textContent } from "./content.js";
-import { viewIdField } from "./fields.js";
+import { identifierField, viewIdField } from "./fields.js";
 import { registerTool } from "./register.js";
 
 // Two ways back: undo and redo walk PixInsight's own history, which is bounded, and a process
@@ -52,8 +52,8 @@ export function registerHistoryTools(server: McpServer, bridge: BridgeClient): v
 
   registerTool(server,
     "get_full_history",
-    "List a view's FULL process history: every step's process name and its settings, what " +
-      "the GUI History Explorer shows, plus the settings it hides. Read-only, no undo/redo and " +
+    "List a view's full process history: every step's process name and its settings, what " +
+      "the GUI History Explorer shows, plus the settings it hides. Read only, no undo/redo and " +
       "no pixel change. Step 0 is the base (integration), steps ahead of the current index are " +
       "flagged redoable. PixInsight prunes the redo branch when a process is applied after an " +
       "undo, so pruned steps never appear here.",
@@ -72,7 +72,7 @@ export function registerHistoryTools(server: McpServer, bridge: BridgeClient): v
 
   registerTool(server,
     "undo",
-    "Revert the last N steps of a view's process history (built-in undo). Stops early " +
+    "Revert the last N steps of a view's process history (PixInsight's own undo). Stops early " +
       "if the history runs out. For a durable checkpoint you control, prefer snapshot/restore.",
     {
       viewId: viewIdField,
@@ -101,11 +101,12 @@ export function registerHistoryTools(server: McpServer, bridge: BridgeClient): v
   registerTool(server,
     "snapshot",
     "Checkpoint a view into a hidden duplicate window you can restore later. Take one " +
-      "BEFORE a risky or irreversible step (e.g. StarXTerminator). Reusing a snapshotId " +
-      "overwrites it. The snapshot stays open (hidden) until you close_image it.",
+      "before a risky or irreversible step (e.g. StarXTerminator). Reusing a snapshotId " +
+      "overwrites that snapshot, and the id of a visible image is refused. The snapshot stays " +
+      "open (hidden) until you close_image it.",
     {
       viewId: viewIdField,
-      snapshotId: z.string().optional().describe("Name for the snapshot window (default '<viewId>_snap')"),
+      snapshotId: identifierField.optional().describe("Name for the snapshot window (default '<viewId>_snap')"),
     },
     async ({ viewId, snapshotId }) => {
       const snapshot = await bridge.request<{ snapshotId: string; width: number; height: number; channels: number }>(
