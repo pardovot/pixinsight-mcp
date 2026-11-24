@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 export interface BridgeConfig {
   /** Absolute path of the directory that holds command, script and result files. */
@@ -7,26 +7,29 @@ export interface BridgeConfig {
   /** PixInsight instance slot to target (-n=N), or null for the first running instance. */
   instance: number | null;
   pollIntervalMs: number;
-  defaultTimeoutMs: number;
+  /** Longest a call may take, or null to wait as long as PixInsight is alive. */
+  defaultTimeoutMs: number | null;
 }
 
 /** PixInsight runs up to 256 instances, in slots 1 to 256. */
 export const MAX_INSTANCE_SLOT = 256;
 
 const DEFAULT_POLL_INTERVAL_MS = 200;
-// Hardware and frame size dependent, a slow machine or very large frames legitimately need more.
-const DEFAULT_TIMEOUT_MS = 300_000;
 
 function positiveIntFromEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-/** PIXINSIGHT_MCP_BRIDGE_DIR, else ~/.pixinsight-mcp/bridge. A leading ~/ is expanded. */
+/**
+ * PIXINSIGHT_MCP_BRIDGE_DIR, else ~/.pixinsight-mcp/bridge. A leading ~/ is expanded, and a relative
+ * path is taken from the server's working directory, since PixInsight would read it from its own.
+ */
 export function resolveBridgeDir(): string {
   const configured = process.env.PIXINSIGHT_MCP_BRIDGE_DIR;
   if (!configured) return join(homedir(), ".pixinsight-mcp", "bridge");
-  return configured.startsWith("~/") ? join(homedir(), configured.slice(2)) : configured;
+  if (configured.startsWith("~/")) return join(homedir(), configured.slice(2));
+  return isAbsolute(configured) ? configured : resolve(configured);
 }
 
 /** PIXINSIGHT_MCP_INSTANCE=N pins the instance slot, else null (first running instance). */
@@ -40,6 +43,6 @@ export function configFromEnv(): BridgeConfig {
     bridgeDir: resolveBridgeDir(),
     instance: resolveInstance(),
     pollIntervalMs: positiveIntFromEnv("PIXINSIGHT_MCP_POLL_INTERVAL_MS", DEFAULT_POLL_INTERVAL_MS),
-    defaultTimeoutMs: positiveIntFromEnv("PIXINSIGHT_MCP_TIMEOUT_MS", DEFAULT_TIMEOUT_MS),
+    defaultTimeoutMs: positiveIntFromEnv("PIXINSIGHT_MCP_TIMEOUT_MS", 0) || null,
   };
 }

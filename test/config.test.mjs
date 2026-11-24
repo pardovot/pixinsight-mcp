@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveBridgeDir, resolveInstance } from "../build/config.js";
 
 const DEFAULT_BRIDGE_DIR = join(homedir(), ".pixinsight-mcp", "bridge");
@@ -34,6 +34,11 @@ test("PIXINSIGHT_MCP_BRIDGE_DIR overrides the bridge dir", () => {
 test("a leading ~/ in the bridge dir is expanded", () => {
   withEnv({ PIXINSIGHT_MCP_BRIDGE_DIR: "~/elsewhere" }, () =>
     assert.equal(resolveBridgeDir(), join(homedir(), "elsewhere")));
+});
+
+test("a relative bridge dir is taken from the working directory", () => {
+  withEnv({ PIXINSIGHT_MCP_BRIDGE_DIR: "bridge-here" }, () =>
+    assert.equal(resolveBridgeDir(), resolve("bridge-here")));
 });
 
 test("no instance env targets the first running instance", () => {

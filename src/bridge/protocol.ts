@@ -3,20 +3,25 @@
 /** One request to PixInsight, written to <bridge>/commands/<id>.json. */
 export interface BridgeCommand {
   id: string;
-  /** ISO time of creation. The handlers refuse requests older than ten minutes. */
+  /** ISO time of creation. */
   timestamp: string;
   /** Bridge verb, a key of ROUTES in pjsr/dispatch.js. */
   tool: string;
   parameters: Record<string, unknown>;
   /** View a process runs on, or null to run it globally. */
   targetView: string | null;
+  /**
+   * Epoch milliseconds the server last refreshed while waiting for the command to start. The
+   * driver skips a command whose heartbeat is older than a minute.
+   */
+  heartbeat: number;
 }
 
-export interface BridgeSuccess {
+export interface BridgeSuccess<Outputs = Record<string, unknown>> {
   id: string;
   status: "success";
   duration_ms: number;
-  outputs: Record<string, unknown>;
+  outputs: Outputs;
   message?: string;
 }
 
@@ -28,4 +33,4 @@ export interface BridgeFailure {
 }
 
 /** The outcome of a command, written to <bridge>/results/<id>.json or produced by the server. */
-export type BridgeResult = BridgeSuccess | BridgeFailure;
+export type BridgeResult<Outputs = Record<string, unknown>> = BridgeSuccess<Outputs> | BridgeFailure;

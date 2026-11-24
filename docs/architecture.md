@@ -27,19 +27,23 @@ src/
   index.ts              server entry, registers the tool groups
   config.ts             bridge directory, instance slot and timeouts from the environment
   pixinsight.ts         the PixInsight executable per platform, the running process check
+  script-files.ts       finding a script by its menu name, telling whether it defines a dialog
   bridge/protocol.ts    command and result types
-  bridge/client.ts      BridgeClient: command files, driver script, -x handoff, result polling
+  bridge/client.ts      BridgeClient: command files, driver script, -x handoff, waiting for the result
+  bridge/call-context.ts  the MCP request's cancellation and progress, seen by the bridge calls
   facts/                verified tool defects, and the guard run_process checks them with
   tools/                one file per tool group, plus register.ts, content.ts and fields.ts
 pjsr/
   core.js               shared helpers: the global object, requireView, success
   images.js processes.js history.js export.js render.js
+  scripts.js script-engines.js script-controls.js    Script runs, described below
   measure-common.js     helpers of the measurement verbs, one measure-*.js file per verb
   dispatch.js           ROUTES, verb to handler, and dispatchCommand
 scripts/
   build-pjsr-bundle.mjs joins pjsr/ into build/pjsr/mcp-handlers.js
   check-handler-drift.mjs
   ping.mjs
+  smoke-scripts.mjs     Script runs against a running PixInsight
 test/                   node --test suites, no PixInsight needed
 ```
 
@@ -106,7 +110,7 @@ top level declarations out of the persistent global scope.
   starts as from the Script menu, on the target's window brought to the front.
 - A dialog is driven by setting its controls and clicking the requested button or its own OK
   button, so the script's handlers run as they would for a user. A drawing area, often a button the
-  script draws itself, is clicked with a mouse press and release at its centre. A dialog still open
+  script draws itself, is clicked with a mouse press and release at its center. A dialog still open
   after the click is closed with its own Cancel or Close button, else accepted, and so is the same
   dialog opened again with no settings given, as in an Execute and Close loop. Inspect closes each
   dialog with its Cancel or Close button, whose handler may clean up windows the dialog made. A run
@@ -142,14 +146,13 @@ normally exits within about a second, even when the instance is busy, so one sti
 
 ## Design decisions
 
-- **Command line handoff, not a resident listener.** PJSR is single threaded: a running script
-  holds the main thread, modeless script interfaces do not exist, and a background `Timer` dies
-  with the script. The `-x` interface is the one route in that needs nothing installed inside
-  PixInsight, at about a second per call.
-- **One generic process runner.** A `run_bxt` style wrapper restricts the parameter set and needs
-  maintaining per process.
-- **Measure, configure, verify.** The tools push the assistant to measure the image before
-  configuring a process and to measure again after, since unchanged statistics mean the process
-  did nothing.
-- **A modal blocks everything.** Any dialog a process raises holds every later command, for
-  example Crop on a view with a spline astrometric solution.
+- Commands are handed over on the command line, with no resident listener, because PJSR is single
+  threaded: a running script holds the main thread, modeless script interfaces do not exist, and
+  a background `Timer` dies with the script. The `-x` interface is the one route in that needs
+  nothing installed inside PixInsight, at about a second per call.
+- There is one generic process runner, since a `run_bxt` style wrapper restricts the parameter
+  set and needs maintaining per process.
+- The tools push the assistant to measure the image before configuring a process and to measure
+  again after, since unchanged statistics mean the process did nothing.
+- A modal blocks everything: any dialog a process raises holds every later command, for example
+  Crop on a view with a spline astrometric solution.

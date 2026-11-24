@@ -8,7 +8,10 @@ import { BridgeClient, driverSource, handoffArgument, SCRIPT_SHADOWED_NAMES } fr
 import { definesDialog, findScript, scriptNames } from "../build/script-files.js";
 import { parseScriptSettings } from "../build/tools/script.js";
 
-const files = { bundlePath: "C:\\bridge\\mcp-handlers.js", commandPath: "C:\\bridge\\command.json", resultPath: "C:\\bridge\\result.json" };
+const files = {
+  bundlePath: "C:\\bridge\\mcp-handlers.js", commandPath: "C:\\bridge\\command.json",
+  startedPath: "C:\\bridge\\result.started", resultPath: "C:\\bridge\\result.json",
+};
 
 test("a plain command driver includes the bundle and dispatches, on the default engine", () => {
   const driver = driverSource(files);
@@ -17,6 +20,15 @@ test("a plain command driver includes the bundle and dispatches, on the default 
   assert.ok(driver.includes("dispatchCommand( __command )"));
   assert.ok(!driver.includes("#engine"));
   assert.ok(!driver.includes("runIncludedScript"));
+});
+
+test("a driver runs only a command with a fresh heartbeat, and marks the start with PixInsight's process id", () => {
+  const driver = driverSource(files);
+  const heartbeat = driver.indexOf("if ( __started - __command.heartbeat <= 60000 )");
+  const marker = driver.indexOf("JSON.stringify( { pid: CoreApplication.pid } )");
+  const dispatch = driver.indexOf("dispatchCommand( __command )");
+  assert.ok(heartbeat > 0 && heartbeat < marker && marker < dispatch);
+  assert.ok(driver.includes('File.move( "C:/bridge/result.started.tmp", "C:/bridge/result.started" )'));
 });
 
 test("a legacy script is included inside runIncludedScript on the legacy engine", () => {

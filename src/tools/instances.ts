@@ -43,15 +43,14 @@ export function registerInstanceTools(server: McpServer, bridge: BridgeClient): 
       "is running, otherwise the server already targets the running one.",
     { instance: z.number().int().min(1).max(MAX_INSTANCE_SLOT).describe("Instance slot number to drive") },
     async ({ instance }) => {
-      const previous = bridge.getInstance();
-      bridge.setInstance(instance);
+      // The probe targets the slot for itself, so calls made meanwhile keep going to the current one.
       try {
         const { images } = await bridge.request<{ images: { id: string }[] }>(
-          "list_open_images", {}, { timeoutMs: PROBE_TIMEOUT_MS });
+          "list_open_images", {}, { timeoutMs: PROBE_TIMEOUT_MS, instance });
+        bridge.setInstance(instance);
         const open = images.length ? images.map((image) => image.id).join(", ") : "none";
         return textContent(`Now driving PixInsight instance ${instance}. Open images: ${open}.`);
       } catch (error: unknown) {
-        bridge.setInstance(previous);
         const reason = error instanceof Error ? error.message : String(error);
         throw new Error(`Could not reach instance ${instance}: ${reason} Still driving ${describeTarget()}.`, { cause: error });
       }

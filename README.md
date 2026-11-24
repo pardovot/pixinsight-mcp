@@ -95,7 +95,8 @@ most of it starting the short lived PixInsight process that hands the request ov
 PixInsight is busy while a command runs, as it would be had you started the process yourself, and
 fully usable between commands. Requests that arrive while it is busy wait in PixInsight's own
 queue. The server checks that PixInsight is running before each call, so a closed application
-gives an error rather than a dialog.
+gives an error rather than a dialog. A call waits as long as PixInsight runs, so a long WBPP run
+needs no timeout setting, and fails within seconds if PixInsight exits or crashes.
 
 > Anything that can write to `~/.pixinsight-mcp/bridge` can get code run inside PixInsight. Keep
 > the directory private to your user, never on a shared or synced path.
@@ -129,7 +130,7 @@ Every path is a default an environment variable overrides, so a stock install ne
 | `PIXINSIGHT_EXE` | derived | PixInsight executable, overrides `PI_ROOT` |
 | `PIXINSIGHT_MCP_INSTANCE` | first running | instance slot to drive |
 | `PIXINSIGHT_MCP_BRIDGE_DIR` | `~/.pixinsight-mcp/bridge` | where command, script and result files go |
-| `PIXINSIGHT_MCP_TIMEOUT_MS` | `300000` | timeout of each command |
+| `PIXINSIGHT_MCP_TIMEOUT_MS` | none | longest a command may take |
 | `PIXINSIGHT_MCP_POLL_INTERVAL_MS` | `200` | result poll interval |
 | `PIXINSIGHT_MCP_ALLOW_UNSAFE` | unset | `1` disarms the refusal of known tool defects |
 

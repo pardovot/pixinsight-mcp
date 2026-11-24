@@ -21,15 +21,15 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     "Run any PixInsight process by its class name (e.g. BlurXTerminator, " +
       "AutomaticBackgroundExtractor, PixelMath). This is the general mechanism, there are no " +
       "process specific tools.\n" +
-      "METHOD (do this, don't run blindly):\n" +
-      "1. First call get_process_parameters(processId) to see settings + defaults, and " +
+      "Method, in place of running blindly:\n" +
+      "1. First call get_process_parameters(processId) to see settings and defaults, and " +
       "reason about what they mean (recall or check pixinsight.com/doc).\n" +
-      "2. Watch for no-op output defaults: some processes only make a side product unless " +
+      "2. Watch for output defaults that do nothing: some processes only make a side product unless " +
       "you configure output. E.g. AutomaticBackgroundExtractor defaults to targetCorrection=0 " +
       "(no correction), to actually correct the image pass { targetCorrection: 1, replaceTarget: true }.\n" +
-      "3. Pick settings from measuring THIS image (get_image_statistics and the measurement tools), not fixed defaults.\n" +
-      "4. After running, ALWAYS re-measure. If stats are byte-identical to before, it was a no-op, " +
-      "stop and fix the output config; do not build the next step on it.\n" +
+      "3. Pick settings from measuring this image (get_image_statistics and the measurement tools), not fixed defaults.\n" +
+      "4. After running, always measure again. Stats byte identical to before mean the process did nothing, " +
+      "so stop and fix the output config before building the next step on it.\n" +
       "Unknown setting names are rejected (checked against get_process_parameters).\n" +
       "processId 'Script' runs a script file (Script menu scripts included) with no user interaction, " +
       "see get_process_parameters('Script').",
@@ -42,16 +42,16 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
     async ({ processId, viewId, settings = {} }) => {
       if (processId === SCRIPT_PROCESS_ID) {
         const script = parseScriptSettings(settings);
-        const result = await bridge.call("run_script", {
+        const result = await bridge.call<ScriptRunOutputs>("run_script", {
           filePath: script.filePath, parameters: script.parameters, dialogs: script.dialogs,
           answers: script.answers, inspect: script.inspect,
         }, { targetView: viewId ?? null, script: { path: script.filePath, arguments: script.arguments } });
         if (result.status === "error") throw new Error(result.error.message);
-        return textContent(formatScriptRun(result.message ?? "Script ran", result.outputs as unknown as ScriptRunOutputs));
+        return textContent(formatScriptRun(result.message ?? "Script ran", result.outputs));
       }
 
       // Verified defects are refused before the call reaches PixInsight. Some hang the
-      // application, and the no-op ones would return success with an unchanged image.
+      // application, and the ones that do nothing would return success with an unchanged image.
       const { blocks, warnings } = checkProcessCall({ processId, viewId, settings });
       if (blocks.length > 0 && !overrideEnabled()) throw new Error(formatBlocks(processId, blocks));
 
@@ -75,7 +75,7 @@ export function registerProcessingTools(server: McpServer, bridge: BridgeClient)
       const dead = deadParamsFor(processId);
       const lines = Object.entries(parameters).map(([name, value]) => {
         const fact = dead.get(name.toLowerCase());
-        const mark = fact ? `   [DEAD, ${fact.id}: setting this is refused, ${fact.fix ?? "no effect"}]` : "";
+        const mark = fact ? `   [dead, ${fact.id}: setting this is refused, ${fact.fix ?? "no effect"}]` : "";
         return `- ${name} = ${JSON.stringify(value)}${mark}`;
       });
       return textContent(`**${processId}** parameters:\n${lines.join("\n")}${formatNotes(processId)}`);

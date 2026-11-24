@@ -30,11 +30,12 @@ runIncludedScript.shadowedNames = ["Parameters", "Dialog", "MessageBox", "consol
 ~/.pixinsight-mcp/bridge/     PIXINSIGHT_MCP_BRIDGE_DIR overrides
   commands/<id>.json          the request, written by the server
   scripts/<id>.js             the driver PixInsight executes
+  results/<id>.started        PixInsight's process id, written by the driver as the command starts
   results/<id>.json           the outcome, written by the driver
 ```
 
 Both sides write to `<name>.tmp` and rename, so a reader never sees a partial file. The server
-deletes all three files of a call once it has the result or gives up. At startup it also deletes
+deletes all four files of a call once it has the result or gives up. At startup it also deletes
 any bridge file older than ten minutes, left by a session that died during a call.
 
 ## Command
@@ -45,17 +46,19 @@ any bridge file older than ten minutes, left by a session that died during a cal
   "timestamp": "2026-11-15T09:12:03.512Z",
   "tool": "run_process",
   "parameters": { "processId": "GradientCorrection", "settings": {} },
-  "targetView": "M106"
+  "targetView": "M106",
+  "heartbeat": 1795477923512
 }
 ```
 
 | Field | Meaning |
 |---|---|
 | `id` | UUID, also the file name of the driver and the result |
-| `timestamp` | Creation time. The handlers refuse a command older than ten minutes, so a request PixInsight reaches only after a long process never fires once its caller has given up |
+| `timestamp` | Creation time |
 | `tool` | Verb, a key of `ROUTES` in `pjsr/dispatch.js` |
 | `parameters` | Verb arguments, as JSON |
 | `targetView` | View a process or script runs on, or `null` to run it globally. Only `run_process` and `run_script` use it |
+| `heartbeat` | Epoch milliseconds, refreshed by the server every 10 s until the command starts. The driver skips a command whose heartbeat is older than a minute, so a request PixInsight reaches only after its server gave up or died never fires |
 
 ## Result
 
@@ -84,8 +87,18 @@ the errors below, which it produces itself:
 | `error.type` | When |
 |---|---|
 | `DispatchError` | PixInsight not running, executable not found, or the target slot has no instance |
-| `Timeout` | No result within the timeout. The call may still run later, its result is then cleaned up |
+| `PixInsightExited` | PixInsight exited before the command started, or the process that started it exited, usually a crash |
+| `Cancelled` | The client cancelled the request. A command not yet started never runs, a running one finishes |
+| `Timeout` | No result within `PIXINSIGHT_MCP_TIMEOUT_MS` or a call's own limit, saying whether the command started |
 | `MalformedResult` | The result file stayed unparseable for two seconds |
+
+## Waiting
+
+A call has no time limit unless `PIXINSIGHT_MCP_TIMEOUT_MS` sets one, since a command may queue
+behind other work and then run for hours. While it waits the server checks the PixInsight
+processes every 2 s: before the started marker exists any running instance counts, after it the
+process it names. When the client asks for progress, the server reports every 10 s whether the
+command is still queued or running.
 
 ## Handoff
 

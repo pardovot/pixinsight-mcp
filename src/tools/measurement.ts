@@ -5,8 +5,6 @@ import { jsonContent } from "./content.js";
 import { viewIdField } from "./fields.js";
 import { registerTool } from "./register.js";
 
-// The star scan reads a full frame twice, which on a large master outlasts the default timeout.
-const STAR_METRICS_TIMEOUT_MS = 600_000;
 const DEFAULT_SAMPLES = 150_000;
 
 const colorViewIdField = z.string().describe("Id of an open color view");
@@ -16,7 +14,7 @@ const targetSamplesField = z.number().int().min(10_000).max(1_000_000).default(D
 export function registerMeasurementTools(server: McpServer, bridge: BridgeClient): void {
   registerTool(server,
     "get_noise",
-    "Per-channel MRS noise estimate for an open image. Use this, never stdDev, to gauge noise and " +
+    "MRS noise estimate per channel for an open image. Use this, never stdDev, to gauge noise and " +
       "denoising: stdDev is dominated by signal on astro images. Uniform sigma across channels " +
       "after denoising is healthy.",
     { viewId: viewIdField },
@@ -25,7 +23,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
 
   registerTool(server,
     "get_background_gradient",
-    "Background map: per-channel medians over a grid of boxes, the corner spread and a least " +
+    "Background map: medians per channel over a grid of boxes, the corner spread and a least " +
       "squares plane fit. Use before and after gradient correction: the corner spread should drop " +
       "while the center median stays put. Box medians resist stars, boxes on nebulosity read high " +
       "and show in maxDeviationPct.",
@@ -41,12 +39,13 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
 
   registerTool(server,
     "get_background_neutrality",
-    "Background color neutrality. mode:'linear' (before any stretch) = per-channel medians of the " +
-      "pixels within 8% of the median luminance, spreadPct <= 1 is neutral. That band is " +
+    "Background color neutrality. mode:'linear' (before any stretch) = medians per channel of the " +
+      "pixels in a band around the median luminance, spreadPct <= 1 is neutral. That band is " +
       "meaningless after a stretch, so mode:'poststretch' reports bgChroma (mean saturation of the " +
-      "near-neutral population, |rex| < 0.01) and faint and bright signal medians, to compare " +
-      "across before and after calls. rex = signalChannel - mean(other channels), with " +
-      "signalChannel the dominant emission (R for Ha or RGB dust).",
+      "near neutral population, the pixels with a small |rex|) and faint and bright signal medians, " +
+      "to compare across before and after calls. rex = signalChannel - mean(other channels), with " +
+      "signalChannel the dominant emission (R for Ha or RGB dust). The result states the band and " +
+      "the rex limits used.",
     {
       viewId: colorViewIdField,
       mode: z.enum(["linear", "poststretch"]).describe("linear before any stretch, poststretch after"),
@@ -61,8 +60,8 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
     "get_star_metrics",
     "Star metrics: approximate star count, median FWHM (px) and eccentricity of the brightest " +
       "stars from background subtracted moments (saturated peaks excluded), the brightest star " +
-      "coordinates (for 1:1 crops), and starPixelMedian, the median of grid samples with " +
-      "max(R,G,B) > 0.005, meaningful on a stars only layer. Values compare between calls, they " +
+      "coordinates (for 1:1 crops), and starPixelMedian, the median of grid samples whose brightest " +
+      "channel exceeds starPixelLevel, meaningful on a stars only layer. Values compare between calls, they " +
       "are not photometric: moment FWHM reads about 2.3x SubframeSelector's PSF fit FWHM, never " +
       "mix the two.",
     {
@@ -71,7 +70,7 @@ export function registerMeasurementTools(server: McpServer, bridge: BridgeClient
         .describe("How many of the brightest stars to measure for FWHM/eccentricity"),
     },
     async ({ viewId, maxStars }) =>
-      jsonContent(await bridge.request("get_star_metrics", { viewId, maxStars }, { timeoutMs: STAR_METRICS_TIMEOUT_MS })),
+      jsonContent(await bridge.request("get_star_metrics", { viewId, maxStars })),
   );
 
   registerTool(server,
