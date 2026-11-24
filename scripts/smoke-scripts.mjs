@@ -1,6 +1,7 @@
-// Runs bundled PixInsight scripts through run_process("Script") on a synthetic image and checks each
+// Runs installed PixInsight scripts through run_process("Script") on a synthetic image and checks each
 // result, then counts the access violations PixInsight logged meanwhile, which it catches, so no
-// result shows them. PixInsight must be running. Windows the scripts open are left open.
+// result shows them. PixInsight must be running, with the third party scripts docs/dev-setup.md
+// lists installed. Windows the scripts open are left open.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -9,10 +10,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { handoffArgument } from "../build/bridge/client.js";
+import { resolveInstance } from "../build/config.js";
 import { pixinsightExecutable, toPixInsightPath } from "../build/pixinsight.js";
 
-// A run that hangs fails within this, instead of holding the session.
+// A run that hangs fails within this, instead of holding the session. The client waits a little
+// longer, so the server's timeout is the one reported.
 const CALL_TIMEOUT_MS = 120_000;
+const CLIENT_TIMEOUT_MS = CALL_TIMEOUT_MS + 30_000;
+const MS_PER_SECOND = 1_000;
 const VIEW = "script_smoke";
 const SIZE = 512;
 // Sky with a gradient, three stars and an elongated galaxy, in [0, 1].
@@ -38,7 +44,8 @@ function runConsoleCommand(command) {
   const file = path.join(os.tmpdir(), `script-smoke-${process.pid}-${commandFiles.length}.scp`);
   fs.writeFileSync(file, `${command}\n`);
   commandFiles.push(file);
-  execFileSync(pixinsightExecutable(), [`-x=${toPixInsightPath(file)}`], { stdio: "ignore", timeout: CONSOLE_COMMAND_MS });
+  // The instance PIXINSIGHT_MCP_INSTANCE selects, as for the server the test starts.
+  execFileSync(pixinsightExecutable(), [handoffArgument(resolveInstance(), file)], { stdio: "ignore", timeout: CONSOLE_COMMAND_MS });
 }
 function consoleLogText() {
   try {
@@ -52,7 +59,7 @@ function consoleLogText() {
 async function waitFor(condition, what) {
   const started = Date.now();
   while (!condition()) {
-    if (Date.now() - started > CONSOLE_COMMAND_MS) throw new Error(`PixInsight did not ${what} within ${CONSOLE_COMMAND_MS / 1000} s`);
+    if (Date.now() - started > CONSOLE_COMMAND_MS) throw new Error(`PixInsight did not ${what} within ${CONSOLE_COMMAND_MS / MS_PER_SECOND} s`);
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
 }
@@ -70,13 +77,13 @@ await client.connect(transport);
 let failures = 0;
 async function step(label, tool, args, { expectError = false, expect = [], absent = [] } = {}) {
   const started = Date.now();
-  const result = await client.callTool({ name: tool, arguments: args }, undefined, { timeout: CALL_TIMEOUT_MS + 30_000 });
+  const result = await client.callTool({ name: tool, arguments: args }, undefined, { timeout: CLIENT_TIMEOUT_MS });
   const text = result.content[0].text;
   const missing = expect.filter((pattern) => !pattern.test(text));
   const present = absent.filter((pattern) => pattern.test(text));
   const failed = Boolean(result.isError) !== expectError || missing.length > 0 || present.length > 0;
   if (failed) failures++;
-  console.log(`${failed ? "FAIL" : "ok  "}  ${label} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
+  console.log(`${failed ? "FAIL" : "ok  "}  ${label} (${((Date.now() - started) / MS_PER_SECOND).toFixed(1)} s)`);
   if (failed) console.log(`${text}\n${[...missing.map((pattern) => `missing: ${pattern}`), ...present.map((pattern) => `present: ${pattern}`)].join("\n")}`);
   return text;
 }
