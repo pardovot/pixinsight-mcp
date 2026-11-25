@@ -6,7 +6,8 @@ can watch the work happen and take over between steps.
 
 ## Install
 
-**1. MCP server.** Any MCP client works, this is a stock stdio server with no client specific code.
+First add the server to your MCP client. Any client works, this is a stock stdio server with no
+client specific code.
 
 Claude Code:
 
@@ -35,7 +36,7 @@ args = ["-y", "@pardovot/pixinsight-mcp"]
 On Windows, if a client cannot resolve `npx`, use `"command": "cmd"` with
 `"args": ["/c", "npx", "-y", "@pardovot/pixinsight-mcp"]`.
 
-**2. Start PixInsight** and ask your assistant to list your open images. If it answers, you are
+Then start PixInsight and ask your assistant to list your open images. If it answers, you are
 connected. Nothing is installed inside PixInsight.
 
 Requires PixInsight 1.9.4 or later and Node 22 or later.
@@ -96,7 +97,9 @@ PixInsight is busy while a command runs, as it would be had you started the proc
 fully usable between commands. Requests that arrive while it is busy wait in PixInsight's own
 queue. The server checks that PixInsight is running before each call, so a closed application
 gives an error rather than a dialog. A call waits as long as PixInsight runs, so a long WBPP run
-needs no timeout setting, and fails within seconds if PixInsight exits or crashes.
+needs no timeout setting, and fails within seconds if PixInsight exits or crashes. A dialog
+PixInsight shows holds the call until you close it, or until `PIXINSIGHT_MCP_TIMEOUT_MS` runs out
+if you set one.
 
 > Anything that can write to `~/.pixinsight-mcp/bridge` can get code run inside PixInsight. Keep
 > the directory private to your user, never on a shared or synced path.

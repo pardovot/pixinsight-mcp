@@ -36,7 +36,9 @@ runIncludedScript.shadowedNames = ["Parameters", "Dialog", "MessageBox", "consol
 
 Both sides write to `<name>.tmp` and rename, so a reader never sees a partial file. The server
 deletes all four files of a call once it has the result or gives up. At startup it also deletes
-any bridge file older than ten minutes, left by a session that died during a call.
+any bridge file older than ten minutes, left by a session that died during a call. A waiting
+call keeps its command and driver fresh until the command starts, so a call queued for longer
+keeps its files.
 
 ## Command
 
@@ -100,11 +102,16 @@ processes every 2 s: before the started marker exists any running instance count
 process it names. When the client asks for progress, the server reports every 10 s whether the
 command is still queued or running.
 
+A dialog PixInsight shows is not detected: nothing reports it on every platform, and PixInsight's
+own `--automation-mode`, which suppresses message boxes, breaks driving script dialogs. The call
+waits until the dialog is closed, the client cancels it or `PIXINSIGHT_MCP_TIMEOUT_MS` runs out.
+
 ## Handoff
 
 The PixInsight process started for each call passes the request to the running instance and exits
 within about a second, even while that instance is busy. Requests that arrive while PixInsight is
-busy wait in its own queue and run in order, one at a time. The server issues calls serially.
+busy wait in its own queue and run in order, one at a time. The server hands each call over as
+it arrives, to the instance slot selected at that moment.
 
 Two cases would otherwise end in a modal dialog:
 
@@ -122,7 +129,7 @@ message.
 | Verb | Parameters | Outputs |
 |---|---|---|
 | `list_open_images` | | `images[]`: `id`, `filePath`, `width`, `height`, `channels`, `isColor`, `bitDepth` |
-| `open_image` | `filePath` | `id`, `width`, `height`, `channels` |
+| `open_image` | `filePath` | `images[]`, one per image the file holds, as in `list_open_images` |
 | `save_image` | `viewId`, `filePath`, `overwrite`, `compression` | `filePath`, `hints`, `bytes` |
 | `close_image` | `viewId` | |
 | `get_image_statistics` | `viewId` | `statistics[]`: `channelName`, `mean`, `median`, `stdDev`, `min`, `max` |
@@ -132,7 +139,7 @@ message.
 | `get_history`, `undo`, `redo` | `viewId`, and `steps` for undo and redo | `historyIndex`, `canUndo`, `canRedo`, and `undone` or `redone` |
 | `get_full_history` | `viewId`, `maxParamLines` | the history position, `stepCount`, `steps[]` |
 | `snapshot`, `restore` | `viewId`, `snapshotId` | `snapshotId` and geometry, or `historyIndex` |
-| `export_container` | `viewId`, `outputPath`, `iconName`, `fromIndex`, `toIndex` | `path`, `count`, `processes`, `fromIndex`, `toIndex` |
+| `export_container` | `viewId`, `outputPath`, `iconName`, `fromIndex`, `toIndex` | `path`, `count`, `processes`, `fromIndex`, `toIndex`, `skipped`: the parameters it could not write |
 | `get_noise`, `get_background_gradient`, `get_background_neutrality`, `get_star_metrics`, `get_structure_color` | `viewId` and the options of each verb | the measurement |
 | `render_view` | `viewId`, `outputPath`, `stf`, `rect`, `downsample`, `quality` | `path`, `width`, `height`, the stretch applied, `warnings` |
 

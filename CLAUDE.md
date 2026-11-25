@@ -5,12 +5,12 @@
 
 ## ⛔ CROSS PLATFORM BY DEFAULT
 Every new script, path and default is written cross platform from the start, not ported later.
-- **Node, not shell.** New tooling goes in `.mjs`, exposed via `npm run` scripts. No `.bat` or
+- **Node, not shell**: new tooling goes in `.mjs`, exposed via `npm run` scripts. No `.bat` or
   `.sh`: a per OS shim gives one platform a shortcut the others lack.
 - **Derive paths, never hardcode them**: `process.env.ProgramFiles`, `os.homedir()`, `path.join()`,
   per platform candidate probing. No literal `C:\...` or `/Applications/...` outside a per platform
   fallback branch.
-- **Windows only is a fact about testing, not about design.** Write all three branches and mark
+- **Windows only is a fact about testing, not about design**: write all three branches and mark
   which are verified. Unverified is not unsupported, never delete another platform's branch or
   instructions.
 - Genuinely platform bound pieces (the executable path, `tasklist` vs `pgrep`) get per platform
@@ -20,7 +20,7 @@ Every new script, path and default is written cross platform from the start, not
 - Dev machine: Windows 11, stock PixInsight install.
 - Linux and macOS: unverified. On Linux `bin/PixInsight` is not launchable, the launcher
   `bin/PixInsight.sh` is, so that is what the server runs. Setup per platform: `docs/dev-setup.md`.
-- **PixInsight 1.9.4+ "Lockhart" has two script engines.** A script runs on V8 only when it
+- PixInsight 1.9.4+ "Lockhart" has two script engines. A script runs on V8 only when it
   declares `#engine v8`, every other script runs on the legacy engine. The bridge driver runs on the
   legacy engine, except a Script run of a V8 script, so `pjsr/` must run on both. The legacy engine
   has no `globalThis` (`pjsr/core.js` captures the global object with `Function("return this")()`).
@@ -52,12 +52,13 @@ includes the bundle, calls `dispatchCommand`, writes the result and returns.
   waits on it, which is why the server checks for a running PixInsight first and kills a handoff
   still alive after 15 s, which closes the dialog.
 - Any modal a process raises blocks every later command, e.g. Crop on a view with a spline
-  astrometric solution (Crop's `noGUIMessages` parameter exists to suppress it, untested).
+  astrometric solution (Crop's `noGUIMessages` parameter exists to suppress it, untested). Calls
+  have no default timeout, so the call waits until the dialog is closed.
 - `executeOn`/`executeGlobal` return false when a process refuses to run (a missing license
   reports only in the Process Console). The handlers turn that into an error, never a success.
 
 ## ⛔ ONE GENERIC PROCESS RUNNER
-**Never add a per process MCP tool.** `run_process(processId, viewId?, settings?)` runs any process
+**Never add a per process MCP tool**: `run_process(processId, viewId?, settings?)` runs any process
 by class name and `get_process_parameters(processId)` lists its settable parameters. A `run_bxt`,
 `denoise` or `run_pixelmath` style wrapper restricts the parameter set and needs maintaining per
 process.
