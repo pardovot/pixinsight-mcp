@@ -89,7 +89,9 @@ claude mcp add pixinsight-pack -- npx -y /absolute/path/to/pardovot-pixinsight-m
 
 ## Running PixInsight
 
-Start it normally. Check the server can reach it:
+Start it normally, or let the assistant call `start_instance`. That tool runs the PixInsight
+executable, or the command in `PIXINSIGHT_MCP_LAUNCH` when you set one. Check the server can reach
+it:
 
 ```bash
 npm run ping

@@ -51,6 +51,8 @@ includes the bundle, calls `dispatchCommand`, writes the result and returns.
 - A request to an empty slot (or `-e`, `--help`) shows a **modal** dialog and the handoff process
   waits on it, which is why the server checks for a running PixInsight first and kills a handoff
   still alive after 15 s, which closes the dialog.
+- A request sent while PixInsight is starting up is accepted and never runs. `start_instance`
+  therefore probes a starting instance with a 5 s limit until one probe answers.
 - Any modal a process raises blocks every later command, e.g. Crop on a view with a spline
   astrometric solution (Crop's `noGUIMessages` parameter exists to suppress it, untested). Calls
   have no default timeout, so the call waits until the dialog is closed.

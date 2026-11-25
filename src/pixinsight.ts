@@ -5,7 +5,7 @@
 // overridden with an environment variable, so a stock install needs no
 // configuration.
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -47,6 +47,47 @@ export function pixinsightExecutable(): string {
   if (process.platform === "darwin")
     return join(root, "PixInsight.app", "Contents", "MacOS", "PixInsight");
   return probe([join(root, "bin", "PixInsight.sh"), join(root, "bin", "PixInsight")]);
+}
+
+/** How PixInsight is started: the program, its arguments, and whether a shell runs it. */
+export interface LaunchCommand {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
+
+/**
+ * The command that starts a PixInsight instance, in slot N when one is given (-n=N).
+ * PIXINSIGHT_MCP_LAUNCH replaces the executable with a command line the shell runs, and the slot
+ * argument is appended to it.
+ */
+export function launchCommand(slot: number | null): LaunchCommand {
+  const slotArguments = slot === null ? [] : [`-n=${slot}`];
+  const override = process.env.PIXINSIGHT_MCP_LAUNCH;
+  if (override) return { command: [override, ...slotArguments].join(" "), args: [], shell: true };
+  return { command: pixinsightExecutable(), args: slotArguments, shell: false };
+}
+
+/**
+ * Starts PixInsight detached, so it outlives the server, and returns once its process is spawned.
+ * Verified on Windows, with the executable and with a launch command. Unverified on macOS and
+ * Linux.
+ */
+export function launchPixInsight(slot: number | null): Promise<void> {
+  const { command, args, shell } = launchCommand(slot);
+  return new Promise((resolveLaunch, rejectLaunch) => {
+    // windowsHide keeps the shell's console window off the screen.
+    const child = spawn(command, args, { shell, detached: true, stdio: "ignore", windowsHide: shell });
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      rejectLaunch(new Error(error.code === "ENOENT"
+        ? `PixInsight not found at ${command}. Set PI_ROOT, PIXINSIGHT_EXE or PIXINSIGHT_MCP_LAUNCH.`
+        : `Could not start ${command}: ${error.message}`));
+    });
+    child.on("spawn", () => {
+      child.unref();
+      resolveLaunch();
+    });
+  });
 }
 
 /** PixInsight's preprocessor and path arguments take forward slashes on every platform. */

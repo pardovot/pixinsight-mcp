@@ -50,7 +50,7 @@ Requires PixInsight 1.9.4 or later and Node 22 or later.
 | Measurement | `get_noise`, `get_background_gradient`, `get_background_neutrality`, `get_star_metrics`, `get_structure_color` |
 | Rendering | `render_view` |
 | History | `get_history`, `get_full_history`, `undo`, `redo`, `snapshot`, `restore` |
-| Instances | `list_instances`, `use_instance` |
+| Instances | `list_instances`, `use_instance`, `start_instance` |
 | Export | `export_container` |
 
 `run_process` runs any process by class name, third party ones included, so a newly installed tool
@@ -112,6 +112,10 @@ the first running instance unless told otherwise. Say "use instance 2" and the a
 reports how many instances are running, and `PIXINSIGHT_MCP_INSTANCE=N` pins a slot for a whole
 session.
 
+`start_instance` starts PixInsight when none is running, or another instance in a slot you name,
+and waits until it answers. It runs the PixInsight executable, or the command in
+`PIXINSIGHT_MCP_LAUNCH` when you set one.
+
 ## Platform
 
 The server, the command line interface and the handlers are the same everywhere, only the
@@ -132,10 +136,31 @@ Every path is a default an environment variable overrides, so a stock install ne
 | `PI_ROOT` | probed | PixInsight install root, the executable is derived from it |
 | `PIXINSIGHT_EXE` | derived | PixInsight executable, overrides `PI_ROOT` |
 | `PIXINSIGHT_MCP_INSTANCE` | first running | instance slot to drive |
+| `PIXINSIGHT_MCP_LAUNCH` | the executable | shell command `start_instance` runs to start PixInsight, `-n=N` is appended for a slot |
 | `PIXINSIGHT_MCP_BRIDGE_DIR` | `~/.pixinsight-mcp/bridge` | where command, script and result files go |
 | `PIXINSIGHT_MCP_TIMEOUT_MS` | none | longest a command may take |
 | `PIXINSIGHT_MCP_POLL_INTERVAL_MS` | `200` | result poll interval |
 | `PIXINSIGHT_MCP_ALLOW_UNSAFE` | unset | `1` disarms the refusal of known tool defects |
+
+A variable goes in the server's entry in your MCP client. In an `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "pixinsight": {
+      "command": "npx",
+      "args": ["-y", "@pardovot/pixinsight-mcp"],
+      "env": { "PI_ROOT": "/opt/PixInsight-1.9.4" }
+    }
+  }
+}
+```
+
+With Claude Code:
+
+```bash
+claude mcp add pixinsight -e PI_ROOT=/opt/PixInsight-1.9.4 -- npx -y @pardovot/pixinsight-mcp
+```
 
 ## Building from source
 

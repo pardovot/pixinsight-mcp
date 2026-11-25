@@ -144,6 +144,12 @@ empty slot makes PixInsight show a modal error and wait. The process that hands 
 normally exits within about a second, even when the instance is busy, so one still alive after
 15 s is killed, which also closes the dialog.
 
+`start_instance` starts PixInsight itself: it spawns the executable detached, with `-n=N` for a
+slot, or the shell command in `PIXINSIGHT_MCP_LAUNCH` (`launchPixInsight` in `src/pixinsight.ts`).
+It first makes sure the slot is free, since a second start in a held slot is PixInsight's to
+handle. A request sent while PixInsight is starting up is accepted and then never runs, so the
+tool waits for the new process and probes it with a 5 s limit until one probe answers.
+
 ## Design decisions
 
 - Commands are handed over on the command line, with no resident listener, because PJSR is single
